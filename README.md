@@ -57,7 +57,15 @@ go -C emu_go run . 360000000 30000
 
 # drive first-boot setup to the MAIN MENU via injected keypresses:
 go -C emu_go run . 360000000 30000 seq "1-9,1-9,1-9,1-9,6-9,6-9,1-9,1-9,2-1" 130000000 14000000
+
+# persistence: provision ONCE (drives first-boot to the menu and snapshots a save-state),
+# then every later boot resumes instantly at the MAIN MENU instead of re-running setup:
+go -C emu_go run . 450000000 30000 provision   # writes os/flash_dump/cg50_state.bin
+go -C emu_go run . 60000000 30000              # auto-resumes at the menu (no setup keys)
 ```
+
+The save-state (CPU + DRAM/ILRAM/OCRAM + flash delta, gzip ~85 KB) is git-ignored under
+`os/`, since it is derived from executing the OS. Delete it to force a fresh first-boot.
 
 Run modes are dispatched by the 3rd argument (`drive`, `key`, `seq`, `prof`, `wmap`,
 `flashwr`, …); see `emu_go/main.go`.

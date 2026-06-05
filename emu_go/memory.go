@@ -1,6 +1,11 @@
 package main
 
-import "fmt"
+import (
+	"bytes"
+	"encoding/binary"
+	"fmt"
+	"os"
+)
 
 // SH7305 address space. P0/P1/P2 alias phys = vaddr & 0x1FFFFFFF; ROM (OS image)
 // at phys 0, DRAM at 0x0C000000, on-chip RAM at 0xFD800000; MMIO delegated to the bus.
@@ -257,6 +262,84 @@ func (m *Memory) flashProgram(phys, size, val uint32) {
 		b := byte(val >> (8 * (size - 1 - i)))
 		m.flash[phys+i] &= b
 	}
+}
+
+// ---- fls0 persistence -------------------------------------------------------
+// The fx-CG50 keeps its settings + first-boot-complete state in the NOR-flash fls0
+// filesystem (phys 0x01000000+, the storage tail past the 16MB OS image, which boots
+// blank=0xFF -> first-boot setup runs every cold start). Snapshotting the flash pages the
+// OS wrote (and reloading them next boot) makes the emulator resume at the MAIN MENU like a
+// real, already-set-up calculator. We persist a DELTA vs the fresh baseline (OS image prefix
+// then 0xFF erased), so the file holds only the fls0 data, not the copyrighted OS image.
+
+const flashPersistPage = 0x1000 // 4KB granularity (NOR erase is 64KB; finer = smaller file)
+
+// flsBaseline is the byte the freshly-initialised mutable flash holds at off.
+func (m *Memory) flsBaseline(off int) byte {
+	if off < len(m.rom) {
+		return m.rom[off]
+	}
+	return 0xFF // erased NOR tail
+}
+
+// flashDeltaBytes serialises only the flash pages that differ from the baseline.
+// Format: "FLS1" magic, then repeated {u32 BE page offset, flashPersistPage bytes}.
+func (m *Memory) flashDeltaBytes() []byte {
+	var buf bytes.Buffer
+	buf.WriteString("FLS1")
+	for off := 0; off+flashPersistPage <= len(m.flash); off += flashPersistPage {
+		diff := false
+		for i := off; i < off+flashPersistPage; i++ {
+			if m.flash[i] != m.flsBaseline(i) {
+				diff = true
+				break
+			}
+		}
+		if diff {
+			var hdr [4]byte
+			binary.BigEndian.PutUint32(hdr[:], uint32(off))
+			buf.Write(hdr[:])
+			buf.Write(m.flash[off : off+flashPersistPage])
+		}
+	}
+	return buf.Bytes()
+}
+
+// applyFlashDelta overlays a serialised delta onto the (baseline-initialised) mutable flash.
+func (m *Memory) applyFlashDelta(data []byte) (int, error) {
+	if len(data) < 4 || string(data[:4]) != "FLS1" {
+		return 0, fmt.Errorf("flash delta: bad magic")
+	}
+	p, pages := 4, 0
+	for p < len(data) {
+		if p+4+flashPersistPage > len(data) {
+			return pages, fmt.Errorf("flash delta: truncated record at byte %d", p)
+		}
+		off := int(binary.BigEndian.Uint32(data[p : p+4]))
+		p += 4
+		if off < 0 || off+flashPersistPage > len(m.flash) {
+			return pages, fmt.Errorf("flash delta: bad page offset 0x%x", off)
+		}
+		copy(m.flash[off:off+flashPersistPage], data[p:p+flashPersistPage])
+		p += flashPersistPage
+		pages++
+	}
+	return pages, nil
+}
+
+// SaveFlashDelta / LoadFlashDelta persist the flash delta to a standalone file.
+func (m *Memory) SaveFlashDelta(path string) (int, error) {
+	b := m.flashDeltaBytes()
+	pages := (len(b) - 4) / (4 + flashPersistPage)
+	return pages, os.WriteFile(path, b, 0644)
+}
+
+func (m *Memory) LoadFlashDelta(path string) (int, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return 0, err
+	}
+	return m.applyFlashDelta(data)
 }
 
 func (m *Memory) R8(va uint32) uint32  { return m.Read(va, 1) }

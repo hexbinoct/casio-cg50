@@ -120,6 +120,47 @@ func main() {
 	if len(os.Args) > 3 {
 		mode = os.Args[3]
 	}
+
+	// Persistence (so the Android app doesn't redo first-boot setup every launch). A real
+	// already-set-up calc keeps its config in NOR-flash fls0 PLUS battery-backed RAM; the
+	// fls0 mount is coupled to that RAM, so flash-only persistence still triggers the setup
+	// wizard (fls0_open -> -6 -> format -> language screen, confirmed in Ghidra: FUN_80365238).
+	// So we persist a FULL save-state (CPU + DRAM/ILRAM/OCRAM + flash delta) and RESUME from
+	// it. "provision" boots fresh, drives setup to the MAIN MENU, and snapshots; every other
+	// boot auto-resumes from the snapshot. File lives under os/ (git-ignored; OS-derived bytes).
+	const statePath = "../os/flash_dump/cg50_state.bin"
+	if mode == "provision" {
+		seqStr := "1-9,1-9,1-9,1-9,6-9,6-9,1-9,1-9,2-1" // first-boot setup -> MAIN MENU
+		pressAt := uint64(130_000_000)
+		interval := uint64(14_000_000)
+		if len(os.Args) > 4 && os.Args[4] != "" {
+			seqStr = os.Args[4]
+		}
+		if len(os.Args) > 5 {
+			pressAt = parseUint(os.Args[5])
+		}
+		if len(os.Args) > 6 {
+			interval = parseUint(os.Args[6])
+		}
+		runSeq(cpu, mem, mmio, maxIns, seqStr, pressAt, interval, false)
+		if err := SaveState(statePath, cpu, mem); err != nil {
+			fmt.Println("save-state: save error:", err)
+		} else {
+			fmt.Printf("save-state: snapshot written to %s (pc=0x%08x) — future boots resume here\n", statePath, cpu.pc)
+		}
+		return
+	}
+	if _, statErr := os.Stat(statePath); statErr == nil {
+		if err := LoadState(statePath, cpu, mem); err != nil {
+			fmt.Println("save-state: load failed, booting fresh:", err)
+		} else {
+			cpu.cycles = 0 // restart the free-running counter (OS uses timer deltas only)
+			mmio.timerNext = mmio.timerPeriod
+			mmio.timerTicks = 0
+			fmt.Printf("save-state: RESUMED from %s at pc=0x%08x (skipped boot + first-setup)\n", statePath, cpu.pc)
+		}
+	}
+
 	if mode == "web" {
 		runWeb(cpu, mem, mmio)
 		return
@@ -277,6 +318,7 @@ func main() {
 		}
 	}
 	fmt.Printf("best vram_nz seen: %d\n", bestNZ)
+	dumpFB(mem, 0x8C000000, "boot_final.png") // SEE where the boot ended (e.g. menu vs first-boot)
 	report(cpu, mmio, start)
 }
 

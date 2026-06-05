@@ -1,6 +1,32 @@
 # fx-CG50 → Android emulator — recon notes
 
-> ## ⏯ RESUME HERE (last session end: 2026-06-05 cont.18e)
+> ## ⏯ RESUME HERE (last session end: 2026-06-05 cont.18f)
+>
+> ### ✅ cont.18f — PERSISTENCE: provision once, RESUME at the MAIN MENU (no first-boot setup).
+> Goal: stop re-running the language/setup wizard every cold boot (the #1 Android UX blocker).
+> **Why flash-only persistence is NOT enough:** the wizard is gated by `fls0_open` returning -6
+> (FS not mountable) in `FUN_80365238` (verified in Ghidra 3.60 — the wizard `FUN_8035e1be` is called
+> from the `iVar6 == -6` format branch @0x80365448). Snapshotting just the flash pages the OS wrote
+> during setup and reloading them did NOT make fls0 mount (still -6 → wizard): the fls0/FTL mount state
+> is coupled to battery-backed RAM the real calc keeps alive, which our boot zeroes.
+> **Solution shipped — a full machine SAVE-STATE** (the right primitive for Android anyway: instant resume):
+>   · `emu_go/state.go` — `SaveState`/`LoadState`: gzip snapshot of CPU regs + DRAM + ILRAM + OCRAM +
+>     flash-delta (only flash pages differing from the image+0xFF baseline, so no OS image in the file).
+>   · `emu_go/memory.go` — flash delta refactored to `flashDeltaBytes`/`applyFlashDelta` (+ standalone
+>     `SaveFlashDelta`/`LoadFlashDelta`); `flashPersistPage`=0x1000.
+>   · `emu_go/main.go` — mode **`provision`** boots fresh, drives first-boot to the MENU, and snapshots to
+>     `os/flash_dump/cg50_state.bin` (git-ignored, OS-derived). EVERY OTHER boot auto-`LoadState`s and
+>     RESUMES from the saved PC (cycles reset to 0; OS uses timer deltas so the counter reset is invisible).
+> **VERIFIED:** `go -C emu_go run . 450000000 30000 provision` → snapshot @pc=0x801e535e, 85KB gzip.
+> Then `go -C emu_go run . 60000000 30000` → boot_final.png = the **MAIN MENU** (full 4×3 app grid) in
+> ~54M instr, NO setup keys. And `... seq "2-1*w60000000" 25000000 14000000` (resume + EXE) launches
+> Run-Matrix live → the resumed machine is fully interactive, not a static frame. Tests 53/53→57/57 +
+> golden + vet still green (persistence is main()/runtime-only; goldens boot fresh).
+> NEXT: for a hands-free Android resume, snapshot-on-pause + resume-on-launch is exactly this; also worth
+> a `savestate` hotkey in `web` mode so the user can snapshot AFTER doing their own setup/work.
+> ⚠ Do NOT kill TCP :8080 (GhidraMCP).
+>
+> ## ⏯ (prev) RESUME HERE (last session end: 2026-06-05 cont.18e)
 >
 > ### 🏆 cont.18e — ON-DEVICE PROBES LANDED: cmd4 solved + BCD model finalized + CPU core validated vs SILICON
 > The user ran the probe add-ins on the real fx-CG50 (Mac/gint) and brought back the captures
@@ -51,6 +77,31 @@
 > all compute correctly end-to-end through the real OS + our BCD-ALU model. (fpu_ops=0, all integer/BCD.)
 > Repro: `go -C emu_go run . 850000000 30000 seq "<launch prefix>,<digit/op coords>" 130000000 14000000`
 > with operators `+`=3-2 `-`=2-2 `*`=3-3 `/`=2-3 (full coord table re/KEYMAP.md), `*w` decode-confirmed pacing.
+>
+> ### ✅ cont.18e-3 — MULTIPLE APPS launch & run (menu nav verified in all directions).
+> From the MAIN MENU (reach it with the launch prefix ending in ONE `2-1`, settle ~45M, then nav + EXE
+> with `*w` pacing), three distinct apps were launched and render correctly:
+>   · **Run-Matrix** (EXE on default top-left cursor) — computes (cont.18e-2).
+>   · **Graph** (DOWN `2-7` → EXE `2-1`) — renders the `Y=` editor; pressing **F6=DRAW (`1-9`)** PLOTS the
+>     function: axes + origin + the Y1=sin x curve. (Curve looks near-flat because the status bar is **Deg**
+>     mode + default window ±6.3, so sin(6.3°)≈0.11 — a FAITHFUL render; it'd be a full wave in Rad.)
+>   · **Statistics** (RIGHT `1-7` → EXE) — renders the List editor (List1-3 w/ data + SUB headers) + the
+>     GRAPH/CALC/TEST/INTR/DIST softkeys.
+> So menu nav (EXE / DOWN / RIGHT) + app launch + per-app rendering all work generically — not just
+> Run-Matrix. The function plotter (trig + V-Window + pixel draw) works too. NEXT for breadth: sweep the
+> rest of the grid (Equation/Spreadsheet/eActivity/Program/…) to find any app that hangs on unmodeled HW.
+>
+> ### 📱 ANDROID READINESS (assessment, 2026-06-05)
+> Core is architecturally ready; the `web` mode already proves the exact interaction model (live framebuffer +
+> injected keystrokes). The remaining work is a PORT, not research: (1) a **real-time run loop** (today it's
+> batch `run N instr`; need continuous run with the timer IRQ paced to wall-clock + ~60fps blit); (2) a
+> **gomobile/JNI bridge** exposing start/stop, injectKey(row,col), getFramebuffer() to Kotlin; (3) **fls0
+> persistence** (or a saved RAM/flash snapshot) so cold start resumes at the MENU instead of first-boot setup —
+> the real UX blocker; (4) **broader app/peripheral coverage** so apps beyond the 3 tested don't hang on
+> unmodeled HW; (5) an **ARM perf check** (desktop is 64-85 M instr/s on x86). KEYS: all 47 keys + their
+> SHIFT/ALPHA/A-LOCK secondaries are mapped authoritatively from the OS tables (re/KEYMAP.md); most primary
+> keys + the SHIFT/ALPHA mechanism are verified live; a handful (AC/ON, a b/c, S↔D, →, VARS, EXIT, F2-F5,
+> ALPHA B-Z) have correct codes but aren't individually click-tested yet — worth a quick verify sweep.
 >
 > ## ⏯ (prev) RESUME HERE (last session end: 2026-06-04 cont.18d)
 >
