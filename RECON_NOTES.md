@@ -1,16 +1,365 @@
 # fx-CG50 → Android emulator — recon notes
 
-> ## ⏯ RESUME HERE (last session end: 2026-06-02, late)
+> ## ⏯ RESUME HERE (last session end: 2026-06-05 cont.18e)
 >
-> ### ★ STATE IN ONE LINE (authoritative — cont.12 below supersedes ALL older "open gate" notes)
-> The Go emulator boots the REAL fx-CG50 OS 3.60 from reset, **drives the entire first-boot setup
-> via injected keypresses, and reaches the fully-rendered MAIN MENU** (3×4 app-icon grid:
-> Run-Matrix … Financial). One command does it:
-> `go -C emu_go run . 360000000 30000 seq "1-9,1-9,1-9,1-9,6-9,6-9,1-9,1-9,2-1" 130000000 14000000`
-> → seq_final.png = MAIN MENU. Tests 53/53 + 2000/2000 green, go vet clean, Python oracle in sync.
-> **NEXT OPEN ITEM: launch an app from the menu** (EXE on Run-Matrix didn't transition — needs the
-> right timing or hits a new app-launch gate) and/or fls0 persistence (settings write on Finish).
-> Read cont.12 first, then cont.11/cont.10.
+> ### 🏆 cont.18e — ON-DEVICE PROBES LANDED: cmd4 solved + BCD model finalized + CPU core validated vs SILICON
+> The user ran the probe add-ins on the real fx-CG50 (Mac/gint) and brought back the captures
+> (`os/devic_probes/aluprobe_2/` + `os/devic_probes/alusweep_shtest/`, each with a `.md` analysis).
+> Two big results, both now folded into the emulator:
+>
+> **(1) 0xA4CB0000 BCD-ALU — command set FULLY confirmed; cmd4 = A−B−1 (was provisional passthrough).**
+> Final decode (16-bit cmd; bit3 ignored so 8..15 mirror 0..7):
+>   `op = (cmd&1)?BCD-add:BCD-sub` ; `flag_in = (cmd&4)?1 : (cmd&2)?latch : 0` ; flag_out=carry/borrow.
+>   ⇒ 0=A−B  1=A+B  2=A−B−flag  3=A+B+flag  **4=A−B−1**  5=A+B+1 (OS uses 0..4).
+> CRITICAL on-device finding: there is **ONE SHARED carry/borrow latch** (probe C5: a sub's borrow-out
+> feeds the next add as carry-in: after cmd4 sets borrow, cmd3 does 5+3+1=9). Our old model had two
+> separate latches — **unified to a single `flag`**. Also: operands are sticky, result valid immediately
+> (no busy bit), the 4-word block aliases every 0x10, and the shared flag is observable in the +00 status
+> word (SET=0x10040000 / CLR=0x00010000 — modeled, optional). IMPLEMENTED in BOTH `emu/mmio.py` (`BCDALU`,
+> single `flag`, `_compute`) and `emu_go/mmio.go` (`bcdALU.compute`). Tests: conformance 53/53 + 2M golden
+> boot byte-identical (final PC 0x801df466, boot never touches the peripheral) + rewrote the cmd4/cmd5/
+> shared-latch unit tests in `emu_go/bcdalu_test.go` to the hardware truth table; `go vet` clean.
+>
+> **(2) SH-4A CPU core VALIDATED AGAINST REAL SILICON — 202/202.** The shtest add-in captured real-hardware
+> ground truth for addc/subc/negc/addv/subv, rotcl/rotcr, shad/shld, dmulu/dmuls, div1, cmp(all),
+> munge (PART B of `alusweep_shtest/probe2-...md`). New `re/validate_silicon.py` replays every vector
+> through the Python oracle and diffs vs hardware: **202/202 MATCH.** This closes the cont.18 "shared CPU
+> bug" blind spot (lockstep only proves Go==Python; this proves Python==silicon) for the whole integer
+> ALU/shift/mul/div/cmp set. (The only initial diffs were 6 div1 quotients = floor(q/2): a bug in the
+> TEST's divide skeleton — it omitted the FINAL `rotcl` that shifts in the last quotient bit — NOT a div1
+> bug. Fixed in the script; note the same harmless omission exists in conformance's `udiv` case, which is
+> still a valid Go==Python check.) NOT yet covered by silicon vectors: mac.l S-bit saturation (probe has
+> the data: S=0→60000000:00000001, S=1 saturates to 00007fff:ffffffff — fold in next).
+>
+> **NEXT-SESSION FIRST ACTIONS:**
+>   1. (no device) Broaden-verify arithmetic end-to-end in the running emulator now that cmd4 is real: type
+>      `7*8`, `100−37`, `2÷3`, `999999*999999`, a negative result into Run-Matrix (recipe in cont.17/cont.14)
+>      and check the rendered answers. cmd4 (A−B−1) participates in real rounding/subtraction now.
+>   2. Add a few silicon-anchored cases to `emu/conformance_gen.py` (so the GO port is held to hardware truth
+>      too, not just the oracle) — incl. a proper full-quotient div1 and the mac.l saturation pair.
+>   3. Commit the cont.18d+18e working tree (lots of uncommitted RE tooling + the mmio changes).
+> ⚠ Do NOT kill TCP :8080 (GhidraMCP). Tools added this session: `re/validate_silicon.py`.
+>
+> ## ⏯ (prev) RESUME HERE (last session end: 2026-06-04 cont.18d)
+>
+> ### 🏆 cont.18d — "RESULTS SHOW 0" FIXED & SHIPPED. The calculator now COMPUTES correctly.
+> Implemented the 0xA4CB0000 hardware BCD ALU (cont.18c-2 model) in BOTH `emu/mmio.py` (oracle,
+> class `BCDALU` + `_bcd_add`/`_bcd_sub`) and `emu_go/mmio.go` (`bcdALU` + `bcdAdd`/`bcdSub`),
+> registered at 0xA4CB0000. **End-to-end verified:** typing `98765`+EXE in Run-Matrix now renders
+> `98765`, and the leftover history `56÷36+3.14` now renders `4.695555556` (both were `0` before) —
+> see seq_final.png. Tests: conformance 53/53 (unchanged) + 2M golden boot (byte-identical; boot never
+> touches the peripheral) + 3 new unit tests in `emu_go/bcdalu_test.go`; `go vet` clean; goldens
+> regenerated identical. Command model implemented: cmd1/3 = BCD add first/continue (latched carry),
+> cmd0/2 = BCD sub first/continue (latched borrow), cmd4 = provisional passthrough.
+> **STILL OPEN (minor):** cmd4 exact semantics + carry/overflow edge cases — awaiting the on-device probe.
+> Probe build/run spec was pushed to the noted API: **read id 10** (the updated v2 with the "already
+> fixed, now refinement" banner; id 9 is the stale original). User runs it on real HW, reports the truth
+> table next session. Then refine cmd4 + edges in BOTH `emu/mmio.py` BCDALU and `emu_go/mmio.go` bcdALU
+> (keep identical), regen goldens, `go -C emu_go test .`, re-verify Run-Matrix.
+> **NEXT-SESSION FIRST ACTIONS:**
+>   1. (no device needed) Broaden-verify the model: type an arithmetic battery into the emulator and check
+>      answers — e.g. `go -C emu_go run . <budget> 30000 seq "<launch RunMatrix>+digits"` for `7*8`,
+>      `100-37`, `2÷3` (round-half!), `999999*999999`, a negative result. Whatever's right = model
+>      confirmed; whatever's wrong tells us which cmd/edge is off (and whether cmd4 is hit). The
+>      reliable-typing recipe + digit inject coords are in cont.17/cont.14 (digits 9=`4-4` 8=`5-4` 7=`6-4`
+>      6=`4-3` 5=`5-3`, EXE=`2-1`; +,-,×,÷ via KEYMAP.md). Self-test can't *derive* cmd4 — only the probe can.
+>   2. When the probe truth table arrives, lock down cmd4 + edges (task #6) and re-verify.
+> Everything else for number DISPLAY already works (98765, 4.695555556 render correctly).
+> Probe-validation tool: `re/test_alu_hypothesis.py` (monkeypatches the ALU into the oracle off
+> `fmt_snapshot.bin`); RE tools: `re/find_periph.py`, `re/periph_cmds.py`, `re/round_trace.py`.
+> ⚠ Do NOT kill TCP :8080 (GhidraMCP).
+>
+> ## ⏯ (cont.18c) ROOT CAUSE — see below; fix shipped in cont.18d above
+>
+> ### 🎯🎯🎯 cont.18c — ROOT CAUSE of "results show 0" FOUND: an UNIMPLEMENTED on-chip peripheral @0xA4CB0000
+> The "0" is **NOT** a CPU bug, **NOT** data/config, **NOT** the FPU. The Casio number-rounding path drives
+> a **hardware BCD/arithmetic peripheral at 0xA4CB0010-0xA4CB001C that the emulator does not implement**, so
+> its result register reads 0 and every formatted number collapses to 0. Found by tracing the full render
+> chain in the oracle from `fmt_snapshot.bin` (tools: `re/fmt_probe.py`, `re/cfg_diff.py`, `re/round_trace.py`):
+>   screen "0" ⇐ `FUN_800fc5a4`→`FUN_800f790e`(Norm)→`FUN_8004c21a`→`FUN_8004c69c`→`FUN_8004b270`→
+>   `FUN_8004b2b0`(round-to-N-digits)→`FUN_8005dc06`→ **`de2c`=`FUN_80079dbc`** → **`FUN_80073f38`**
+>   (mask-round: `value & keepmask`) → **`FUN_80072fc8`** = the PERIPHERAL ACCESSOR.
+> PROOF (round_trace.py): the value `10 49 87 65` decodes correctly in software (`FUN_8004b580` → exp 4,
+> mantissa 9,8,7,6,5); it is unpacked to `09 87 65 …` and rounding to 11 sig-digits SHOULD be a no-op, but
+> `FUN_80073f38` loads value word0 `r11=0x09876500`, calls `FUN_80072fc8`, and **`r11` comes back `0`** — the
+> accessor failed to return the operand because the HW result register read 0. Then `mask & r11 = 0` zeroes
+> the mantissa, which propagates back out as the displayed result.
+> **THE PERIPHERAL (FUN_80072fc8 @0x80072fc8):** stores operand words to `*0xA4CB0014`(A) + `*0xA4CB0018`(B),
+> writes a **command** (`mov.w`, values seen = 1 then 3,3) to `*0xA4CB0010`, then **reads the result from
+> `*0xA4CB001C`** back into r13/r12/r11. It processes the value's three 32-bit words. The reg pointers are
+> literal-pool constants at 0x80073000/04/08/0c (= 0xA4CB0014/18/10/1C). **0xA4CB00xx is referenced NOWHERE
+> in emu_go/mmio.go, emu/mmio.py, or these notes — completely unmodelled.** This OVERTURNS cont.16's
+> "software BCD / fpu=0 so it's all software" conclusion (there IS a HW math/BCD unit) and cont.18b's
+> "shared CPU semantic bug" guess (it's a missing peripheral, which is exactly why Go==oracle for 2M steps).
+> **NEXT (task #5):** reverse-engineer the 0xA4CB0000 unit's command set + per-command semantics (RE every
+> caller of `FUN_80072fc8` and every ref to 0xA4CB00xx; decode what cmd 1 vs 3 compute on opA with opB),
+> then IMPLEMENT it in BOTH `emu_go/mmio.go` and `emu/mmio.py`, regen goldens (`python emu/conformance_gen.py
+> && python emu/gen_golden.py`), prove the Go port matches, and add a conformance case. **Fastest RE path:
+> a real-device probe** — a tiny add-in that writes known opA/opB + each command to 0xA4CB0010/14/18 and
+> reads 0xA4CB001C — would reveal the operation directly (this is the high-value use of a re-dump/on-device
+> run the user offered). ⚠ Do NOT kill TCP :8080 (GhidraMCP).
+>
+> ### ✅ cont.18c-2 — COMMAND SET REVERSE-ENGINEERED + VALIDATED (oracle renders "98765"). Probe note sent.
+> Register map (flash scan, 137 refs): **0xA4CB0010**=command(16-bit w), **0xA4CB0014**=opA(32-bit),
+> **0xA4CB0018**=opB(32-bit), **0xA4CB001C**=result(32-bit r). It is a **multi-word BCD ALU** (packed BCD,
+> 2 digits/byte; mantissa = 3 words, val[0]=MSW, processed LSW-first with carry/borrow latched in the unit
+> between words). Shifts/masks are PURE SOFTWARE (SHLD, e.g. FUN_8007350a), NOT this peripheral — the unit
+> does only the add/subtract core. **Command set {0,1,2,3,4}; encoding: cmd bit1 = first(0)/continue(1)
+> word, cmd bit0 = sub(0)/add(1):**
+>   · cmd 1 = BCD ADD first (carry=0)   · cmd 3 = BCD ADD continue (latched carry)
+>   · cmd 0 = BCD SUB first (borrow=0)  · cmd 2 = BCD SUB continue (latched borrow)
+>   · cmd 4 = third op, SINGLE use @0x800737f2 — only remaining unknown (passthrough guess works on this path)
+> EVIDENCE: accessors group as (1,3,3)/(0,2,2); the (0,2,2) accessor FUN_8007306e writes operands SWAPPED
+> vs the (1,3,3) adder FUN_80072f80 (A<-r9/B<-r13 vs A<-r13/B<-r9) — the non-commutative signature of
+> SUBTRACT. The (1,3,3) op is the magnitude core of FUN_80072f2a, called from FUN_80072e78 = a classic
+> float-combine (compare exps/signs, then add-or-copy). **VALIDATION (re/test_alu_hypothesis.py, NO device):**
+> monkeypatched this ALU into the Python oracle, re-ran the formatter from fmt_snapshot.bin → the OS now
+> emits ASCII **"98765"** (string `39 38 37 36 35` @0x8c1866f0; display width 90px=5 glyphs). Model CORRECT
+> for the display path. **Probe note PUSHED to noted API (id 9)** for on-device confirmation of cmd4 +
+> carry/overflow edges (user runs on real HW, reports next session).
+> **NEXT:** implement 0xA4CB0000 in BOTH emu_go/mmio.go + emu/mmio.py (cmd0-3 = BCD sub/add w/ latched
+> carry-borrow; cmd4 = passthrough until probe), regen goldens (boot unaffected — peripheral only used in
+> number formatting), prove Go==oracle, add a conformance case, run the full emulator and confirm Run-Matrix
+> shows 98765. Refine cmd4/edges from probe data. Tools: re/find_periph.py, re/periph_cmds.py,
+> re/test_alu_hypothesis.py, re/alu_probe_note.md.
+>
+> ## ⏯ (prev) RESUME HERE (last session end: 2026-06-04 cont.18)
+>
+> ### 🧭 cont.18 PIVOT (read FIRST — overturns cont.17c's "mis-emulated instruction" lead)
+> Built a Go→Python **oracle lockstep diff** for the formatter and ran it: **ZERO divergence over
+> 2,000,000 steps** from the formatter entry (FUN_800fc5a4) through the MathIO redraw (final pc
+> 0x80056eaa, i.e. PAST glyph rendering). So the Go core and the independent Python oracle compute
+> the whole formatter+redraw **bit-for-bit identically, and BOTH render "0"**. ⇒ The rendered "0" is
+> **NOT a Go port error** — the OS code faithfully emits "0" given this machine state. The remaining
+> bug is therefore EITHER (a) a **data/config global** the formatter reads that is wrong in our boot
+> (display Norm/Sci/Fix mode, digit count, an uninitialised display-config field — note uVar17 =
+> (short)puVar18[3]>>8&0xff gates the format branch; for BCD 10 49 87 65 00 00 puVar18[3]=0x0000 so
+> uVar17=0 → normal-number branch, as expected), OR (b) a **shared CPU semantic bug** implemented
+> IDENTICALLY in both emulators (a lockstep diff is blind to a bug present in both — it only catches
+> PORT mismatches). Since eval/arith STORE the correct result (cont.17b) and the formatter receives
+> the correct BCD in r4, (a) is the leading hypothesis.
+> **TOOLING ADDED (harness-only, tests stay 53/53+2000/2000, vet clean):**
+>   · `captureFormatter()` in emu_go/main.go — at the first armed entry to FUN_800fc5a4 with r4 BCD
+>     == 0x10498765, dumps FULL machine state (36 regs + dram + ilram + ocram) to
+>     `emu_go/fmt_snapshot.bin`, then PURELY single-steps K (=2,000,000) instrs (no MMIO tick, no IRQ)
+>     logging arch state to `emu_go/fmt_trace_go.txt`. Trigger gated in the `bcdseq` loop.
+>   · `re/oracle_diff.py` — loads the snapshot into the Python reference CPU, steps the SAME pure way,
+>     diffs line-by-line; first divergence would pin the mis-emulated instruction. (Currently: none.)
+> Reproduce snapshot: `go -C emu_go run . 850000000 30000 bcdseq "<98765+EXE seq, see cont.17>" 130000000 14000000`
+> **cont.18b — FULL RENDER CHAIN TRACED; bug pinned to the BCD ROUNDING leaf. Value & config both PROVEN
+> correct.** Using `re/fmt_probe.py` (runs the formatter from `fmt_snapshot.bin` in the oracle, freely
+> instrumented) + `re/cfg_diff.py` (resolves flash literal-pool pointers; diffs config vs real dumps).
+> The "0" comes from this exact chain (all fed the CORRECT value, all Go==oracle):
+>   `FUN_800fc5a4`(top fmt) → `FUN_800f790e`(0x800f790e, mode dispatch; mode byte *(DAT_800f79f8+6)=1=Norm)
+>   → `FUN_8004c21a`(0x8004c21a, Norm renderer) → `FUN_8004c69c`(0x8004c69c, digit emit)
+>   → **`PTR_FUN_8004c810`=`FUN_8004b270`(0x8004b270)** → **`FUN_8004b2b0`(0x8004b2b0, round-to-N-digits)**
+>   → **`PTR_FUN_8004b494`=`FUN_8005dc06`(0x8005dc06)** ⇐ THE LEAF that zeroes the value.
+> KEY PROOFS:
+>   · **Value is CORRECT.** The decoder `FUN_8004b580`(0x8004b580) decodes our BCD `10 49 87 65` by hand
+>     to: class nibble=1, **exponent = (0x49>>4) = 4**, mantissa nibbles **9,8,7,6,5** = 9.8765×10⁴ ✓,
+>     and returns success. So eval/store/parse are all fine — overturns any "value is wrong" worry.
+>   · **Config/mode is byte-IDENTICAL to the real device.** `DAT_800f79f8`→0x8c08b8a0 (mode *(cfg+6)=0x01
+>     =Norm) and `DAT_800f7a08`→0x8c08b8ac are identical in our snapshot vs `os/flash_dump/dram.bin`.
+>   · **The zeroing is localized.** In `FUN_8004c69c`, the value working-copy `auStack_2c` is `10 49 87 65`
+>     right after the 0x18-byte copy and SURVIVES `FUN_8004c654`, then is **ALL-ZERO immediately after the
+>     `FUN_8004b270`→`FUN_8004b2b0` call** (Norm path calls it with precision arg = hardcoded 0). Inside
+>     `FUN_8004b2b0` the decode is correct (exp 4, digits 98765, no leading zeros, Norm⇒round to 11 sig
+>     digits), then `PTR_FUN_8004b494`(&value, out, 11) writes a ZERO result, copied back via
+>     `PTR_FUN_8004b498/49c`. So **rounding 98765 to 11 sig-digits yields 0** — that is the bug.
+>   · **`FUN_8005dc06` is in the 0x8005c000-0x8005f000 BCD module cont.17c independently flagged** (its
+>     sub-calls `PTR_FUN_8005de1c/de24/de2c`; `PTR_FUN_8004b498`=0x8005ed3a ≈ cont.17c's NaN-check
+>     FUN_8005ed50; cont.17c's digit-loop FUN_8005c84e is in the same module). Chain now fully connected.
+> SINCE Go==oracle for all 2M steps AND the decoder is provably correct, the fault is almost certainly a
+> **SHARED CPU semantic bug** in an instruction the BCD rounding loop uses (implemented identically-wrong
+> in BOTH emulators, so the lockstep diff is blind to it) — NOT a port error and NOT data/config.
+> **NEXT (cont.18b hand-off):** single-step `FUN_8005dc06`+`PTR_FUN_8005de24/de2c` (and `FUN_8005c84e`) in
+> the oracle on this value+precision-11, find the exact instruction where the mantissa accumulator → 0,
+> then verify THAT opcode's semantics against the SH7305/SH-4A manual (suspects: a BCD-relevant op the
+> rounding uses that arith/decode don't — e.g. a shift/`mac`/`div1`/`rotc`/`negc`/`clip` edge case). Fix
+> in BOTH emu/cpu.py (oracle) and emu_go/cpu.go, regen goldens, add a conformance case for it.
+> Tools this session: `re/fmt_probe.py`, `re/cfg_diff.py` (both run off `fmt_snapshot.bin`; need the
+> real dumps for cfg_diff). ⚠ fmt_trace_go.txt is ~400MB — regenerate on demand; keep the 10MB snapshot.
+> **Real-dump note:** `os/flash_dump/{dram,ilram}.bin` are REAL-device RAM but were captured under the
+> gint dumper add-in (not Run-Matrix), so volatile per-number state isn't comparable; a fresh dump taken
+> WHILE the calc displays a known result (e.g. type 98765 EXE then dump) would give a canonical value+
+> display-context to diff against — worth asking the user for if the shared-bug hunt stalls.
+> ⚠ Do NOT kill TCP :8080 in cleanup — that's the GhidraMCP plugin's port.
+>
+> ## ⏯ (prev) RESUME HERE (last session end: 2026-06-03)
+>
+> ### ★ STATE IN ONE LINE (authoritative — cont.16/15/14/13 below supersede ALL older "open gate" notes)
+> The Go emulator boots the REAL fx-CG50 OS 3.60 from reset, **drives first-boot setup to the MAIN
+> MENU, launches Run-Matrix, and is fully keyboard-driven** (verified keymap `re/KEYMAP.md`; live
+> browser UI via `go -C emu_go run . 0 30000 web`). Reach the app from reset with:
+> `go -C emu_go run . 420000000 30000 seq "1-9,1-9,1-9,1-9,6-9,6-9,1-9,1-9,2-1,2-1,2-1" 130000000 14000000`
+> → seq_final.png = Run-Matrix app. (Drop the last two `2-1` and use 360000000 to stop at MAIN MENU.)
+> Tests 53/53 + 2000/2000 green, go vet clean, Python oracle in sync.
+> **DONE (cont.14):** full keymap verified by typing (decode-confirmed pacing). **(cont.15):** interactive
+> web UI. **(cont.16):** DIAGNOSED "results show 0" = the number EVALUATOR yields 0 for all arithmetic
+> (NOT a display bug, NOT the FPU) — parser/dispatch/error-detection work, but every value/op resolves
+> to 0. Proof = domain-error tests (`1÷(5-2)`→err so 5-2=0; `√(2-5)`/`√(-5)`→no err so operands=0).
+> **NEXT OPEN ITEM:** (a) **"results show 0" is a BCD→DISPLAY FORMATTER bug — RESOLVED (cont.17b), cont.16
+> overturned.** Arithmetic & value path WORK: typed `2+3` stores the correct result `5` (BCD `10 05 00` at
+> 0x0c0d83f0/8658, found by all-DRAM scan) and `98765` stores `10 49 87 65` at 0x0c0d8088 — both display `0`.
+> So parse/string→BCD/arith/store all work; the BCD→glyph FORMATTER renders a correct BCD as "0". **Formatter
+> LOCATED (cont.17c): `FUN_800fc5a4`** (BCD→MathIO display obj, called from 0x800fcc90 with the correct BCD;
+> low-level BCD module 0x8005c000-0x8005f000). FPU ruled out (fpu_ops=0). NEXT: single-step FUN_800fc5a4 (or
+> diff vs Python oracle) to pin the instruction/global where `10 49 87 65`→"0". (b) fls0 persistence. (c) other apps.
+> ⚠ Do NOT kill TCP :8080 in cleanup — that's the GhidraMCP plugin's port.
+> Read cont.17/cont.16/cont.15/cont.14/cont.13 first, then cont.12/cont.11/cont.10.
+>
+> ### ⌨ AUTHORITATIVE KEYMAP: `re/KEYMAP.md` (generated by `python re/dump_keymap.py`)
+> Full physical-key → inject-coord → {primary/SHIFT/ALPHA/A-LOCK} code table for ALL 47 keys, dumped
+> straight from the OS tables (matrix `DAT_805ff7ec`; remap `FUN_80194dda`/`FUN_80194e3c`) + the
+> empirical verifications below. Supersedes the partial keymap in cont.12. Inject grid (C,R) as
+> `"{R-1}-{C-1}"`. SHIFT(`6-8`)/ALPHA(`6-7`) are real keys you inject *before* the target; the OS runs
+> its own modifier state machine. Verified live this session: arrows UP `1-8`/DOWN `2-7`/LEFT `2-8`/
+> RIGHT `1-7`, EXE `2-1` (launch), MENU `3-7` (back to menu), F1`6-9`..F6`1-9`, SHIFT/ALPHA annunciators.
+>
+> ### 🔢 2026-06-03 (cont.16) — "results show 0" DIAGNOSED: the number evaluator yields 0 (NOT a display bug)
+> Run-Matrix shows every result as 0. Investigated and pinned the SYMPTOM precisely:
+> - **NOT the FPU.** Instrumented an FPU-op counter (cpu.fpuOps on the 0xF-opcode stub): **fpu=0**
+>   across the whole boot+eval — the OS uses zero floating-point; Casio math is software BCD/integer.
+> - **NOT (only) the display.** Proved the computed VALUES are genuinely 0 with domain-error tests that
+>   don't depend on reading the result glyphs (the eval RAISES a real "Ma ERROR" dialog on bad domains):
+>     · `1÷0` → Ma ERROR (eval runs; div-zero check works)
+>     · `1÷(5-2)` → Ma ERROR  ⇒ `5-2` evaluated to **0** (else 1÷3, no error)
+>     · `√(2-5)` → NO error    ⇒ `2-5` is **0/non-negative**, not -3 (else √neg → Ma ERROR in Real mode)
+>     · `√(-5)`  → NO error    ⇒ operand resolves to **0** (even a literal+unary-minus)
+>   So parsing + dispatch + error-detection WORK, but every numeric value/operation resolves to 0.
+> - **Red herring:** an ASCII "33333" appears in DRAM (0x0c0d53xx) after `11111+22222`, which briefly
+>   looked like a correct result, but the error-tests above override it — that region is eval scratch.
+> - Memory note: a literal like `98765` is tokenised to BCD `49 87 65` (exp nibble 4 + mantissa) at
+>   ~0x0c186xxx / 0x0c0d80xx / ilram — so the PARSER works; it's the eval's number path that gives 0.
+> NEXT: find the BCD operand-load / arithmetic-core routine (eval runs but reads/produces 0). Profiling
+> the eval window is swamped by the MathIO redraw (0x80055-57 gfx = FUN_80056d7c bounds 0x180×0xd8;
+> 0x8004e272 = LCD push to _DAT_b4000000); need a read-watch on the parsed literal's BCD address to find
+> the operand-fetch PC, then decompile it. All diagnostics were reverted; tests 53/53+2000/2000 green.
+> ⚠ Don't kill TCP :8080 in cleanup — that's the GhidraMCP plugin's HTTP port (briefly disrupted it).
+>
+> ### 🔬 2026-06-04 (cont.17) — BCD operand read-watch BUILT; parse→BCD proven OK, fault is downstream
+> Built the read-watch the cont.16 plan called for and pinned the operand. Findings:
+> - **New harness mode `bcdseq`** (emu_go/main.go, gated by `watch` arg to runSeq; emu_go/memory.go has
+>   a gated DRAM read-watch `rdLo/rdHi/rdPC/cpu`, nil = off so goldens/normal runs are unaffected —
+>   tests still 53/53 + 2000/2000, vet clean). It scans DRAM for a typed literal's BCD bytes, excludes
+>   pre-existing copies, locks a tight watch window, and histograms the PCs that READ it.
+> - **RELIABLE TYPING recipe (important, supersedes ad-hoc):** to type INTO Run-Matrix you must use the
+>   FULL confirmed launch prefix with **three** `2-1` EXEs (`…,2-1,2-1,2-1`) THEN the digits — the 3rd
+>   EXE is what actually lands in Run-Matrix. With only two `2-1`, the digit keys land on the STILL-OPEN
+>   MAIN MENU (a digit jumps to a numbered icon) and you launch the wrong app (saw Conic Graphs). After
+>   the prefix add a ~40M settle gap, then type each digit decode-confirmed `*w`. Working command:
+>   `go -C emu_go run . 850000000 30000 bcdseq "1-9,1-9,1-9,1-9,6-9,6-9,1-9,1-9,2-1,2-1,2-1*40000000,4-4*w18000000,5-4*w18000000,6-4*w18000000,4-3*w18000000,5-3*w18000000,2-1*w30000000" 130000000 14000000`
+>   → types **98765** then EXE; seq_final shows `98765` with result column `0` (bug reproduced cleanly).
+>   Digit inject coords: 9=`4-4` 8=`5-4` 7=`6-4` 6=`4-3` 5=`5-3`, EXE=`2-1`. Run-Matrix getkey = 0x801de9e4.
+> - **Operand located:** literal 98765 → BCD `49 87 65` appears at phys **0x0c186009** (+0x15,+0xe9 copies,
+>   and a far copy ~0x0c18722d) during eval — so the OS DOES produce the correct BCD; PARSE is fine.
+>   (Note: 5-digit literals pack neatly to 3 bytes `[exp|d1][d2 d3][d4 d5]`, e.g. 98765=9.8765e4→`49 87 65`;
+>   6-digit 999999=9.99999e5→`59 99 99 9_` does NOT give a clean `99 99 99`, so use 5-digit literals.)
+> - **Readers of the BCD operand (tight window 0x0c186000-0x0c186100, eval-time):** dominated by
+>   **FUN_801db382 = memcmp** (~400 reads, parse/compare), then 8-byte BCD routines **FUN_802104e4**
+>   (copies 8 bytes via PTR_FUN_8021068c/90/94) and **FUN_8020ecda** (normalize loop, count<0x94). The
+>   BCD math library lives ~**0x8020e000–0x80211000**. The wide-window noise (0x80384a4x, 0x80056xxx,
+>   0x8004exxx) is the MathIO redraw/LCD-push reading the adjacent display struct at ~0x0c1862xx — ignore.
+> - **CONCLUSION:** the fault is NOT in parse/tokenise (correct BCD `49 87 65` exists) — it's in the BCD
+>   VALUE path (copy/normalize/arith → result). NEXT: single-step the eval window through 0x8020e000–
+>   0x80211000, watch where the 8-byte BCD value turns to 0, and diff that instruction against emu/cpu.py.
+>
+> ### ✅ 2026-06-04 (cont.17b) — RESOLVED: it's a BCD→DISPLAY FORMATTER bug. Arithmetic & value path WORK. cont.16 WRONG.
+> Built a call-tree tracer + read-watch on the Ans region + an end-of-run ALL-DRAM BCD scan. The all-DRAM scan
+> is the decider (a too-narrow numlib whitelist had briefly produced a false "2+3 stores no result" scare —
+> disregard that intermediate worry; the adder runs outside the whitelist):
+> - **DECISIVE: typing `2+3` (on-screen result `0`) DOES compute & store the correct result.** End-of-run
+>   ALL-DRAM scan finds operand `2`=BCD `10 02 00` (10 hits), operand `3`=`10 03 00` (13 hits), and **result
+>   `5`=`10 05 00` present at 0x0c0d83f0 / 0x0c0d8658 / 0x0c0da824** (the Ans/result region). Value computed
+>   correctly; only the on-screen rendering is `0`.
+> - **Confirming:** typing `98765` leaves correct BCD `10 49 87 65` (sign 0x10, exp 4, mantissa 98765) at phys
+>   0x0c0d8088, read back intact — yet displays `0`.
+> - **THEREFORE: parse, string→BCD (FUN_801dab86), arithmetic, and result-storage ALL WORK.** The bug is the
+>   BCD→glyph FORMATTER (renders the result column in the MathIO redraw): it reads a correct BCD and emits "0".
+>   cont.16's "number evaluator yields 0" is OVERTURNED; its `1÷(5-2)`→err evidence was a mistyped-input
+>   artifact of the OLD unreliable typing.
+> - **BCD value format (confirmed):** 8 bytes = [sign/flags 0x10][exp_nibble | mantissa nibbles…]; e.g.
+>   5→`10 05 00…`, 98765(=9.8765e4)→`10 49 87 65 00…`. Result/Ans values live in DRAM ~0x0c0d6000-0x0c0daxxx;
+>   editor echo/edit-line ~0x0c0d8080 & 0x0c186xxx.
+> - **NEXT (task #7):** find the BCD→glyph formatter — watch who reads the result BCD (e.g. 0x0c0d83f0 for the
+>   `5`) during the MathIO redraw, decompile it, find why a correct BCD renders as "0" (likely a mis-emulated
+>   instruction or a wrong field/offset read IN THE FORMATTER). This is THE remaining bug for correct results.
+> Tools added: `bcdseq` call-tracer (eval_calls.txt) + Ans-region hexdump + all-DRAM BCD scan + re/analyze_eval.py
+> + re/read_ptrs.py. Tests stay 53/53 + 2000/2000 green, vet clean (all instrumentation gated behind `watch`).
+>
+> ### 🎯 2026-06-04 (cont.17c) — FORMATTER LOCATED: FUN_800fc5a4 (fed correct BCD, emits "0"). FPU ruled out.
+> Broadened the call-tracer whitelist to the calc/format (0x800e..0x80100000) + render (0x80050..0x80060000)
+> modules and dereffed args to find the call that RECEIVES the result BCD. Found the formatter chain:
+> - **The result FORMATTER is `FUN_800fc5a4`** (BCD-real → MathIO display object), called from `0x800fcc90`
+>   with the correct result BCD in r4 (verified: `[451625840] 0x800fcc90 -> 0x800fc5a4 r4=0x8c18721c
+>   [1049876500000000] r6/r7=output buffers`). It returns the (wrong) display object that renders "0".
+> - Low-level BCD digit/normalize work is a module at **0x8005c000-0x8005f000** (e.g. FUN_8005c84e =
+>   BCD normalize/repack reading exp nibbles + copying 8 bytes; FUN_8005ed50 = "byte&0xf0==0xf0?" special/NaN
+>   check). The mantissa IS extracted correctly mid-way (saw r7=0x09876500 in FUN_8005c84e), so digit
+>   extraction works — the loss is later (exponent/digit-count/decimal-placement or a wrong global/config).
+> - **FPU RULED OUT:** instrumented fpu_ops over the whole eval+format window = **0**. Formatter is pure
+>   integer/BCD; the bug is a non-FPU instruction the formatter uses (that arith/parse don't) OR a wrong
+>   DAT_ global/config it reads (FUN_800fc5a4 is heavy on PTR_FUN_800fc8xx indirection + DAT_800fc7xx fields,
+>   incl. reads of display attrs 0x60/0x62 and a Norm/Sci/Fix-ish mode field puVar18[3]>>8).
+> - **LEAD (digit extraction truncates early):** in FUN_800fc5a4's BCD→decimal loop (driver ~0x8005d136/
+>   0x8005d15c calling FUN_8005c84e + memset 0x80385178), the mantissa accumulator (seen in r7) goes
+>   0x9876500 → 0x8765000 (one BCD-digit left-shift, correct) → **0x0** — jumping to 0 after ~2 digits instead
+>   of peeling all 5 (9,8,7,6,5). Looks like a digit-shift/peel step zeroing early → renders "0". NOT yet
+>   confirmed at instruction level (r7 may not be the true accumulator; these BCD fns are dense + indirection-
+>   heavy). **NEXT:** single-step FUN_8005c84e's digit loop (PC-windowed full PC+reg trace over 0x8005c000-
+>   0x8005f000 for the ONE format invocation @~451.6M) to pin the instruction where the mantissa→0; or diff vs
+>   the Python oracle. Caution: real-HW results (leftover 4.6956) ALSO render as 0, so it's our emulation
+>   diverging (mis-emulated instr OR accumulated-wrong-state), not the data.
+>
+> ### 🖥 2026-06-03 (cont.15) — INTERACTIVE WEB UI: play the calc live in a browser
+> New emu_go mode **`web`** (emu_go/webui.go): `go -C emu_go run . 0 30000 web [port]` boots + auto-
+> drives first-boot setup to the MAIN MENU, then serves the live framebuffer + accepts keystrokes so
+> you can USE the calc. Zero external deps (stdlib net/http + image/png; the browser is the window).
+> Open the printed URL (defaults 127.0.0.1:8080, falls back to 8123/8973/OS-assigned — Windows
+> excludes 8080's range → "forbidden" bind, the fallback handles it). PC→matrix keymap in webui.go
+> (digits/ops/`.`/`( ) ,`, Enter=EXE, Backspace=DEL, Esc=EXIT, Home=MENU, arrows, F1-F6, Tab=SHIFT,
+> backtick=ALPHA, a-z=ALPHA+letter). User keypresses inject via the SAME decode-confirmed path
+> (re-inject until FUN_801952cc runs) so presses don't drop. Framebuffer read straight from the DRAM
+> byte slice (phys 0x0c000000=DramBase) — benign race, no map. Harness-only; tests stay green.
+>
+> ### ⌨🏆 2026-06-03 (cont.14) — RELIABLE TYPING + every key class verified in Run-Matrix
+> Built decode-confirmed key pacing and used it to type real expressions into Run-Matrix, verifying
+> the keymap end-to-end. Key findings:
+> - **Decode-confirmed pacing** (`seq` token `r-c*wGAP`): a key injected while the app is REDRAWING is
+>   flushed (app clears pending input before its next getkey) and never decoded — fixed delays
+>   phase-lock onto the redraw and silently drop keystrokes (saw 0/10 .. 8/10). FIX: after injecting,
+>   wait until the OS decode `FUN_801952cc` (0x801952cc) actually runs for the key (re-inject if it
+>   doesn't fire within 40M instr), then settle. With this, full `1234567890` and `8+5-2*3/4` type
+>   cleanly. Plain fixed `interval` still used for setup/menu nav. (emu_go/main.go runSeq + keySafe +
+>   keyQueueCount; harness-only, tests stay 53/53+2000/2000.)
+> - **Decimal-point key FOUND:** matrix cell C2R6 holds raw code **0x00** (my dumper had skipped raw 0
+>   as "empty"); it's the real `.` key → inject `5-1`. Codes match its labels exactly: primary 0x2e `.`,
+>   SHIFT 0x3d `=`, ALPHA 0x20 space. `re/dump_keymap.py` now special-cases it (REAL_RAW0).
+> - **Verified by typing/observing:** digits 0-9, `.`, `+ - * /`, `(-)`, `x10^x`, `EXE` eval, `sin cos
+>   tan log ln`, `X,θ,T x² ^ ( ) ,`, `DEL`, `OPTN` (opens LIST/MAT-VCT/… softkeys), `MENU` (→ menu),
+>   arrows, F1/F6. **Modifiers proven:** SHIFT+`sin`→`sin⁻¹`, ALPHA+`X,θ,T`→`A` (inject the modifier
+>   key before the target; OS state machine applies the yellow/red meaning).
+> - `re/KEYMAP.md` regenerated with the `ver ✓` column + the dot. NOTE: a fresh Run-Matrix shows
+>   leftover history "sin 8 / 56÷36+3.14" and results render as "0" — uninitialised history RAM /
+>   possible math-eval gap, not chased yet.
+>
+> ### 🏆🏆🏆 2026-06-03 (cont.13) — APP LAUNCH SOLVED: Run-Matrix runs from the MAIN MENU
+> The open item from cont.12 is done — we launch an app from the menu. It was NOT a new gate; it
+> just needed (a) more instruction budget and (b) an EXE press AFTER the menu has fully rendered.
+> Sequence (extends cont.12's menu sequence by two `2-1`/EXE presses, budget 360M→420M):
+> `go -C emu_go run . 420000000 30000 seq "1-9,1-9,1-9,1-9,6-9,6-9,1-9,1-9,2-1,2-1,2-1" 130000000 14000000`
+> Key timeline (pressAt 130M, 14M spacing):
+>   - key#8 EXE @242M = dismisses the "Add-ins installed. Press:[EXE]" note → MAIN MENU renders
+>     (seq_09 = menu, FBHASH ef2bd5e7165378fc).
+>   - key#9 EXE @256M = launches the highlighted **Run-Matrix** (cursor defaults top-left on the
+>     menu) → app shell takes over (seq_11 = Run-Matrix edit screen drawing).
+>   - key#10 EXE @270M = harmless EXE inside the app (evaluates the empty entry line).
+> seq_final.png = Run-Matrix: status bar `Math Deg Norm1 [d/c] Real`, entry cursor box, softkeys
+> `JUMP DELETE ►MAT/VCT MATH`; FBHASH 5307839d3bd21ba4. (Two demo-ish lines "sin 8" / "56÷36+3.14"
+> appear in the history area — likely uninitialised history RAM or placeholder; not yet chased.)
+> So the EXE→app-launch path through the menu shell works generically; pressing EXE on any selected
+> icon should launch that app (Run-Matrix verified). NO code change — harness args only; tests stay
+> 53/53 + 2000/2000 green, oracle unaffected. NEXT: number-pad matrix coords to type into Run-Matrix.
 >
 > ### 🏆🏆🏆 2026-06-02 (cont.12) — KEYBOARD INPUT SOLVED: driven from reset to the MAIN MENU
 > Keyboard injection works and we drove first-boot setup to completion. HOW (the faithful path):

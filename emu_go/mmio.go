@@ -156,6 +156,98 @@ func (e *etmuCounter) read(va, size uint32) uint32 {
 	return e.regs[va-e.bs]
 }
 
+// bcdALU: hardware multi-word BCD arithmetic unit @0xA4CB0000 (RE'd cont.18c, command
+// set confirmed by on-device probe cont.18e — os/devic_probes/). The Casio number/format
+// library drives it for every decimal +/- (FUN_80072e78 etc.); SH4 has no BCD opcodes, so
+// this peripheral does the packed-BCD digit math while software does shifts/masks (SHLD).
+// Registers (the 4-word block aliases every 0x10; the OS uses the +0x10 alias):
+//   +0x00 command/status   +0x04 operand A   +0x08 operand B   +0x0C result
+// Operands are sticky; a command write triggers the op and the result is valid immediately.
+// The mantissa is fed one 32-bit word at a time, LSW first. There is a SINGLE shared
+// carry/borrow latch (proven on hardware: a sub's borrow-out feeds a following add as
+// carry-in). Command decode (16-bit; bit3 ignored so 8..15 mirror 0..7):
+//   op      = (cmd&1) ? BCD add : BCD sub
+//   flag_in = (cmd&4) ? 1 : (cmd&2) ? latch : 0       (forced-1 / latched / forced-0)
+//   flag_out = carry (add) or borrow (sub) -> latched for the next op.
+// So: 0=A-B  1=A+B  2=A-B-flag  3=A+B+flag  4=A-B-1  5=A+B+1 (OS only uses 0..4).
+// VALIDATED: with this model the OS formatter renders "98765"/"4.695555556" instead of "0"
+// (the unmodelled result reg reading 0 was the root cause of "all results show 0", cont.18c).
+type bcdALU struct {
+	base
+	a, b, result uint32
+	flag         uint32 // shared carry/borrow latch (one bit)
+}
+
+func bcdAdd(a, b, carry uint32) (uint32, uint32) {
+	var res uint32
+	for i := uint32(0); i < 8; i++ {
+		s := ((a >> (4 * i)) & 0xF) + ((b >> (4 * i)) & 0xF) + carry
+		carry = 0
+		if s >= 10 {
+			s -= 10
+			carry = 1
+		}
+		res |= s << (4 * i)
+	}
+	return res, carry
+}
+
+func bcdSub(a, b, borrow uint32) (uint32, uint32) {
+	var res uint32
+	for i := uint32(0); i < 8; i++ {
+		s := int(((a>>(4*i))&0xF)) - int((b>>(4*i))&0xF) - int(borrow)
+		borrow = 0
+		if s < 0 {
+			s += 10
+			borrow = 1
+		}
+		res |= uint32(s) << (4 * i)
+	}
+	return res, borrow
+}
+
+// compute runs one BCD op for the written command, latching the shared carry/borrow flag.
+func (u *bcdALU) compute(cmd uint32) {
+	var fin uint32
+	switch {
+	case cmd&4 != 0:
+		fin = 1
+	case cmd&2 != 0:
+		fin = u.flag
+	}
+	if cmd&1 != 0 {
+		u.result, u.flag = bcdAdd(u.a, u.b, fin)
+	} else {
+		u.result, u.flag = bcdSub(u.a, u.b, fin)
+	}
+}
+
+func (u *bcdALU) write(va, size, val uint32) {
+	switch (va - u.bs) & 0xF { // block aliases every 0x10
+	case 0x4:
+		u.a = val
+	case 0x8:
+		u.b = val
+	case 0x0: // command -> compute (bit3 ignored)
+		u.compute(val & 0x7)
+	default:
+		u.regs[(va-u.bs)&0xFFFF] = val
+	}
+}
+
+func (u *bcdALU) read(va, size uint32) uint32 {
+	switch (va - u.bs) & 0xF {
+	case 0xC: // result
+		return u.result
+	case 0x0: // command/status: the shared flag is observable here (cont.18e)
+		if u.flag != 0 {
+			return 0x10040000
+		}
+		return 0x00010000
+	}
+	return u.regs[va-u.bs]
+}
+
 // ---- the bus ----
 const (
 	TimerINTEVT = 0x560
@@ -199,6 +291,7 @@ func NewMMIOBus() *MMIOBus {
 		&freeCounter{base: newBase("FRC", 0xA4130000, 0x10000)},
 		&intx{base: newBase("INTX", 0xA4140000, 0x1000)},
 		&keysc{base: newBase("KIU_DATA", 0xA44B0000, 0x1000)},
+		&bcdALU{base: newBase("BCDALU", 0xA4CB0000, 0x1000)},
 		&base{nm: "BSC", bs: 0xFEC10000, sz: 0x1000, regs: map[uint32]uint32{}},
 		&dmac{base: newBase("DMAC", 0xFE008000, 0x1000)},
 		&ccn{base: newBase("CCN", 0xFF000000, 0x1000)},

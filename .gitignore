@@ -3,15 +3,21 @@
 # The fx-CG50 OS images / flash dumps are Casio's copyrighted property. You must
 # supply your own dump of your own calculator (see README and tools/flash_dump/).
 # The whole os/ tree (physical flash dump, the 3.80 updater, and everything
-# extracted/decoded from them) is excluded.
+# extracted/decoded from them) is excluded — EXCEPT our own on-device probe
+# captures (os/devic_probes/): tiny register/CPU measurement dumps + the add-in
+# source that produced them. Those contain no Casio firmware and may help others.
 # ─────────────────────────────────────────────────────────────────────────────
-/os/
+/os/*
+!/os/devic_probes/
 
 # State/memory snapshots and boot goldens that are *derived from executing* the
 # Casio OS (they contain OS bytes / OS-execution results).
 emu/*.pkl
 emu/golden_boot.bin
 emu_go/fb_raw.bin
+emu_go/fmt_snapshot.bin
+emu_go/fmt_trace_go.txt
+emu_go/eval_calls.txt
 
 # Screenshots / framebuffer renders of the copyrighted on-screen UI.
 *.png

@@ -162,6 +162,88 @@ class INTX(Region):
         return self.regs.get(off, 0)
 
 
+def _bcd_add(a, b, carry):
+    """8-nibble packed-BCD add with carry in/out (per 32-bit word)."""
+    res = 0
+    for i in range(8):
+        s = ((a >> (4 * i)) & 0xF) + ((b >> (4 * i)) & 0xF) + carry
+        carry = 1 if s >= 10 else 0
+        if s >= 10:
+            s -= 10
+        res |= s << (4 * i)
+    return res & 0xFFFFFFFF, carry
+
+
+def _bcd_sub(a, b, borrow):
+    """8-nibble packed-BCD subtract with borrow in/out (per 32-bit word)."""
+    res = 0
+    for i in range(8):
+        s = ((a >> (4 * i)) & 0xF) - ((b >> (4 * i)) & 0xF) - borrow
+        borrow = 1 if s < 0 else 0
+        if s < 0:
+            s += 10
+        res |= s << (4 * i)
+    return res & 0xFFFFFFFF, borrow
+
+
+class BCDALU(Region):
+    """Hardware multi-word BCD arithmetic unit @0xA4CB0000 (RE'd cont.18c, command set
+    confirmed by on-device probe cont.18e — see os/devic_probes/). The Casio number/format
+    library drives it for every decimal +/- (FUN_80072e78 etc.); the SH4 has no BCD opcodes
+    so this peripheral does the packed-BCD digit math while software handles shifts/masks
+    (SHLD). Registers (the 4-word block aliases every 0x10; the OS uses the +0x10 alias):
+        +0x00 command/status   +0x04 operand A   +0x08 operand B   +0x0C result
+    Operands are sticky; a command write triggers the op and the result is valid immediately.
+    The mantissa is processed one 32-bit word at a time, LSW first. There is a SINGLE shared
+    carry/borrow latch (proven on hardware: a sub's borrow-out feeds a following add as
+    carry-in). Command decode (16-bit; bit3 ignored so 8..15 mirror 0..7):
+        op      = (cmd&1) ? BCD add : BCD sub
+        flag_in = (cmd&4) ? 1 : (cmd&2) ? latch : 0      (forced-1 / latched / forced-0)
+        flag_out = carry (add) or borrow (sub) -> latched for the next op.
+    So: 0=A-B 1=A+B 2=A-B-flag 3=A+B+flag 4=A-B-1 5=A+B+1 (OS only uses 0..4).
+    VALIDATED: with this model the real OS formatter renders "98765"/"4.695555556" instead
+    of "0". Leaving the unit unmodelled makes the result register read 0, which is the root
+    cause of "all results show 0" (cont.18c)."""
+    def __init__(self, name, base, size):
+        super().__init__(name, base, size)
+        self.A = 0
+        self.B = 0
+        self.result = 0
+        self.flag = 0          # shared carry/borrow latch (one bit)
+
+    def _compute(self, cmd):
+        if cmd & 4:
+            fin = 1
+        elif cmd & 2:
+            fin = self.flag
+        else:
+            fin = 0
+        if cmd & 1:
+            self.result, self.flag = _bcd_add(self.A, self.B, fin)
+        else:
+            self.result, self.flag = _bcd_sub(self.A, self.B, fin)
+
+    def write(self, va, size, val):
+        off = (va - self.base) & 0xF       # block aliases every 0x10
+        val &= (1 << (size * 8)) - 1
+        if off == 0x4:
+            self.A = val & 0xFFFFFFFF
+        elif off == 0x8:
+            self.B = val & 0xFFFFFFFF
+        elif off == 0x0:                   # command -> compute (bit3 ignored)
+            self._compute(val & 0x7)
+        else:
+            self.regs[(va - self.base) & 0xFFFF] = val
+
+    def read(self, va, size):
+        off = (va - self.base) & 0xF
+        if off == 0xC:                     # result
+            return self.result
+        if off == 0x0:                     # command/status: shared flag observable (cont.18e)
+            return 0x10040000 if self.flag else 0x00010000
+        return self.regs.get((va - self.base) & 0xFFFF, 0)
+
+
 class MMIOBus:
     # Timer interrupt source. The idle OS polls PERIPH_IRQ 0xA4610088 (bits 14/15) and
     # waits on INTEVT 0x560 -> handler 0x801ded94, which acks those bits. (0x188 from the
@@ -189,6 +271,7 @@ class MMIOBus:
             FreeCounter("FRC", 0xA4130000, 0x10000),   # free-running counter (delay loops)
             INTX("INTX", 0xA4140000, 0x1000),
             KEYSC("KIU_DATA", 0xA44B0000, 0x1000),      # SH7724-style key input data (all 0 = no key)
+            BCDALU("BCDALU", 0xA4CB0000, 0x1000),        # HW packed-BCD add/sub unit (number formatting)
             Region("BSC", 0xFEC10000, 0x1000),
             DMAC("DMAC", 0xFE008000, 0x1000),
             CCN("CCN", 0xFF000000, 0x1000),        # MMU/cache/INTEVT/EXPEVT + model strap @+0x24
@@ -259,3 +342,5 @@ def upgrade_bus(mmio, cpu):
     mmio.regions.insert(0, INTX("INTX", 0xA4140000, 0x1000))
     if "KIU_DATA" not in names:
         mmio.regions.insert(0, KEYSC("KIU_DATA", 0xA44B0000, 0x1000))
+    if "BCDALU" not in names:
+        mmio.regions.insert(0, BCDALU("BCDALU", 0xA4CB0000, 0x1000))

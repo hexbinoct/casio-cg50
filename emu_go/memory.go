@@ -48,6 +48,16 @@ type Memory struct {
 	fwrites map[uint32]int // if non-nil, histogram FLASH write target by 32KB page
 	fwLog   int            // remaining flash-write detail lines to print
 
+	// DRAM read-watch (investigation only; nil/zero = disabled, so goldens/normal
+	// runs are unaffected). When rdPC != nil, any DRAM read with phys in [rdLo,rdHi)
+	// is attributed to the reading instruction (cpu.pc, which step() has already
+	// advanced by +2). Used to find the operand-fetch PC of the BCD evaluator.
+	cpu   *CPU
+	rdLo  uint32
+	rdHi  uint32
+	rdPC  map[uint32]int
+	rdLog int
+
 	// NOR command state machine
 	fcmd    int
 	bufRem  int     // remaining buffered-program data words to collect
@@ -86,6 +96,15 @@ func (m *Memory) Read(va, size uint32) uint32 {
 	if mphys := va & 0x1FFFFFFF; mphys >= DramBase && mphys < DramBase+DramSize {
 		// DRAM via ANY mirror, incl. the uncached VRAM mirror 0xAC000000 (P2). Must come
 		// before the 0xA4..0xC0 MMIO range below, else VRAM draws are dropped as MMIO.
+		if m.rdPC != nil && mphys >= m.rdLo && mphys < m.rdHi {
+			m.rdPC[m.cpu.pc]++
+			if m.rdLog > 0 {
+				v := beRead(m.dram, mphys-DramBase, size)
+				fmt.Printf("  [rd] phys=0x%08x sz=%d pc=0x%08x (instr~0x%08x) val=0x%x\n",
+					mphys, size, m.cpu.pc, m.cpu.pc-2, v)
+				m.rdLog--
+			}
+		}
 		return beRead(m.dram, mphys-DramBase, size)
 	}
 	if va >= 0xA4000000 && va < 0xC0000000 {
