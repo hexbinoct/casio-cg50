@@ -66,6 +66,24 @@
 > standard fx-CG50 app suite; only one custom third-party add-in misbehaves.
 > ⚠ Do NOT kill TCP :8080 (GhidraMCP).
 >
+> ### ✅ cont.18i — ANDROID APP SCAFFOLD (Route A: cgo c-shared + JNI). Go→.so pipeline PROVEN here.
+> User created an Android Studio "Native C++" project at `android/` (pkg `com.hexbinoct.cg50`, minSdk 30,
+> AGP 9.2.1, NDK 28.2.13676358, CMake 3.22.1). Wired it all (Go core UNCHANGED):
+>   · `android/build_go_lib.ps1` — cross-compiles emu_go → `libcg50core.so` per ABI (arm64-v8a + x86_64) into
+>     app/src/main/jniLibs/ via the NDK clang. **RAN IT HERE: both ABIs build; arm64 .so = 9.1MB exporting all 9
+>     Emu* symbols (llvm-nm verified).** The cgo bridge compiles for Android — biggest risk retired.
+>   · `app/src/main/cpp/{CMakeLists.txt,native-lib.cpp}` — JNI lib `cg50` imports prebuilt `cg50core` and forwards
+>     Java_com_hexbinoct_cg50_NativeBridge_* → Emu*. (JNI lib=libcg50.so, Go lib=libcg50core.so to dodge the name
+>     clash; Kotlin loads cg50core then cg50.)
+>   · Kotlin: `NativeBridge` (externals), `CalcSurfaceView` (render thread step+framebufferRGBA→Bitmap→canvas,
+>     ~60fps, instrPerFrame=333k≈20M/s tunable), `KeyMap` (keypad from re/KEYMAP.md), `MainActivity` (loads
+>     flash_full.bin + cg50_state.bin from getExternalFilesDir, init/resume, builds keypad, snapshots on onPause).
+>     Layout SurfaceView(w3)+status+keypad(w5); abiFilters pinned to the 2 built ABIs; build artifacts git-ignored;
+>     `android/README.md` documents build + adb-push + provision.
+> CANNOT build the APK here (no Studio build env). NEXT: user runs build_go_lib.ps1, opens android/ in Studio,
+> adb-pushes flash_full.bin (+ a desktop-`provision`ed cg50_state.bin), hits Run, reports — then iterate UI
+> (annunciators, key-repeat, aspect/letterbox, perf) + maybe armeabi-v7a. ⚠ Do NOT kill TCP :8080.
+>
 > ## ⏯ (prev) RESUME HERE (last session end: 2026-06-05 cont.18e)
 >
 > ### 🏆 cont.18e — ON-DEVICE PROBES LANDED: cmd4 solved + BCD model finalized + CPU core validated vs SILICON
