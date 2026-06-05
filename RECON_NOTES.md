@@ -31,14 +31,26 @@
 > still a valid Go==Python check.) NOT yet covered by silicon vectors: mac.l S-bit saturation (probe has
 > the data: S=0→60000000:00000001, S=1 saturates to 00007fff:ffffffff — fold in next).
 >
-> **NEXT-SESSION FIRST ACTIONS:**
->   1. (no device) Broaden-verify arithmetic end-to-end in the running emulator now that cmd4 is real: type
->      `7*8`, `100−37`, `2÷3`, `999999*999999`, a negative result into Run-Matrix (recipe in cont.17/cont.14)
->      and check the rendered answers. cmd4 (A−B−1) participates in real rounding/subtraction now.
->   2. Add a few silicon-anchored cases to `emu/conformance_gen.py` (so the GO port is held to hardware truth
->      too, not just the oracle) — incl. a proper full-quotient div1 and the mac.l saturation pair.
->   3. Commit the cont.18d+18e working tree (lots of uncommitted RE tooling + the mmio changes).
+> **NEXT-SESSION FIRST ACTIONS:** — ALL THREE DONE in cont.18e-2 (below).
 > ⚠ Do NOT kill TCP :8080 (GhidraMCP). Tools added this session: `re/validate_silicon.py`.
+>
+> ### ✅ cont.18e-2 — the three follow-ups are DONE.
+> **(a) mac.l IMPLEMENTED + silicon-validated.** The oracle had NO `mac.l` (it fell to IllegalInstruction).
+> Implemented `mac.l @Rm+,@Rn+` with the S-bit 48-bit signed saturation in BOTH `emu/cpu.py` and
+> `emu_go/cpu.go` (0x0-group d4==0xF). `re/validate_silicon.py` now also checks the probe's mac.l pair →
+> **204/204 vs hardware** (S=0 → 60000000:00000001 full 64-bit; S=1 → 00007fff:ffffffff saturated).
+> **(b) Silicon-anchored conformance cases folded in.** `emu/conformance_gen.py` +4 cases (now **57**):
+> `div1_full_quotient_100_7` / `_ffffffff_3` (the FULL-quotient skeleton with the final rotcl — the older
+> `udiv` case stays as a Go==Python-only check), `macl_no_saturation`, `macl_saturate48`. Their frozen
+> expected outputs = the oracle's, which `validate_silicon` proves == real hardware, so the GO port is now
+> held to silicon truth on these. Goldens regenerated (boot unchanged, final PC 0x801df466). Tests: go
+> conformance 57/57 + 2M golden + vet clean; python 57/57; silicon 204/204.
+> **(c) Arithmetic battery — typed into the running emulator, answers CORRECT.** With cmd4 now = A−B−1,
+> `seq` typing into Run-Matrix renders: **`7×8` → 56**, **`100−37` → 63**, and the leftover `56÷36+3.14`
+> → exact fraction **`2113/450`** (=4.69555…). Multiply, multi-digit subtract (borrow), and divide→fraction
+> all compute correctly end-to-end through the real OS + our BCD-ALU model. (fpu_ops=0, all integer/BCD.)
+> Repro: `go -C emu_go run . 850000000 30000 seq "<launch prefix>,<digit/op coords>" 130000000 14000000`
+> with operators `+`=3-2 `-`=2-2 `*`=3-3 `/`=2-3 (full coord table re/KEYMAP.md), `*w` decode-confirmed pacing.
 >
 > ## ⏯ (prev) RESUME HERE (last session end: 2026-06-04 cont.18d)
 >

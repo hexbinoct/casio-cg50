@@ -268,6 +268,25 @@ func (c *CPU) execute(op uint32) {
 		case 0x7:
 			c.macl = uint32(s32(r[n]) * s32(r[m]))
 			return
+		case 0xF: // mac.l @Rm+,@Rn+
+			tn := int64(s32(mem.R32(r[n])))
+			r[n] += 4
+			tm := int64(s32(mem.R32(r[m])))
+			r[m] += 4
+			mac := int64(uint64(c.mach)<<32 | uint64(c.macl))
+			mac += tn * tm
+			if c.sr&srS != 0 { // S=1 -> saturate to 48-bit signed
+				const hi = int64(1)<<47 - 1
+				const lo = -(int64(1) << 47)
+				if mac > hi {
+					mac = hi
+				} else if mac < lo {
+					mac = lo
+				}
+			}
+			c.mach = uint32(uint64(mac) >> 32)
+			c.macl = uint32(uint64(mac))
+			return
 		case 0xC:
 			r[n] = uint32(s8(mem.R8(r[0] + r[m])))
 			return

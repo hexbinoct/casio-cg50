@@ -21,6 +21,7 @@ from cpu import CPU
 import conformance_gen as G
 
 CODE = 0x8C001000
+DATA = 0x8C010000
 U = 0xFFFFFFFF
 
 _fails = []
@@ -222,6 +223,20 @@ def t_cmp():
         c = run([G.tst(1, 0)], regs(r0=a, r1=b)); check(f"tst {a:08x},{b:08x}", c.sr & 1, want[8])
 
 
+def t_macl():
+    # MAC.L @Rm+,@Rn+ accumulates signed 32x32 products into MACH:MACL. The probe sums
+    # 0x40000000^2 *2 + 0x10000^2 + 0x7FFFFFFF^2 (4 ops over [40000000,40000000,10000,
+    # 7FFFFFFF], r0 and r1 both walking the array). S=0 = full 64-bit; S=1 saturates to
+    # 48-bit signed (0x00007FFF_FFFFFFFF). Both checked against hardware.
+    vals = [0x40000000, 0x40000000, 0x00010000, 0x7fffffff]
+    code = [G.mac_l(1, 0)] * 4   # mac.l @R1+,@R0+
+    for s_bit, mh, ml in [(0, 0x60000000, 0x00000001), (2, 0x00007fff, 0xffffffff)]:
+        for i, v in enumerate(vals):
+            _mem.w32(DATA + 4 * i, v)
+        c = run(code, regs(r0=DATA, r1=DATA), s_bit)
+        check(f"mac.l S={1 if s_bit else 0}", (c.mach & U, c.macl & U), (mh, ml))
+
+
 def t_munge():
     a, b = 0x11223344, 0xaabbccdd
     c = run([G.swapb(1, 0)], regs(r1=a)); check("swap.b", c.r[0], 0x11224433)
@@ -235,7 +250,7 @@ def t_munge():
 
 def main():
     for fn in [t_addc, t_subc, t_negc, t_addv, t_subv, t_rotcl, t_rotcr, t_shad, t_shld,
-               t_dmulu, t_dmuls, t_div1, t_cmp, t_munge]:
+               t_dmulu, t_dmuls, t_div1, t_macl, t_cmp, t_munge]:
         print(f"... {fn.__name__}", flush=True)
         fn()
     total = _npass + len(_fails)

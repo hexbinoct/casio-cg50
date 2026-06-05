@@ -82,6 +82,7 @@ def mulsw(m, n):   return 0x200F | (n << 8) | (m << 4)
 def muluw(m, n):   return 0x200E | (n << 8) | (m << 4)
 def dmuls(m, n):   return 0x300D | (n << 8) | (m << 4)
 def dmulu(m, n):   return 0x3005 | (n << 8) | (m << 4)
+def mac_l(m, n):   return 0x000F | (n << 8) | (m << 4)   # mac.l @Rm+,@Rn+
 def sts_macl(n):   return 0x001A | (n << 8)
 def sts_mach(n):   return 0x000A | (n << 8)
 def sts_pr(n):     return 0x002A | (n << 8)
@@ -215,6 +216,31 @@ def build_cases():
                   setup={"r": reg(r0=0), "sr": SR_T}, steps=1))   # bt taken skips next (non-delayed)
     C.append(case("bf_not_taken", [bf(1), addi(0, 0x10)],
                   setup={"r": reg(r0=0), "sr": SR_T}, steps=2))   # T=1 -> bf falls through to addi
+
+    # --- silicon-anchored cases: expected outputs verified against REAL fx-CG50 hardware
+    #     by re/validate_silicon.py (the on-device shtest probe). Freezing them holds the Go
+    #     port to silicon truth, not just to the oracle. ---
+    # Full-quotient unsigned divide: div0u + 32x(rotcl r1; div1 r0,r2) + a FINAL rotcl r1 to
+    # shift in the last quotient bit (the conformance `udiv` case above omits it on purpose and
+    # only checks Go==Python; this one yields the true quotient = hardware: 100/7=0x0e,
+    # 0xffffffff/3=0x55555555). Quotient lands in r1.
+    dcode = [DIV0U]
+    for _ in range(32):
+        dcode += [rotcl(1), div1(0, 2)]
+    dcode += [rotcl(1)]
+    C.append(case("div1_full_quotient_100_7", dcode,
+                  setup={"r": reg(r0=7, r1=100, r2=0)}, steps=len(dcode)))
+    C.append(case("div1_full_quotient_ffffffff_3", dcode,
+                  setup={"r": reg(r0=3, r1=0xFFFFFFFF, r2=0)}, steps=len(dcode)))
+    # MAC.L @Rm+,@Rn+ : sum 0x40000000^2*2 + 0x10000^2 + 0x7FFFFFFF^2 over 4 ops (r0,r1 both
+    # walking the array). S=0 -> MACH:MACL=60000000:00000001 (full 64-bit); S=1 -> saturate to
+    # 48-bit signed 00007fff:ffffffff. Both are real-hardware results.
+    macdata = {str(DATA): 0x40000000, str(DATA + 4): 0x40000000,
+               str(DATA + 8): 0x00010000, str(DATA + 12): 0x7FFFFFFF}
+    C.append(case("macl_no_saturation", [mac_l(1, 0)] * 4,
+                  setup={"r": reg(r0=DATA, r1=DATA), "sr": 0}, data=macdata, steps=4))
+    C.append(case("macl_saturate48", [mac_l(1, 0)] * 4,
+                  setup={"r": reg(r0=DATA, r1=DATA), "sr": 0x2}, data=macdata, steps=4))
 
     # --- interrupt entry: pending IRQ, BL=0 -> vector to VBR+0x600 ---
     C.append(case("irq_entry", [NOP], steps=1,

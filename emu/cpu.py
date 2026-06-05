@@ -174,6 +174,17 @@ class CPU:
             if d4 == 0x5: mem.w16(u32(r[0] + r[n]), r[m] & 0xFFFF); return
             if d4 == 0x6: mem.w32(u32(r[0] + r[n]), r[m]); return
             if d4 == 0x7: self.macl = u32(s32(r[n]) * s32(r[m])); return   # mul.l
+            if d4 == 0xF:                          # mac.l @Rm+,@Rn+
+                tn = s32(mem.r32(r[n])); r[n] = u32(r[n] + 4)
+                tm = s32(mem.r32(r[m])); r[m] = u32(r[m] + 4)
+                mac = (self.mach << 32) | self.macl
+                if mac & (1 << 63): mac -= (1 << 64)   # sign-extend the 64-bit accumulator
+                mac += tn * tm
+                if self._sr & self.S:                  # S=1 -> saturate to 48-bit signed
+                    hi = (1 << 47) - 1; lo = -(1 << 47)
+                    mac = hi if mac > hi else lo if mac < lo else mac
+                mac &= (1 << 64) - 1
+                self.mach = u32(mac >> 32); self.macl = u32(mac); return
             if d4 == 0xC: r[n] = s8(mem.r8(u32(r[0] + r[m]))) & MASK32; return
             if d4 == 0xD: r[n] = s16(mem.r16(u32(r[0] + r[m]))) & MASK32; return
             if d4 == 0xE: r[n] = mem.r32(u32(r[0] + r[m])); return
