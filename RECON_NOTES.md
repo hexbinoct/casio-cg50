@@ -1,6 +1,53 @@
 # fx-CG50 → Android emulator — recon notes
 
-> ## ⏯ RESUME HERE (last session end: 2026-06-05 cont.18f)
+> ## ⏯ RESUME HERE (last session end: 2026-06-05 cont.18j)
+>
+> ### 🏆🏆🏆 cont.18j — IT RUNS ON ANDROID. Native app boots the OS on the EMULATOR **and a physical phone**.
+> The Android app (Route A: Go core cross-compiled to a c-shared `.so` + a JNI shim, see cont.18i) is
+> WORKING: it loads the user's flash dump, RESUMES from the save-state to the MAIN MENU, renders the
+> framebuffer, and takes keypad input — **calculations work on the real phone** (M2007J20CG "surya", arm64).
+> Verified on both `emulator-5554` (x86_64) and the phone via logcat: `cg50: init ok; core 384x216` +
+> `cg50: resume returned 0`, no crash. This is the project's end goal reached end-to-end.
+>
+> **THE FULL BUILD+DEPLOY RECIPE (reproduce from a clean session — all paths are this machine's):**
+>   1. Build the Go core libs:  `pwsh -File android/build_go_lib.ps1`  → writes
+>      `android/app/src/main/jniLibs/{arm64-v8a,x86_64}/libcg50core.so` (git-ignored). The script sets the
+>      SONAME (critical — see fix below). Re-run whenever `emu_go/` changes.
+>   2. Build+install the APK (Gradle needs JDK 17+, NOT the PATH's JDK 11):
+>      `$env:JAVA_HOME="D:\Installations\Java\jdk-26.0.1"; & "F:\ru\myprojects\may\cg50\android\gradlew.bat" -p "F:\ru\myprojects\may\cg50\android" :app:installDebug --offline`
+>      (CMake re-links the JNI shim against the prebuilt lib for each ABI.)
+>   3. Push the user's files to the device's app dir (USE POWERSHELL not Bash — Git-Bash mangles the
+>      `/sdcard/...` path into a Windows path!):
+>      `& $adb -s <serial> shell mkdir -p /sdcard/Android/data/com.hexbinoct.cg50/files/`
+>      then `& $adb -s <serial> push os\flash_dump\flash_full.bin <thatdir>` and same for `cg50_state.bin`.
+>   4. Launch + check:  `& $adb -s <serial> shell am force-stop com.hexbinoct.cg50;`
+>      `& $adb -s <serial> shell am start -n com.hexbinoct.cg50/.MainActivity;`  then
+>      `& $adb -s <serial> logcat -d | Select-String "cg50    :|FATAL|UnsatisfiedLink"`.
+>   ENV/paths: SDK `D:\files\Android_SDK`; NDK `28.2.13676358`; ADB `D:\files\Android_SDK\platform-tools\adb.exe`;
+>   JDK `D:\Installations\Java\jdk-26.0.1`; pkg `com.hexbinoct.cg50`; phone serial
+>   `adb-584c917b-jFkRGG._adb-tls-connect._tcp` (WiFi); emulator `emulator-5554`. App reads flash_full.bin +
+>   cg50_state.bin from `getExternalFilesDir` = `/sdcard/Android/data/com.hexbinoct.cg50/files/`.
+>
+> **KEY FIX this session (cont.18i had a latent on-device crash):** the JNI shim's DT_NEEDED recorded the
+> ABSOLUTE WINDOWS BUILD PATH of libcg50core.so (→ `UnsatisfiedLinkError: ...jniLibs/x86_64/libcg50core.so not
+> found`) because the Go lib had NO SONAME. FIX in build_go_lib.ps1: build with
+> `-ldflags=-extldflags=-Wl,-soname,libcg50core.so` so it records the basename; loader then finds it in jniLibs.
+>
+> **OPEN / NEXT (all "later"):**
+>   1. **PERF — the MENU is slow on the phone** (calculations are fine). Likely emulation throughput on ARM vs
+>      our pacing: `CalcSurfaceView.instrPerFrame`=333k @60fps=20M/s; if the phone can't sustain that in 16ms,
+>      frames stretch. NEXT: measure real phone instr/s (add a Log of achieved ips in the render loop, like
+>      `rtbench`), then tune instrPerFrame; consider a release APK (minor), CPU hot-path optimization, and not
+>      stepping a fixed budget but a time-bounded one (step until ~12ms elapsed). The menu also redraws heavily.
+>   2. **Release APK**: `:app:installRelease` (needs a signing config) for the non-debuggable build.
+>   3. **Visuals**: user reports it looks good; if colors ever look red/blue-swapped → flip RGBA byte order in
+>      Emulator.FramebufferRGBA / native-lib; aspect is currently stretch-to-fill (add letterbox if wanted).
+>   4. Polish: SHIFT/ALPHA annunciators, long-press key repeat, nicer keypad styling, in-app flash-import UI
+>      (instead of adb push), armeabi-v7a ABI if needed.
+>   5. (pre-existing, low pri) the one third-party add-in "heronics2"/"howdy" renders blank (cont.18h).
+> ⚠ Vision note: late in cont.18j the image API refused new screenshots (cumulative per-session limit) — a
+> FRESH session resets this; use `adb exec-out screencap` + Read, or just ask the user, to see the screen.
+> ⚠ Do NOT kill TCP :8080 (GhidraMCP). Android app lives in `android/`; see `android/README.md` + docs/ANDROID.md.
 >
 > ### ✅ cont.18f — PERSISTENCE: provision once, RESUME at the MAIN MENU (no first-boot setup).
 > Goal: stop re-running the language/setup wizard every cold boot (the #1 Android UX blocker).
