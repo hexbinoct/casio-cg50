@@ -26,6 +26,29 @@
 > a `savestate` hotkey in `web` mode so the user can snapshot AFTER doing their own setup/work.
 > ⚠ Do NOT kill TCP :8080 (GhidraMCP).
 >
+> ### ✅ cont.18g — web save-state hotkey + Emulator FACADE + real-time loop + Android (cgo) BRIDGE.
+> Three pieces toward the Android app, all validated on desktop:
+> **(1) Web save-state hotkey.** `web` mode now auto-resumes from the save-state (skips the scripted
+> first-boot drive when `resumed`) and exposes **F9=Save / F10=Reload** (buttons + keys → `/save`,`/load`
+> endpoints; the CPU goroutine performs the op at a step boundary so there's no race). Tested live via curl:
+> `/save`→"state saved", `/load`→"state reloaded", frame still served after (machine stays live).
+> **(2) `Emulator` facade (`emu_go/emulator.go`)** — the single host-facing API the web UI and the bridge
+> drive: `NewEmulator/Resume/Snapshot` (in-memory via new `SnapshotBytes`/`ResumeBytes` in state.go),
+> `InjectKey` (thread-safe queue + the decode-confirmed injector), `Step`, `FramebufferRGBA`/`RGB565`, and
+> `RunRealtime(targetIPS,frameHz,frame,stop)`. Unit-tested (`emulator_test.go`, `state_test.go`) — key queue,
+> RGBA decode, snapshot/resume round-trip; no OS image needed.
+> **(3) Real-time loop PROVEN** via new `rtbench` mode (`go -C emu_go run . 0 30000 rtbench`): resumes,
+> paces to a target and reports — **target 20M ips → 19.95M achieved, 180 frames in 3.01s = 60 fps** (the
+> desktop core does ~70M/s, so pacing genuinely caps + yields). On real HW (~118MHz, ~60-100M instr/s) we're
+> already ~real-time; the loop's job is the cap + per-frame yield (battery/timer cadence) and a host blit hook.
+> **(4) Android cgo BRIDGE (`emu_go/android_bridge.go`, build tag `android`)** — C ABI `EmuInit/Resume/Step/
+> InjectKey/FramebufferRGBA/Snapshot/Free/Width/Height` wrapping the facade; build per-ABI with the NDK as
+> `-buildmode=c-shared` → `libcg50.so`. Full build + Kotlin glue (run thread, Bitmap blit, keypad→InjectKey,
+> provisioning) in **`docs/ANDROID.md`**. (Not built here — needs the Android NDK; the file is `android`-tagged
+> so the desktop build/tests never touch cgo.) Tests stay green (57 conformance + golden + facade/state units),
+> vet+gofmt clean. NEXT (needs Android tooling): NDK build + JNI shim + Studio project + on-ARM perf/tuning pass.
+> ⚠ Do NOT kill TCP :8080 (GhidraMCP).
+>
 > ## ⏯ (prev) RESUME HERE (last session end: 2026-06-05 cont.18e)
 >
 > ### 🏆 cont.18e — ON-DEVICE PROBES LANDED: cmd4 solved + BCD model finalized + CPU core validated vs SILICON

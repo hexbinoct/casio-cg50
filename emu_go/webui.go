@@ -98,30 +98,46 @@ const webPage = `<!doctype html><html><head><meta charset=utf-8><title>fx-CG50</
  b{color:#fff}
 </style></head><body>
 <h3>fx-CG50 emulator &mdash; click the screen, then type</h3>
-<img id=screen src="/frame">
+<img id=screen src="/frame"><br>
+<button onclick="act('/save')">Save State (F9)</button>
+<button onclick="act('/load')">Reload State (F10)</button>
+<span id=status></span>
 <div class=legend>
 <b>0-9 . + - * / ( ) ,</b> those keys &nbsp;|&nbsp; <b>Enter</b>=EXE &nbsp; <b>Backspace</b>=DEL
 &nbsp; <b>Esc</b>=EXIT &nbsp; <b>Home</b>=MENU<br>
 <b>Arrows</b>=cursor &nbsp; <b>F1-F6</b>=function keys &nbsp; <b>Tab</b>=SHIFT &nbsp;
-<b>` + "`" + `</b>=ALPHA &nbsp; <b>a-z</b>=ALPHA+letter
+<b>` + "`" + `</b>=ALPHA &nbsp; <b>a-z</b>=ALPHA+letter &nbsp;|&nbsp; <b>F9</b>=save state &nbsp; <b>F10</b>=reload state
 </div>
 <script>
  var img=document.getElementById('screen'), tmp=new Image(), n=0, busy=false;
  tmp.onload=function(){ img.src=tmp.src; busy=false; };
  tmp.onerror=function(){ busy=false; };
  setInterval(function(){ if(!busy){ busy=true; tmp.src='/frame?'+(n++); } }, 60);
+ function act(u){ fetch(u).then(function(r){return r.text()}).then(function(t){
+   var s=document.getElementById('status'); s.textContent=' '+t;
+   setTimeout(function(){s.textContent='';},2500); }); }
  document.addEventListener('keydown', function(e){
+   if(e.key==='F9'){ act('/save'); e.preventDefault(); return; }
+   if(e.key==='F10'){ act('/load'); e.preventDefault(); return; }
    fetch('/key?k='+encodeURIComponent(e.key));
    e.preventDefault();
  });
 </script></body></html>`
 
 // runWeb is the interactive entry point. Never returns (runs until the process is killed).
-func runWeb(cpu *CPU, mem *Memory, mmio *MMIOBus) {
+// resumed = the machine was already restored from a save-state (so skip the scripted
+// first-boot drive — we're already at the MAIN MENU).
+func runWeb(cpu *CPU, mem *Memory, mmio *MMIOBus, resumed bool) {
 	if mmio.timerPeriod == 0 {
 		mmio.timerPeriod = 30000 // proven boot timer cadence
 	}
 	coordCh := make(chan [2]uint32, 512)
+	// Save/Load requests from the HTTP handlers; the CPU goroutine performs them at a step
+	// boundary so there's no race on dram/flash. Each is a size-1 channel carrying the reply
+	// channel the handler blocks on (so the button shows the real result).
+	type ssReq struct{ reply chan string }
+	saveCh := make(chan ssReq, 1)
+	loadCh := make(chan ssReq, 1)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -138,6 +154,19 @@ func runWeb(cpu *CPU, mem *Memory, mmio *MMIOBus) {
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})
+	ssHandler := func(ch chan ssReq) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			reply := make(chan string, 1)
+			select {
+			case ch <- ssReq{reply}:
+				fmt.Fprint(w, <-reply)
+			default:
+				fmt.Fprint(w, "busy, try again")
+			}
+		}
+	}
+	mux.HandleFunc("/save", ssHandler(saveCh))
+	mux.HandleFunc("/load", ssHandler(loadCh))
 	// Bind a listener: try the preferred port (override with a 5th CLI arg, e.g.
 	// `run . 0 30000 web 9000`), then a few alternates, then let the OS pick any free
 	// port (Windows reserves/excludes some ranges -> "forbidden" bind errors).
@@ -163,9 +192,14 @@ func runWeb(cpu *CPU, mem *Memory, mmio *MMIOBus) {
 			fmt.Println("web server:", err)
 		}
 	}()
-	fmt.Printf("Web UI ready -> open http://%s  (auto-booting to MAIN MENU, ~5s)\n", ln.Addr().String())
+	if resumed {
+		fmt.Printf("Web UI ready -> open http://%s  (RESUMED from save-state — keyboard live now)\n", ln.Addr().String())
+	} else {
+		fmt.Printf("Web UI ready -> open http://%s  (auto-booting to MAIN MENU, ~5s)\n", ln.Addr().String())
+	}
 
 	// Scripted first-boot -> MAIN MENU (the proven cont.12 sequence): fixed-timing presses.
+	// Skipped entirely when we resumed from a save-state (already at the menu).
 	type sk struct {
 		at       uint64
 		row, col uint32
@@ -173,8 +207,10 @@ func runWeb(cpu *CPU, mem *Memory, mmio *MMIOBus) {
 	pressAt, interval := uint64(130_000_000), uint64(14_000_000)
 	menuSeq := [][2]uint32{{1, 9}, {1, 9}, {1, 9}, {1, 9}, {6, 9}, {6, 9}, {1, 9}, {1, 9}, {2, 1}}
 	var script []sk
-	for i, k := range menuSeq {
-		script = append(script, sk{pressAt + uint64(i)*interval, k[0], k[1]})
+	if !resumed {
+		for i, k := range menuSeq {
+			script = append(script, sk{pressAt + uint64(i)*interval, k[0], k[1]})
+		}
 	}
 	si := 0
 
@@ -197,6 +233,29 @@ func runWeb(cpu *CPU, mem *Memory, mmio *MMIOBus) {
 	for {
 		mmio.tick(cpu)
 		cpu.step()
+
+		// Save/Load requested from the UI — done here (CPU goroutine) so there's no race.
+		select {
+		case req := <-saveCh:
+			if err := SaveState(statePath, cpu, mem); err != nil {
+				req.reply <- "save failed: " + err.Error()
+			} else {
+				fmt.Printf("save-state: snapshot written to %s (pc=0x%08x)\n", statePath, cpu.pc)
+				req.reply <- "state saved"
+			}
+		case req := <-loadCh:
+			if err := LoadState(statePath, cpu, mem); err != nil {
+				req.reply <- "load failed: " + err.Error()
+			} else {
+				cpu.cycles, mmio.timerNext, mmio.timerTicks = 0, mmio.timerPeriod, 0
+				cpu.pending = nil
+				si = len(script)         // don't re-run the boot script
+				have, injected = false, false // drop any in-flight keypress
+				fmt.Printf("save-state: reloaded %s (pc=0x%08x)\n", statePath, cpu.pc)
+				req.reply <- "state reloaded"
+			}
+		default:
+		}
 
 		if si < len(script) {
 			if cpu.cycles >= script[si].at && keySafe(cpu) {

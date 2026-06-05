@@ -128,7 +128,7 @@ func main() {
 	// So we persist a FULL save-state (CPU + DRAM/ILRAM/OCRAM + flash delta) and RESUME from
 	// it. "provision" boots fresh, drives setup to the MAIN MENU, and snapshots; every other
 	// boot auto-resumes from the snapshot. File lives under os/ (git-ignored; OS-derived bytes).
-	const statePath = "../os/flash_dump/cg50_state.bin"
+	resumed := false
 	if mode == "provision" {
 		seqStr := "1-9,1-9,1-9,1-9,6-9,6-9,1-9,1-9,2-1" // first-boot setup -> MAIN MENU
 		pressAt := uint64(130_000_000)
@@ -157,12 +157,20 @@ func main() {
 			cpu.cycles = 0 // restart the free-running counter (OS uses timer deltas only)
 			mmio.timerNext = mmio.timerPeriod
 			mmio.timerTicks = 0
+			resumed = true
 			fmt.Printf("save-state: RESUMED from %s at pc=0x%08x (skipped boot + first-setup)\n", statePath, cpu.pc)
 		}
 	}
 
 	if mode == "web" {
-		runWeb(cpu, mem, mmio)
+		runWeb(cpu, mem, mmio, resumed)
+		return
+	}
+	if mode == "rtbench" {
+		// Demonstrate/measure the real-time paced loop via the Emulator facade (the same API
+		// the Android bridge drives). Resumes from the save-state if present, then paces to a
+		// target IPS for ~3s and reports the achieved rate + frame count.
+		runRTBench(img)
 		return
 	}
 	if mode == "ftl" {
@@ -320,6 +328,32 @@ func main() {
 	fmt.Printf("best vram_nz seen: %d\n", bestNZ)
 	dumpFB(mem, 0x8C000000, "boot_final.png") // SEE where the boot ended (e.g. menu vs first-boot)
 	report(cpu, mmio, start)
+}
+
+// runRTBench exercises the Emulator facade + RunRealtime end-to-end: resume from the
+// save-state, pace to a target instructions/second for ~3s, and report the achieved rate.
+func runRTBench(img []byte) {
+	e := NewEmulator(img)
+	if raw, err := os.ReadFile(statePath); err == nil {
+		if err := e.Resume(raw); err != nil {
+			fmt.Println("rtbench: resume failed, running fresh boot:", err)
+		} else {
+			fmt.Printf("rtbench: resumed from save-state at pc=0x%08x\n", e.PC())
+		}
+	} else {
+		fmt.Println("rtbench: no save-state found — pacing a fresh-boot machine (provision first for the menu)")
+	}
+	const target, frameHz = 20_000_000, 60
+	frames := 0
+	stop := make(chan struct{})
+	go func() { time.Sleep(3 * time.Second); close(stop) }()
+	c0 := e.Cycles()
+	t0 := time.Now()
+	e.RunRealtime(target, frameHz, func() { frames++ }, stop)
+	el := time.Since(t0).Seconds()
+	ran := e.Cycles() - c0
+	fmt.Printf("rtbench: target=%.0fM ips @ %dHz -> ran %d instr in %.2fs = %.2fM ips, %d frames (%.0f fps), end pc=0x%08x\n",
+		float64(target)/1e6, frameHz, ran, el, float64(ran)/el/1e6, frames, float64(frames)/el, e.PC())
 }
 
 func report(cpu *CPU, mmio *MMIOBus, start time.Time) {

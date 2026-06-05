@@ -8,7 +8,7 @@ package main
 // coupled to battery-backed RAM the real calc keeps alive, so we snapshot RAM too.)
 
 import (
-	"bufio"
+	"bytes"
 	"compress/gzip"
 	"encoding/binary"
 	"fmt"
@@ -17,6 +17,10 @@ import (
 )
 
 const stateMagic = "CG50ST01"
+
+// statePath is the default save-state file (git-ignored under os/, since it holds OS-derived
+// RAM/flash bytes). Shared by the `provision`/auto-resume path in main and the web UI buttons.
+const statePath = "../os/flash_dump/cg50_state.bin"
 
 // snapshotRegs / restoreRegs marshal the architectural registers (raw banks: c.r is the
 // active bank, c.rbank1 the inactive one, and c.sr holds the RB bit — so restoring all
@@ -39,15 +43,11 @@ func (c *CPU) restoreRegs(b []uint32) {
 	c.mach, c.macl, c.fpul, c.fpscr, c.sr = b[i+7], b[i+8], b[i+9], b[i+10], b[i+11]
 }
 
-// SaveState writes a gzip-compressed snapshot to path.
-func SaveState(path string, cpu *CPU, mem *Memory) error {
-	f, err := os.Create(path)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	bw := bufio.NewWriter(f)
-	gz := gzip.NewWriter(bw)
+// SnapshotBytes returns a gzip-compressed save-state in memory (for hosts that persist a
+// byte[] themselves — e.g. the Android bridge or the web UI). SaveState wraps it to a file.
+func SnapshotBytes(cpu *CPU, mem *Memory) ([]byte, error) {
+	var out bytes.Buffer
+	gz := gzip.NewWriter(&out)
 
 	var u32 [4]byte
 	wU32 := func(v uint32) error {
@@ -64,38 +64,51 @@ func SaveState(path string, cpu *CPU, mem *Memory) error {
 	}
 
 	if _, err := gz.Write([]byte(stateMagic)); err != nil {
-		return err
+		return nil, err
 	}
 	regs := cpu.snapshotRegs()
 	if err := wU32(uint32(len(regs))); err != nil {
-		return err
+		return nil, err
 	}
 	for _, v := range regs {
 		if err := wU32(v); err != nil {
-			return err
+			return nil, err
 		}
 	}
 	for _, blk := range [][]byte{mem.dram, mem.ilram, mem.ocram, mem.flashDeltaBytes()} {
 		if err := wBlock(blk); err != nil {
-			return err
+			return nil, err
 		}
 	}
 	if err := gz.Close(); err != nil {
-		return err
+		return nil, err
 	}
-	return bw.Flush()
+	return out.Bytes(), nil
 }
 
-// LoadState restores a snapshot and leaves the CPU ready to RESUME from the saved PC.
-// The caller should reset the free-running cycle counter / timer schedule afterward (the
-// OS only uses timer deltas, so an absolute counter reset is invisible).
-func LoadState(path string, cpu *CPU, mem *Memory) error {
-	f, err := os.Open(path)
+// SaveState writes a gzip-compressed snapshot to path.
+func SaveState(path string, cpu *CPU, mem *Memory) error {
+	b, err := SnapshotBytes(cpu, mem)
 	if err != nil {
 		return err
 	}
-	defer f.Close()
-	gz, err := gzip.NewReader(f)
+	return os.WriteFile(path, b, 0644)
+}
+
+// LoadState restores a snapshot from path. ResumeBytes does the same from an in-memory blob.
+func LoadState(path string, cpu *CPU, mem *Memory) error {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	return ResumeBytes(raw, cpu, mem)
+}
+
+// ResumeBytes restores a gzip snapshot and leaves the CPU ready to RESUME from the saved PC.
+// The caller should reset the free-running cycle counter / timer schedule afterward (the OS
+// only uses timer deltas, so an absolute counter reset is invisible).
+func ResumeBytes(raw []byte, cpu *CPU, mem *Memory) error {
+	gz, err := gzip.NewReader(bytes.NewReader(raw))
 	if err != nil {
 		return err
 	}
