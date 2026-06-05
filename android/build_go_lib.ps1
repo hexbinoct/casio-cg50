@@ -31,7 +31,11 @@ foreach ($t in $targets) {
     $env:CC          = $cc
 
     Write-Host "Building libcg50core.so for $($t.abi) (GOARCH=$($t.goarch)) ..."
-    & go build -C $emu -buildmode=c-shared -o (Join-Path $out "libcg50core.so") .
+    # Set a SONAME so the JNI shim records "libcg50core.so" (basename) in its DT_NEEDED rather
+    # than the absolute build path CMake passes; without it, dlopen fails on-device.
+    & go build -C $emu -buildmode=c-shared `
+        "-ldflags=-extldflags=-Wl,-soname,libcg50core.so" `
+        -o (Join-Path $out "libcg50core.so") .
     if ($LASTEXITCODE -ne 0) { throw "go build failed for $($t.abi)" }
     # The c-shared header isn't needed (native-lib.cpp declares the prototypes); drop it.
     Remove-Item (Join-Path $out "libcg50core.h") -ErrorAction SilentlyContinue

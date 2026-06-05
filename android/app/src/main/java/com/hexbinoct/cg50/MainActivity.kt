@@ -1,6 +1,7 @@
 package com.hexbinoct.cg50
 
 import android.os.Bundle
+import android.util.Log
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.LinearLayout
@@ -24,6 +25,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private val stateFile get() = File(getExternalFilesDir(null), "cg50_state.bin")
 
+    companion object { private const val TAG = "cg50" }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
@@ -40,10 +43,13 @@ class MainActivity : AppCompatActivity() {
         }
 
         NativeBridge.init(flash.readBytes())
+        Log.i(TAG, "init ok; core ${NativeBridge.width()}x${NativeBridge.height()}")
         binding.statusText.text = if (stateFile.exists()) {
             val r = NativeBridge.resume(stateFile.readBytes())
+            Log.i(TAG, "resume returned $r")
             if (r == 0) "resumed" else "resume failed ($r) — booting"
         } else {
+            Log.i(TAG, "no save-state; cold boot")
             "no save-state — cold boot (first-boot setup will show)"
         }
         binding.screenView.onEmulatorReady()
