@@ -49,6 +49,23 @@
 > vet+gofmt clean. NEXT (needs Android tooling): NDK build + JNI shim + Studio project + on-ARM perf/tuning pass.
 > ⚠ Do NOT kill TCP :8080 (GhidraMCP).
 >
+> ### ✅ cont.18h — FULL MENU APP SWEEP: all 18 standard apps work; 1 third-party add-in renders blank.
+> Using the save-state resume (instant menu) + direct icon-key launch (pressing an icon's number/letter key
+> launches it — no EXE needed; digits 1-9 and bare letter keys A=X,θ,T(6-6), B=log(5-6), C=ln(4-6), D=sin(3-6),
+> E=cos(2-6), F=tan(1-6), G=a b/c(6-5), H=S↔D(5-5), I=`(`(4-5), J=`)`(3-5)), launched every menu app and
+> screenshotted. **ALL 18 standard Casio apps launch + render correctly:** Run-Matrix (computes), Statistics,
+> eActivity, Spreadsheet, Graph (+DRAW plots), Dyna Graph, Table, Recursion, Conic Graphs, Equation, Program
+> (lists real progs), Financial, E-CON4, Link (Communication), Memory, System, Python (lists real .py files),
+> Distribution. Menu is two pages (DOWN scrolls); nav EXE/DOWN/RIGHT + number/letter select all work.
+> **ONE problem app:** the user's third-party CUSTOM add-in **J ("heronics2"/yellow "howdy" icon)** launches but
+> the framebuffer goes blank-white immediately (seq_00=menu → seq_01=blank) and it does NOT respond to MENU
+> (3-7). The emulator does NOT fault — it executes 260M+ instr fine — so it's the add-in itself hanging/looping
+> or rendering to something we don't capture (different VRAM target / unmodeled feature), NOT an emulator crash.
+> Non-standard add-in, low priority. To diagnose later: PC-histogram the J session (tight loop = hang vs varied
+> = polling), and check for unmapped-MMIO reads during it. Bottom line: the emulator robustly runs the entire
+> standard fx-CG50 app suite; only one custom third-party add-in misbehaves.
+> ⚠ Do NOT kill TCP :8080 (GhidraMCP).
+>
 > ## ⏯ (prev) RESUME HERE (last session end: 2026-06-05 cont.18e)
 >
 > ### 🏆 cont.18e — ON-DEVICE PROBES LANDED: cmd4 solved + BCD model finalized + CPU core validated vs SILICON
