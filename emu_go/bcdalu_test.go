@@ -12,8 +12,8 @@ import "testing"
 
 func TestBCDAddSubWord(t *testing.T) {
 	cases := []struct {
-		fn         string
-		a, b, cin  uint32
+		fn          string
+		a, b, cin   uint32
 		wantR, wOut uint32
 	}{
 		{"add", 0x09876500, 0x00000001, 0, 0x09876501, 0}, // simple

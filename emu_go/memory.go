@@ -64,9 +64,9 @@ type Memory struct {
 	rdLog int
 
 	// NOR command state machine
-	fcmd    int
-	bufRem  int     // remaining buffered-program data words to collect
-	bufW    []fword // buffered-program collected words
+	fcmd   int
+	bufRem int     // remaining buffered-program data words to collect
+	bufW   []fword // buffered-program collected words
 }
 
 func NewMemory(osImage []byte, mmio *MMIOBus) *Memory {

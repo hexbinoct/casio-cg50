@@ -249,7 +249,7 @@ func runWeb(cpu *CPU, mem *Memory, mmio *MMIOBus, resumed bool) {
 			} else {
 				cpu.cycles, mmio.timerNext, mmio.timerTicks = 0, mmio.timerPeriod, 0
 				cpu.pending = nil
-				si = len(script)         // don't re-run the boot script
+				si = len(script)              // don't re-run the boot script
 				have, injected = false, false // drop any in-flight keypress
 				fmt.Printf("save-state: reloaded %s (pc=0x%08x)\n", statePath, cpu.pc)
 				req.reply <- "state reloaded"

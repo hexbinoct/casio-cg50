@@ -1,5 +1,7 @@
 package main
 
+import "fmt"
+
 // SH7305 MMIO bus + peripheral stubs. Faithful port of emu/mmio.py.
 // Stubs return values that satisfy the OS poll loops (PLL ready, DMA done,
 // key released) so boot/run progresses.
@@ -151,7 +153,7 @@ func (e *etmuCounter) read(va, size uint32) uint32 {
 		if e.bus != nil && e.bus.cpu != nil {
 			cyc = e.bus.cpu.cycles
 		}
-		return uint32(-(cyc>>2)) & 0xFFFFFF
+		return uint32(-(cyc >> 2)) & 0xFFFFFF
 	}
 	return e.regs[va-e.bs]
 }
@@ -161,14 +163,18 @@ func (e *etmuCounter) read(va, size uint32) uint32 {
 // library drives it for every decimal +/- (FUN_80072e78 etc.); SH4 has no BCD opcodes, so
 // this peripheral does the packed-BCD digit math while software does shifts/masks (SHLD).
 // Registers (the 4-word block aliases every 0x10; the OS uses the +0x10 alias):
-//   +0x00 command/status   +0x04 operand A   +0x08 operand B   +0x0C result
+//
+//	+0x00 command/status   +0x04 operand A   +0x08 operand B   +0x0C result
+//
 // Operands are sticky; a command write triggers the op and the result is valid immediately.
 // The mantissa is fed one 32-bit word at a time, LSW first. There is a SINGLE shared
 // carry/borrow latch (proven on hardware: a sub's borrow-out feeds a following add as
 // carry-in). Command decode (16-bit; bit3 ignored so 8..15 mirror 0..7):
-//   op      = (cmd&1) ? BCD add : BCD sub
-//   flag_in = (cmd&4) ? 1 : (cmd&2) ? latch : 0       (forced-1 / latched / forced-0)
-//   flag_out = carry (add) or borrow (sub) -> latched for the next op.
+//
+//	op      = (cmd&1) ? BCD add : BCD sub
+//	flag_in = (cmd&4) ? 1 : (cmd&2) ? latch : 0       (forced-1 / latched / forced-0)
+//	flag_out = carry (add) or borrow (sub) -> latched for the next op.
+//
 // So: 0=A-B  1=A+B  2=A-B-flag  3=A+B+flag  4=A-B-1  5=A+B+1 (OS only uses 0..4).
 // VALIDATED: with this model the OS formatter renders "98765"/"4.695555556" instead of "0"
 // (the unmodelled result reg reading 0 was the root cause of "all results show 0", cont.18c).
@@ -195,7 +201,7 @@ func bcdAdd(a, b, carry uint32) (uint32, uint32) {
 func bcdSub(a, b, borrow uint32) (uint32, uint32) {
 	var res uint32
 	for i := uint32(0); i < 8; i++ {
-		s := int(((a>>(4*i))&0xF)) - int((b>>(4*i))&0xF) - int(borrow)
+		s := int(((a >> (4 * i)) & 0xF)) - int((b>>(4*i))&0xF) - int(borrow)
 		borrow = 0
 		if s < 0 {
 			s += 10
@@ -272,6 +278,58 @@ type MMIOBus struct {
 	kbStart, kbEnd uint64
 	kbReg          int32
 	kbVal          uint32
+
+	// scan-protocol capture (scancap mode): when scanCap is set, every access to the
+	// KEYSC/KIU/PFC register blocks is recorded so we can see how the OS scans the matrix.
+	scanCap   bool
+	scanSeq   []scanEntry    // bounded ordered trace of accesses (the protocol)
+	scanCount map[string]int // "REGION+off R|W" -> count (summary histogram)
+}
+
+type scanEntry struct {
+	cyc       uint64
+	pc, val   uint32
+	region    string
+	off, size uint32
+	write     bool
+}
+
+// scanWatched classifies a (possibly P0/P2-aliased) address as one of the key-scan
+// register blocks, returning the block name and offset within it.
+func scanWatched(va uint32) (string, uint32, bool) {
+	b := (va & 0x1FFFFFFF) | 0xA0000000
+	switch b &^ 0xFFF {
+	case 0xA4080000:
+		return "KEYSC", b & 0xFFF, true
+	case 0xA44B0000:
+		return "KIU", b & 0xFFF, true
+	case 0xA4050000:
+		return "PFC", b & 0xFFF, true
+	case 0xA44C0000: // port strobe/clock pins the matrix scan toggles (found cont.18k)
+		return "PORTL", b & 0xFFF, true
+	}
+	return "", 0, false
+}
+
+// captureScan records one watched access (caller checks b.scanCap).
+func (b *MMIOBus) captureScan(va, size, val uint32, write bool) {
+	region, off, ok := scanWatched(va)
+	if !ok {
+		return
+	}
+	rw := "R"
+	if write {
+		rw = "W"
+	}
+	b.scanCount[fmt.Sprintf("%s+%03x %s", region, off, rw)]++
+	if len(b.scanSeq) < 6000 {
+		var pc uint32
+		var cyc uint64
+		if b.cpu != nil {
+			pc, cyc = b.cpu.pc, b.cpu.cycles
+		}
+		b.scanSeq = append(b.scanSeq, scanEntry{cyc: cyc, pc: pc, val: val, region: region, off: off, size: size, write: write})
+	}
 }
 
 func NewMMIOBus() *MMIOBus {
@@ -340,10 +398,17 @@ func (b *MMIOBus) Read(va, size uint32) uint32 {
 		b.unknown[va]++
 		return 0
 	}
-	return r.read(hit, size)
+	res := r.read(hit, size)
+	if b.scanCap {
+		b.captureScan(va, size, res, false)
+	}
+	return res
 }
 
 func (b *MMIOBus) Write(va, size, val uint32) {
+	if b.scanCap {
+		b.captureScan(va, size, val, true)
+	}
 	r, hit := b.findHit(va)
 	if r == nil {
 		b.unknown[va]++

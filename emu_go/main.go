@@ -10,6 +10,7 @@ import (
 	"os"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -162,6 +163,10 @@ func main() {
 		}
 	}
 
+	if mode == "scancap" {
+		runScanCap(cpu, mem, mmio)
+		return
+	}
 	if mode == "web" {
 		runWeb(cpu, mem, mmio, resumed)
 		return
@@ -451,11 +456,11 @@ func report(cpu *CPU, mmio *MMIOBus, start time.Time) {
 // (r0 at return) to test whether flash records pass ECC during boot.
 func runFTL(cpu *CPU, mem *Memory, mmio *MMIOBus, maxIns uint64) {
 	watch := map[uint32]string{
-		0x80371718: "ECC_verify(FUN_80371718)",     // ret 1=clean 2=corrected 3=uncorrectable
-		0x80370ff0: "block_read(FUN_80370ff0)",      // ret 0=ok -5=ECC-fail -2/-6=other
+		0x80371718: "ECC_verify(FUN_80371718)", // ret 1=clean 2=corrected 3=uncorrectable
+		0x80370ff0: "block_read(FUN_80370ff0)", // ret 0=ok -5=ECC-fail -2/-6=other
 		0x803715dc: "rec_verify(FUN_803715dc)",
-		0x801885f2: "load_setup(FUN_801885f2)",      // ret -6 on record-validate fail
-		0x8018879c: "validate_rec(FUN_8018879c)",    // ret 1=found type0x1d ok, 0=not
+		0x801885f2: "load_setup(FUN_801885f2)",   // ret -6 on record-validate fail
+		0x8018879c: "validate_rec(FUN_8018879c)", // ret 1=found type0x1d ok, 0=not
 	}
 	order := []string{"block_read(FUN_80370ff0)", "rec_verify(FUN_803715dc)",
 		"ECC_verify(FUN_80371718)", "load_setup(FUN_801885f2)", "validate_rec(FUN_8018879c)"}
@@ -819,11 +824,66 @@ func keySafe(cpu *CPU) bool {
 	return cpu.pc >= 0x80002000 && cpu.pc < 0x80c00000
 }
 
+// runScanCap captures how the OS scans the key matrix. With the machine RESUMED at the
+// MAIN MENU (idling in getkey), it records every access to the KEYSC/KIU/PFC register
+// blocks so we can see the scan protocol (which registers, column-select writes vs
+// row-data reads) — the basis for modelling the matrix in mmio.go so injected keys flow
+// through the OS's native scan (no flush). Writes summary + full trace to re/scancap.txt.
+func runScanCap(cpu *CPU, mem *Memory, mmio *MMIOBus) {
+	step := func(n int) {
+		for i := 0; i < n; i++ {
+			mmio.tick(cpu)
+			cpu.step()
+		}
+	}
+	fmt.Printf("scancap: warmup (resume settle) from pc=0x%08x ...\n", cpu.pc)
+	step(1_000_000) // let the resumed machine reach its steady idle getkey loop
+	mmio.scanCount = map[string]int{}
+	mmio.scanSeq = nil
+	mmio.scanCap = true
+	step(3_000_000) // capture window
+	mmio.scanCap = false
+	fmt.Printf("scancap: captured %d accesses (%d unique reg/dir)\n", len(mmio.scanSeq), len(mmio.scanCount))
+
+	// summary histogram, sorted by count desc
+	type kv struct {
+		k string
+		v int
+	}
+	var hist []kv
+	for k, v := range mmio.scanCount {
+		hist = append(hist, kv{k, v})
+	}
+	sort.Slice(hist, func(i, j int) bool { return hist[i].v > hist[j].v })
+	var sb strings.Builder
+	sb.WriteString("=== KEYSC/KIU/PFC access histogram (count desc) ===\n")
+	for _, e := range hist {
+		sb.WriteString(fmt.Sprintf("  %-14s x%d\n", e.k, e.v))
+	}
+	sb.WriteString("\n=== ordered access trace (cyc: PC R/W REGION+off [size] = val) ===\n")
+	for _, e := range mmio.scanSeq {
+		rw := "R"
+		if e.write {
+			rw = "W"
+		}
+		sb.WriteString(fmt.Sprintf("%9d: %08x %s %s+%03x [%d] = %08x\n", e.cyc, e.pc, rw, e.region, e.off, e.size, e.val))
+	}
+	out := "../re/scancap.txt"
+	if err := os.WriteFile(out, []byte(sb.String()), 0644); err != nil {
+		fmt.Println("scancap: write error:", err)
+	} else {
+		fmt.Printf("scancap: wrote %s\n", out)
+	}
+	// also echo the histogram to stdout for an immediate read
+	fmt.Print(sb.String()[:min(len(sb.String()), 1600)])
+}
+
 // runSeq drives the first-boot setup UI by injecting a SEQUENCE of keypresses
 // ("row-col,row-col,...", 0-based matrix coords) spaced `interval` instructions
 // apart starting at `pressAt`, dumping a PNG after each so we can watch the setup
 // flow advance toward the main menu. Known keys (grid C,R -> inject row=R-1,col=C-1):
-//   DOWN = C8R3 (2-7) | advance/Next = C10R2 (1-9) | SHIFT = C9R7 (6-8)
+//
+//	DOWN = C8R3 (2-7) | advance/Next = C10R2 (1-9) | SHIFT = C9R7 (6-8)
 func runSeq(cpu *CPU, mem *Memory, mmio *MMIOBus, maxIns uint64, seqStr string, pressAt, interval uint64, watch bool) {
 	type key struct {
 		row, col uint32
@@ -1260,8 +1320,8 @@ func runProf(cpu *CPU, mem *Memory, mmio *MMIOBus, maxIns uint64) {
 			fmt.Printf("FAULT @0x%08x after %d: %v\n", cpu.pc, cpu.cycles, r)
 		}
 		type kv struct {
-			pc  uint32
-			n   uint64
+			pc uint32
+			n  uint64
 		}
 		var top []kv
 		var total uint64

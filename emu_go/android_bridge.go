@@ -17,6 +17,8 @@ package main
 /*
 #include <stdlib.h>
 #include <stdint.h>
+#include <android/log.h>
+#cgo LDFLAGS: -llog
 */
 import "C"
 
@@ -25,9 +27,18 @@ import "unsafe"
 // gEmu is the single process-wide machine the host drives (one calculator per app).
 var gEmu *Emulator
 
+// keyTag is the logcat tag for key-path diagnostics (allocated once, lives for process life).
+var keyTag = C.CString("cg50-key")
+
 //export EmuInit
 func EmuInit(flash *C.uint8_t, n C.int) {
 	gEmu = NewEmulator(C.GoBytes(unsafe.Pointer(flash), n))
+	// Route the key state-machine diagnostics to Android logcat (tag cg50-key).
+	gEmu.dbg = func(s string) {
+		cs := C.CString(s)
+		C.__android_log_write(C.ANDROID_LOG_INFO, keyTag, cs)
+		C.free(unsafe.Pointer(cs))
+	}
 }
 
 //export EmuWidth

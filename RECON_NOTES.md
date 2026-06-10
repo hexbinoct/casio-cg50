@@ -1,6 +1,55 @@
 # fx-CG50 → Android emulator — recon notes
 
-> ## ⏯ RESUME HERE (last session end: 2026-06-05 cont.18j)
+> ## ⏯ RESUME HERE (last session end: 2026-06-10 cont.18k)
+>
+> ### 🚀 cont.18k — Android PERF win shipped + input-latency ROOT CAUSE found (matrix scan = PFC ports).
+> Two threads this session; the perf wins are solid, the input fix is scoped + grounded but NOT yet built.
+>
+> **(1) PERF — SHIPPED, ~1.5× faster menu.** The Android render loop (`CalcSurfaceView.run()`) was
+> wasting ~42% of every frame on a SOFTWARE framebuffer upscale. On-device measurement (new `cg50-perf`
+> logcat line: achieved ips / fps / step-ms / blit-ms per 1s) showed **16.5M ips, blit 8.3ms/f**. Fix:
+> `holder.setFixedSize(w,h)` → render at native 384×216 and let the **GPU compositor** scale to the view
+> (drawBitmap now 1:1). Plus raised `instrPerFrame` 333k→500k. Result measured: **~25M ips, blit 2.5ms/f**
+> (~1.5×; raw core on this arm64 phone is ~29M/s). The "watch it draw" partial-frame artifact is gone.
+> Both changes are pure Android/Kotlin (no Go core, no tests affected). **These are worth committing.**
+>
+> **(2) INPUT LATENCY — root cause FOUND, proper fix SCOPED (not built).** The menu "reversal hang"
+> (press up after downs → ~1.5–3.2s freeze) is NOT throughput; it's the key-injection scheme. We inject
+> via the OS enqueue shortcut `FUN_801e684c` then wait for decode `FUN_801952cc`; a key injected mid-redraw
+> is FLUSHED and never decoded, so the old state machine waited a fixed **40M-cycle (~1.6s) timeout** before
+> re-injecting (double timeout = ~3.2s). On-device `cg50-key` logging proved it: good presses land in
+> ~1.5–12M cyc (60–500ms), flushed ones eat the full timeout. Tried & REVERTED two heuristics: (a) re-inject
+> when OS key queue (`keyQueueCount`, *0x801e6a1c) drains — WRONG: that raw queue is drained by an ISR in
+> ~10–30k cyc regardless of consume, a false "landed" signal → every key marked done without acting (dead UI);
+> (b) treat qc-drain as landed → on the BIGNUM "press F1" screen (which consumes keys via a NON-`FUN_801952cc`
+> path) it 12×-re-injected then gave up = looked stuck. **Current shipped state = decode-confirm with timeout
+> lowered 40M→20M** (`emu_go/emulator.go` keyDecodeTimeout): menu works, hang ~halved, but still bimodal
+> (~half of presses ~0.13s, ~half ~1.5s). A bad save-state can get snapshotted mid-screen on the phone; if the
+> app looks stuck, force-stop + `adb push os/flash_dump/cg50_state.bin` (clean menu state) before relaunch.
+>
+> **THE PROPER FIX (next session): model the real hardware matrix scan so injected keys flow through the OS's
+> NATIVE scan — works on every screen, no flush, no retry, deletes the whole enqueue/decode-confirm hack.**
+> Built a `scancap` mode (`go -C emu_go run . 0 30000 scancap`; resumes to menu, idles, logs every
+> KEYSC/KIU/PFC/PORTL access → `re/scancap.txt`). KEY RESULT: the OS scans the matrix via **PFC port
+> registers, NOT KEYSC/KIU** (those stay 0). Idle "any-key?" poll routine @**0x801e6d40** region
+> (accesses repeat at PC 0x801e6da2–0x801e6dbc). Registers: **0xA4050100 / 0xA4050120 (16-bit port data,
+> column select), 0xA405014e (ROW-READ — returns 0x100 = no key; this is the reg that yields pressed-key
+> bits for the selected column), 0xA4050162**, plus byte strobe/clock pins at **0xA44C0000 / 0xA44C0020**.
+> It's a multi-pin strobe protocol (why the original author skipped it). NEXT STEPS, in order:
+>   1. Capture the scan WITH a key held — only possible on real HW (emu stubs the port to 0). This is the
+>      perfect **on-device probe** (like the cont.18e BCD-ALU probe): a g3a add-in that reads 0xA405014e +
+>      the select state per key → exact column-select value & row-bit for every matrix (col,row). OR fully
+>      RE the scan routine @0x801e6d40 statically (it + KEYMAP.md's logical matrix may suffice without a probe).
+>   2. Implement the port scan in `emu_go/mmio.go` (keysc→a real `pfcKeyMatrix` region for 0xA4050100/14e/162
+>      + 0xA44C pins) and mirror in `emu/mmio.py`; a "held key" sets the right row bit when its column is
+>      selected. Replace the `InjectKey` enqueue-shortcut with setting matrix state (held N scans, then released).
+>   3. Regen goldens (boot never presses keys → unaffected) + add conformance for the new port reads.
+> Tools added this session: `re/find_kiu.py` (reg-constant locator), `emu_go` scancap mode, `re/scancap.txt`.
+> ⚠ Uncommitted as of session end: Android perf (CalcSurfaceView), perf+key diagnostics, 40M→20M timeout,
+> scancap mode + mmio capture. Do NOT kill TCP :8080 (GhidraMCP); Ghidra decompiler was timing out (5s) so
+> used `re/disasm_static.py` (local SH4 disasm) instead — works great for this.
+>
+> ## ⏯ (prev) RESUME HERE (last session end: 2026-06-05 cont.18j)
 >
 > ### 🏆🏆🏆 cont.18j — IT RUNS ON ANDROID. Native app boots the OS on the EMULATOR **and a physical phone**.
 > The Android app (Route A: Go core cross-compiled to a c-shared `.so` + a JNI shim, see cont.18i) is

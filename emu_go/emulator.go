@@ -13,6 +13,7 @@ package main
 // All public methods are safe to call concurrently with the run loop.
 
 import (
+	"fmt"
 	"sync"
 	"time"
 )
@@ -22,6 +23,19 @@ const (
 	FbWidth  = 384
 	FbHeight = 216
 	fbBytes  = FbWidth * FbHeight * 2
+)
+
+// Key re-injection tuning (decode-confirmed injector, see driveKeys). A key "lands" only when
+// the OS key decoder FUN_801952cc actually runs for it (the app read+acted on it). On-device
+// measurement showed legit decode latency is ~1.5-12M cycles; a key injected during a redraw
+// is flushed and never decoded, so we re-inject after keyDecodeTimeout. That timeout was 40M
+// (~1.6s @25M ips) — the menu reversal "hang"; 20M halves it while staying clear of the ~12M
+// slowest legit decode (so we never re-inject, hence double-move, a key that simply decoded
+// slowly). NOTE: the OS key *queue* (keyQueueCount) is a raw buffer drained by an ISR in ~10-30k
+// cycles regardless of whether the app consumed the key, so it is NOT a usable "landed" signal.
+const (
+	keyDecodeTimeout = 20_000_000
+	keyMaxRetries    = 6
 )
 
 type Emulator struct {
@@ -41,6 +55,10 @@ type Emulator struct {
 	sawDecode bool
 	injStart  uint64
 	retries   int
+
+	// dbg, if set (by the Android bridge), receives one-line key-path diagnostics
+	// (inject/land/retry with queue depth + decode latency). nil on desktop/tests.
+	dbg func(string)
 }
 
 // NewEmulator builds a fresh machine ready to boot from reset (pc = 0x80000000). Call
@@ -92,6 +110,9 @@ func (e *Emulator) driveKeys() {
 		if keySafe(cpu) {
 			injectKey(cpu, e.mem, e.curKey[0], e.curKey[1])
 			e.injected, e.sawDecode, e.injStart, e.retries = true, false, cpu.cycles, 0
+			if e.dbg != nil {
+				e.dbg(fmt.Sprintf("inject r=%d c=%d qdepth=%d", e.curKey[0], e.curKey[1], len(e.keys)))
+			}
 		}
 		return
 	}
@@ -99,14 +120,26 @@ func (e *Emulator) driveKeys() {
 		e.sawDecode = true
 	}
 	if e.sawDecode {
-		e.haveKey = false // landed
-	} else if cpu.cycles-e.injStart > 40_000_000 && keySafe(cpu) {
+		e.haveKey = false // landed: the app's getkey decoded (and acted on) the key
+		if e.dbg != nil {
+			e.dbg(fmt.Sprintf("land   r=%d c=%d latency=%d retries=%d qdepth=%d", e.curKey[0], e.curKey[1], cpu.cycles-e.injStart, e.retries, len(e.keys)))
+		}
+	} else if cpu.cycles-e.injStart > keyDecodeTimeout && keySafe(cpu) {
+		// No decode within the timeout: the key was flushed by a redraw (or this screen doesn't
+		// decode via FUN_801952cc). Re-inject. A flushed key never decoded, so re-injection
+		// delivers it exactly once — no double move on the menu.
 		e.retries++
-		if e.retries > 8 {
+		if e.retries > keyMaxRetries {
 			e.haveKey = false // give up (key is a no-op in this context)
+			if e.dbg != nil {
+				e.dbg(fmt.Sprintf("giveup r=%d c=%d qdepth=%d", e.curKey[0], e.curKey[1], len(e.keys)))
+			}
 		} else {
 			injectKey(cpu, e.mem, e.curKey[0], e.curKey[1])
 			e.injStart = cpu.cycles
+			if e.dbg != nil {
+				e.dbg(fmt.Sprintf("retry  r=%d c=%d n=%d qdepth=%d", e.curKey[0], e.curKey[1], e.retries, len(e.keys)))
+			}
 		}
 	}
 }

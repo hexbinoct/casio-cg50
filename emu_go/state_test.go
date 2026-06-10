@@ -21,10 +21,10 @@ func TestSaveStateRoundtrip(t *testing.T) {
 	cpu.mach, cpu.macl, cpu.pr = 0x11112222, 0x33334444, 0x80055260
 	cpu.rbank1[2] = 0xb2b2b2b2
 	mem.dram[100] = 0xAB
-	mem.W32(0x0C000200, 0xCAFEF00D)        // DRAM via the bus
-	mem.ilram[8] = 0x5A                     // ILRAM
-	mem.ocram[0x40] = 0xC3                  // OCRAM
-	mem.flash[0x01000000] = 0x42            // a storage-tail flash byte (differs from 0xFF baseline)
+	mem.W32(0x0C000200, 0xCAFEF00D) // DRAM via the bus
+	mem.ilram[8] = 0x5A             // ILRAM
+	mem.ocram[0x40] = 0xC3          // OCRAM
+	mem.flash[0x01000000] = 0x42    // a storage-tail flash byte (differs from 0xFF baseline)
 	mem.flash[0x01040abc] = 0x7E
 
 	path := filepath.Join(t.TempDir(), "st.bin")

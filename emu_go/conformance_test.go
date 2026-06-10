@@ -23,10 +23,10 @@ type cState struct {
 }
 
 type cSetup struct {
-	R                                          []uint32
-	Rbank1                                     []uint32
-	Sr, Pr, Gbr, Vbr, Ssr, Spc, Mach, Macl     uint32
-	Fpul, Fpscr                                uint32
+	R                                      []uint32
+	Rbank1                                 []uint32
+	Sr, Pr, Gbr, Vbr, Ssr, Spc, Mach, Macl uint32
+	Fpul, Fpscr                            uint32
 }
 
 type cCase struct {
