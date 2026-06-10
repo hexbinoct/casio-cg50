@@ -1,5 +1,14 @@
 # fx-CG50 → Android emulator — recon notes
 
+<!-- ============================================================================
+  NEW SESSION? READ THE "⏯ RESUME HERE" BLOCK DIRECTLY BELOW *FIRST*.
+  It is the current state + the next task with exact entry points. Each session
+  appends a new "⏯ RESUME HERE (last session end: …contNN)" block at the TOP; the
+  most recent one is authoritative, older blocks below are history. When you finish
+  a session's work, ADD a new RESUME block here summarizing what changed + what's
+  pending, so the next session can continue without being reminded.
+============================================================================= -->
+
 > ## ⏯ RESUME HERE (last session end: 2026-06-10 cont.18k)
 >
 > ### 🚀 cont.18k — Android PERF win shipped + input-latency ROOT CAUSE found (matrix scan = PFC ports).

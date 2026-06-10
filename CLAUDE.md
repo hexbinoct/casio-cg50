@@ -1,6 +1,11 @@
 # fx-CG50 → Android emulator project
 
-See `RECON_NOTES.md` for full reverse-engineering state and the running plan.
+## 👉 FIRST STEP EVERY SESSION (do this before any emulator/Android/RE work)
+**Read the `RECON_NOTES.md` "⏯ RESUME HERE" block at the top of the file.** It is the canonical
+running state: what was just done, what is shipped vs in-progress, the current open task, and the
+exact entry points (addresses/files/next steps) to continue. Do this without being asked — it is how
+you reconstruct context across sessions (you do not retain prior conversations). `RECON_NOTES.md` holds
+the full reverse-engineering history below that block.
 
 ## Working style (IMPORTANT — minimizes approval prompts)
 
