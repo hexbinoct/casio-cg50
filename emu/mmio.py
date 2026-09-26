@@ -10,7 +10,8 @@ Register identities reverse-engineered in RECON_NOTES.md:
   0xA4150000  CPG  (FRQCR; PLL-ready bit0 @ +0x60; +0x20/30/38 in reset)
   0xA4050000  PFC  (pin function / ports; 0xA4050138 strobed each main loop)
   0xA4520000  WDT  (0x5A00/0xA5xx key writes)
-  0xA4080000  KEYSC keyboard matrix controller (12 data regs +0..0x16)
+  0xA4080000  INTC  interrupt controller (IPR/IMR/IMCR) — NOT the keyboard
+  0xA44B0000  KEYSC/KIU key-scan unit (6 key-data words + ctrl; INTEVT 0xBE0) — see KeyScan
   0xA4490000  TMU  timer unit ; 0xA44A0000 ETMU
   0xA4610000  timer/periph IRQ block (ack @ +0x88)
   0xFEC10000  bus/SDRAM controller (16-reg timing block)
@@ -71,10 +72,109 @@ class DMAC(Region):
         return self.regs.get(off, 0)
 
 
-class KEYSC(Region):
-    """Keyboard matrix controller. All-keys-released = 0 in every data register."""
+class INTCStub(Region):
+    """INTC (0xA4080000, SH7724-style IPR/IMR/IMCR) — NOT the keyboard (cont.18l). Masking
+    isn't modelled (CPU IMASK/BL gating suffices); reads return 0 as they always did."""
     def read(self, va, size):
         return 0
+
+
+class KeyScan(Region):
+    """SH7305 key-scan unit (KIU/KEYSC) @0xA44B0000 — the real path a keypress takes into
+    the OS. Exact mirror of emu_go/keysc.go (see its header for the RE'd register map):
+      +0x00..+0x0B six key-data words: word = col>>1, bit = row + 8*(col&1) (0-based grid
+                   of re/KEYMAP.md); +0x0C ctrl (bit15 enable); +0x10 mode (0x200 normal,
+                   0x400 detect-only, 0x800 scan-now, 0 off); +0x12 busy(=0);
+      +0x14 [15:8] IRQ enable per flag, [7:0] flags W1C: bit3 key-detect, bit1 scan-complete.
+    Every scan_period cycles: press edge -> detect flag; while held (+2 scans after
+    release) -> scan-complete flag; mode 0x800 -> scan-complete every period. IRQ INTEVT
+    0xBE0 level 13 while (flags & enable) != 0."""
+    INTEVT = 0xBE0
+    LEVEL = 13
+    FLAG_SCAN = 0x02
+    FLAG_DETECT = 0x08
+    DEFAULT_SCAN_PERIOD = 500000
+
+    def __init__(self, name, base, size, scan_period=DEFAULT_SCAN_PERIOD):
+        super().__init__(name, base, size)
+        self.held = [0] * 6
+        self.ctrl = self.mode = self.ie = self.flags = 0
+        self.scan_period = scan_period
+        self.scan_next = 0
+        self.scan_left = 0
+        self.was_held = False
+
+    def any_held(self):
+        return any(self.held)
+
+    def press(self, row, col):
+        if row < 8 and col < 12:
+            if not self.any_held():
+                self.scan_next = 0      # key-detect is edge-triggered: scan at the next tick
+            self.held[col >> 1] |= 1 << (row + 8 * (col & 1))
+
+    def release(self, row, col):
+        if row < 8 and col < 12:
+            self.held[col >> 1] &= ~(1 << (row + 8 * (col & 1))) & 0xFFFF
+
+    def release_all(self):
+        self.held = [0] * 6
+
+    def resume_defaults(self):
+        self.ctrl, self.mode, self.ie, self.flags = 0x8000, 0x200, 0x48, 0
+        self.scan_left, self.was_held = 0, False
+
+    def read(self, va, size):
+        off = va - self.base
+        if off < 0x0C:
+            w = self.held[off >> 1]
+            if size == 2:
+                return w
+            if size == 1:
+                return (w >> 8) if (off & 1) == 0 else (w & 0xFF)
+            lo = self.held[(off >> 1) + 1] if (off >> 1) + 1 < 6 else 0
+            return (w << 16) | lo
+        if off == 0x0C:
+            return self.ctrl
+        if off == 0x10:
+            return self.mode
+        if off == 0x12:
+            return 0
+        if off == 0x14:
+            return (self.ie << 8) | self.flags
+        return self.regs.get(off, 0)
+
+    def write(self, va, size, val):
+        off = va - self.base
+        if off == 0x0C:
+            self.ctrl = val & 0xFFFF
+        elif off == 0x10:
+            self.mode = val & 0xFFFF
+        elif off == 0x14:
+            self.ie = (val >> 8) & 0xFF
+            self.flags &= ~(val & 0xFF) & 0xFF
+        else:
+            self.regs[off] = val
+
+    def tick(self, cpu):
+        if cpu.cycles < self.scan_next:
+            return
+        self.scan_next = cpu.cycles + self.scan_period
+        held = self.any_held()
+        if (self.ctrl & 0x8000) == 0 or self.mode == 0:
+            self.was_held = held
+            return
+        if held and not self.was_held:
+            self.flags |= self.FLAG_DETECT
+        if held:
+            self.scan_left = 2
+        if (self.mode & 0x800) or ((self.mode & 0x200) and (held or self.scan_left > 0)):
+            self.flags |= self.FLAG_SCAN
+            if not held and self.scan_left > 0:
+                self.scan_left -= 1
+        self.was_held = held
+        if self.flags & self.ie:
+            cpu.raise_irq(self.INTEVT, self.LEVEL)
 
 
 class ETMU(Region):
@@ -259,18 +359,19 @@ class MMIOBus:
         self.periph_irq = PeriphIRQ("PERIPH_IRQ", 0xA4610000, 0x1000)
         self.etmu2 = ETMUCounter("ETMU2", 0xA44D0000, 0x1000)
         self.etmu2.bus = self
+        self.keysc = KeyScan("KEYSC", 0xA44B0000, 0x1000)
         self.regions = [
             CPG("CPG", 0xA4150000, 0x1000),
             Region("PFC", 0xA4050000, 0x1000),
             Region("WDT", 0xA4520000, 0x1000),
-            KEYSC("KEYSC", 0xA4080000, 0x1000),
+            INTCStub("INTC", 0xA4080000, 0x1000),       # interrupt controller (NOT keyboard)
             Region("TMU", 0xA4490000, 0x1000),
             ETMU("ETMU", 0xA44A0000, 0x1000),
             self.etmu2,
             self.periph_irq,
             FreeCounter("FRC", 0xA4130000, 0x10000),   # free-running counter (delay loops)
             INTX("INTX", 0xA4140000, 0x1000),
-            KEYSC("KIU_DATA", 0xA44B0000, 0x1000),      # SH7724-style key input data (all 0 = no key)
+            self.keysc,                                  # key-scan unit = the real key path
             BCDALU("BCDALU", 0xA4CB0000, 0x1000),        # HW packed-BCD add/sub unit (number formatting)
             Region("BSC", 0xFEC10000, 0x1000),
             DMAC("DMAC", 0xFE008000, 0x1000),
@@ -287,6 +388,7 @@ class MMIOBus:
         """Cycle-driven timer: every `timer_period` instructions, set the PERIPH_IRQ
         flag and request INTEVT 0x560. Safe to free-run from boot — cpu._accept_interrupt
         gates on SR.BL/IMASK, so the OS only takes it once its vectors are set up."""
+        self.keysc.tick(cpu)
         if not self.timer_period:
             return
         if cpu.cycles >= self.timer_next:
@@ -340,7 +442,11 @@ def upgrade_bus(mmio, cpu):
         mmio.etmu2.bus = mmio
     mmio.regions = [r for r in mmio.regions if getattr(r, "name", "") != "INTX"]
     mmio.regions.insert(0, INTX("INTX", 0xA4140000, 0x1000))
-    if "KIU_DATA" not in names:
-        mmio.regions.insert(0, KEYSC("KIU_DATA", 0xA44B0000, 0x1000))
+    mmio.regions = [r for r in mmio.regions if getattr(r, "name", "") not in ("KIU_DATA", "KEYSC")]
+    if not isinstance(getattr(mmio, "keysc", None), KeyScan):
+        mmio.keysc = KeyScan("KEYSC", 0xA44B0000, 0x1000)
+    mmio.regions.insert(0, mmio.keysc)
+    mmio.regions = [r for r in mmio.regions if getattr(r, "name", "") != "INTC"]
+    mmio.regions.insert(0, INTCStub("INTC", 0xA4080000, 0x1000))
     if "BCDALU" not in names:
         mmio.regions.insert(0, BCDALU("BCDALU", 0xA4CB0000, 0x1000))

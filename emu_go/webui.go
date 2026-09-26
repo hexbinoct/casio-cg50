@@ -214,14 +214,10 @@ func runWeb(cpu *CPU, mem *Memory, mmio *MMIOBus, resumed bool) {
 	}
 	si := 0
 
-	// User-key injection state: one matrix press at a time, DECODE-CONFIRMED — after
-	// injecting we wait until the OS decode FUN_801952cc actually runs for the key (re-
-	// injecting if it doesn't), so a press is never lost to a redraw flush. Multi-press
-	// sequences (ALPHA+letter) thus land reliably in order.
-	var have, injected, sawDecode bool
-	var cur [2]uint32
-	var injStart uint64
-	retries := 0
+	// User keys: taps become press/release edges on the KEYSC matrix model — the same
+	// path the physical keyboard takes (the OS's own ISR scans, debounces, repeats and
+	// enqueues), so nothing is ever flushed by a redraw and no re-injection is needed.
+	var tap keyTapper
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -249,8 +245,10 @@ func runWeb(cpu *CPU, mem *Memory, mmio *MMIOBus, resumed bool) {
 			} else {
 				cpu.cycles, mmio.timerNext, mmio.timerTicks = 0, mmio.timerPeriod, 0
 				cpu.pending = nil
-				si = len(script)              // don't re-run the boot script
-				have, injected = false, false // drop any in-flight keypress
+				si = len(script)  // don't re-run the boot script
+				tap = keyTapper{} // drop any in-flight keypress
+				mmio.keysc.releaseAll()
+				mmio.keysc.resumeDefaults()
 				fmt.Printf("save-state: reloaded %s (pc=0x%08x)\n", statePath, cpu.pc)
 				req.reply <- "state reloaded"
 			}
@@ -268,33 +266,11 @@ func runWeb(cpu *CPU, mem *Memory, mmio *MMIOBus, resumed bool) {
 			continue // ignore user input until setup is driven to the menu
 		}
 
-		if !have {
-			select {
-			case c := <-coordCh:
-				have, cur, injected = true, c, false
-			default:
-			}
+		select {
+		case c := <-coordCh:
+			tap.queue = append(tap.queue, c)
+		default:
 		}
-		if have && !injected {
-			if keySafe(cpu) {
-				injectKey(cpu, mem, cur[0], cur[1])
-				injected, sawDecode, injStart, retries = true, false, cpu.cycles, 0
-			}
-		} else if have { // injected, waiting for the app to actually decode it
-			if cpu.pc >= 0x801952cc && cpu.pc < 0x801952e0 {
-				sawDecode = true
-			}
-			if sawDecode {
-				have = false // landed
-			} else if cpu.cycles-injStart > 40_000_000 && keySafe(cpu) {
-				retries++
-				if retries > 8 {
-					have = false // give up (key likely a no-op in this context)
-				} else {
-					injectKey(cpu, mem, cur[0], cur[1])
-					injStart = cpu.cycles
-				}
-			}
-		}
+		tap.drive(mmio.keysc, cpu.cycles)
 	}
 }

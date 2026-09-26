@@ -70,13 +70,50 @@ func EmuStep(n C.int) {
 	}
 }
 
-// EmuInjectKey enqueues a matrix press (0-based row,col; see re/KEYMAP.md). SHIFT/ALPHA are
-// keys too — inject the modifier before the target.
+// EmuInjectKey taps a matrix key (0-based row,col; see re/KEYMAP.md): pressed for a few
+// hardware scans, then released. SHIFT/ALPHA are keys too — tap the modifier before the
+// target.
 //
 //export EmuInjectKey
 func EmuInjectKey(row, col C.int) {
 	if gEmu != nil {
 		gEmu.InjectKey(uint32(row), uint32(col))
+	}
+}
+
+// EmuKeyDown / EmuKeyUp hold and release a matrix key for as long as the user's finger is on
+// the on-screen button; the OS's own key-repeat runs while it is held.
+//
+//export EmuKeyDown
+func EmuKeyDown(row, col C.int) {
+	if gEmu != nil {
+		gEmu.KeyDown(uint32(row), uint32(col))
+	}
+}
+
+//export EmuKeyUp
+func EmuKeyUp(row, col C.int) {
+	if gEmu != nil {
+		gEmu.KeyUp(uint32(row), uint32(col))
+	}
+}
+
+// EmuReleaseAllKeys clears the matrix and queued taps (host lost focus / paused).
+//
+//export EmuReleaseAllKeys
+func EmuReleaseAllKeys() {
+	if gEmu != nil {
+		gEmu.ReleaseAllKeys()
+	}
+}
+
+// EmuSetKeyScanPeriod sets the KEYSC scan interval (= OS key-repeat clock) in emulated
+// instructions; hosts pass ~20 ms worth of their real throughput.
+//
+//export EmuSetKeyScanPeriod
+func EmuSetKeyScanPeriod(instr C.longlong) {
+	if gEmu != nil && instr > 0 {
+		gEmu.SetKeyScanPeriod(uint64(instr))
 	}
 }
 

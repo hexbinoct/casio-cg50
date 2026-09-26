@@ -13,8 +13,8 @@ func TestEmulatorFacade(t *testing.T) {
 	// and queues in order without panicking.
 	e.InjectKey(2, 1)
 	e.InjectKey(6, 4)
-	if len(e.keys) != 2 || e.keys[0] != [2]uint32{2, 1} || e.keys[1] != [2]uint32{6, 4} {
-		t.Fatalf("key queue = %v", e.keys)
+	if len(e.tap.queue) != 2 || e.tap.queue[0] != [2]uint32{2, 1} || e.tap.queue[1] != [2]uint32{6, 4} {
+		t.Fatalf("key queue = %v", e.tap.queue)
 	}
 
 	// Framebuffer decode: write a known RGB565 pixel at (0,0) into DRAM and read it back RGBA.
@@ -53,7 +53,7 @@ func TestEmulatorFacade(t *testing.T) {
 		t.Errorf("resume didn't restore: r3=%08x dram[500]=%02x", e.cpu.r[3], e.mem.dram[500])
 	}
 	// Resume clears the key queue and injection state.
-	if len(e.keys) != 0 || e.haveKey {
-		t.Errorf("resume left key state: keys=%v have=%v", e.keys, e.haveKey)
+	if len(e.tap.queue) != 0 || e.tap.active {
+		t.Errorf("resume left key state: keys=%v have=%v", e.tap.queue, e.tap.active)
 	}
 }

@@ -129,3 +129,19 @@ Each on-screen button maps to one row in the table above; pressing it should enq
 `(row,col)` we inject here. SHIFT/ALPHA/A-LOCK are stateful toggle buttons (one-shot for SHIFT/ALPHA,
 sticky for A-LOCK) — render the yellow (SHIFT) and red (ALPHA) secondary labels exactly as the physical
 keypad, and drive the S/A annunciators from the same OS state the keypad lights.
+
+## Physical matrix → KEYSC key-data words (cont.18l, RE'd from ISR FUN_801e4c00 / decoder FUN_801e49bc)
+
+The OS reads the keyboard from the SH7305 key-scan unit at **0xA44B0000** (six 16-bit words at
++0x00..+0x0B), not by bit-banging ports. For a key at 0-based `(row, col)` (= this table's `inject`
+`"row-col"`):
+
+    word  = col >> 1            (word w at 0xA44B0000 + 2*w)
+    bit   = row + 8 * (col & 1)  (low byte = even column, high byte = odd column)
+
+e.g. AC/ON `0-0` = word0 bit0, DOWN `2-7` = word3 bit10, UP `1-8` = word4 bit1, F1 `6-9` = word4 bit14.
+The ISR converts (row,col) through the OS table `0x8068fa70[col*8 + row]` (16-bit) which holds
+`(row+1)<<8 | (col+1)` — i.e. exactly the 1-based `grid (C,R)` code of this table — then looks up the
+key code. The emulator models this unit (`emu_go/keysc.go`, `emu/mmio.py KeyScan`), so
+`Emulator.InjectKey`/`KeyDown`/`KeyUp` set matrix bits and the OS's own ISR does the rest
+(INTEVT 0xBE0). The old enqueue shortcut via FUN_801e684c is retired for interactive use.

@@ -1,16 +1,23 @@
 package main
 
 // Emulator is a self-contained facade over the SH7305 core (CPU + memory + MMIO) with a
-// thread-safe key queue, framebuffer access, save-state, and a real-time paced run loop.
+// thread-safe key interface, framebuffer access, save-state, and a real-time paced run loop.
 // It is the single API a host UI drives — the desktop web server here, and (via the cgo
 // bridge in android_bridge.go) an Android app. Typical lifecycle:
 //
 //	e := NewEmulator(flash)
 //	e.Resume(savedSnapshot)            // instant: lands at the MAIN MENU
 //	go e.RunRealtime(20e6, 60, blit, stop)
-//	e.InjectKey(row, col)             // from the UI thread, anytime
+//	e.InjectKey(row, col)             // a tap, from the UI thread, anytime
+//	e.KeyDown(row, col); e.KeyUp(...) // or hold a key (OS key-repeat works)
 //
 // All public methods are safe to call concurrently with the run loop.
+//
+// Keys reach the OS exactly as on the real calculator: they set bits in the KEYSC key-scan
+// unit's matrix (keysc.go), the unit raises INTEVT 0xBE0, and the OS's own keyboard ISR
+// scans, debounces, repeats and enqueues. There is no shortcut into the OS key queue any
+// more (the old enqueue-call injector was flushed by redraws and needed a 20M-cycle retry
+// timeout — the menu "reversal hang"; cont.18l).
 
 import (
 	"fmt"
@@ -25,39 +32,19 @@ const (
 	fbBytes  = FbWidth * FbHeight * 2
 )
 
-// Key re-injection tuning (decode-confirmed injector, see driveKeys). A key "lands" only when
-// the OS key decoder FUN_801952cc actually runs for it (the app read+acted on it). On-device
-// measurement showed legit decode latency is ~1.5-12M cycles; a key injected during a redraw
-// is flushed and never decoded, so we re-inject after keyDecodeTimeout. That timeout was 40M
-// (~1.6s @25M ips) — the menu reversal "hang"; 20M halves it while staying clear of the ~12M
-// slowest legit decode (so we never re-inject, hence double-move, a key that simply decoded
-// slowly). NOTE: the OS key *queue* (keyQueueCount) is a raw buffer drained by an ISR in ~10-30k
-// cycles regardless of whether the app consumed the key, so it is NOT a usable "landed" signal.
-const (
-	keyDecodeTimeout = 20_000_000
-	keyMaxRetries    = 6
-)
-
 type Emulator struct {
 	cpu  *CPU
 	mem  *Memory
 	mmio *MMIOBus
 
-	mu   sync.Mutex  // serialises Step vs Snapshot/Resume/InjectKey
-	keys [][2]uint32 // pending matrix presses (row,col), drained at safe points
+	mu  sync.Mutex // serialises Step vs Snapshot/Resume/keys
+	tap keyTapper  // queued taps -> matrix press/release edges (drained by Step)
 
-	// decode-confirmed key-injection state machine (mirrors the proven web-UI logic):
-	// inject, then wait until the OS key decoder FUN_801952cc actually runs for the key
-	// (re-injecting if a redraw flushed it), so presses are never silently dropped.
-	curKey    [2]uint32
-	haveKey   bool
-	injected  bool
-	sawDecode bool
-	injStart  uint64
-	retries   int
+	downAt    map[[2]uint32]uint64 // KeyDown cycle per held key (minimum-hold enforcement)
+	pendingUp []pendingRelease     // KeyUp releases deferred until the minimum hold elapses
 
-	// dbg, if set (by the Android bridge), receives one-line key-path diagnostics
-	// (inject/land/retry with queue depth + decode latency). nil on desktop/tests.
+	// dbg, if set (by the Android bridge), receives one-line key-path diagnostics.
+	// nil on desktop/tests.
 	dbg func(string)
 }
 
@@ -74,74 +61,113 @@ func NewEmulator(flash []byte) *Emulator {
 		mmio.timerPeriod = 30000 // proven boot timer cadence
 	}
 	mmio.timerNext = 0
-	return &Emulator{cpu: cpu, mem: mem, mmio: mmio}
+	return &Emulator{cpu: cpu, mem: mem, mmio: mmio, downAt: map[[2]uint32]uint64{}}
 }
 
-// InjectKey enqueues a matrix key press at grid (col=C,row=R) using 0-based (row,col); see
-// re/KEYMAP.md. SHIFT/ALPHA are themselves keys — enqueue the modifier before the target.
+// InjectKey queues a tap of the matrix key at 0-based (row,col); see re/KEYMAP.md. The key
+// is held for a few hardware scans then released, and queued taps are spaced so each one is
+// seen by the OS. SHIFT/ALPHA are themselves keys — tap the modifier before the target.
 func (e *Emulator) InjectKey(row, col uint32) {
 	e.mu.Lock()
-	e.keys = append(e.keys, [2]uint32{row, col})
+	e.tap.queue = append(e.tap.queue, [2]uint32{row, col})
+	e.mu.Unlock()
+	if e.dbg != nil {
+		e.dbg(fmt.Sprintf("tap r=%d c=%d", row, col))
+	}
+}
+
+// KeyDown / KeyUp press and release a matrix key for as long as the host holds it (e.g. a
+// touch down/up on an on-screen button). Holding an arrow key auto-repeats, as on the calc.
+// A press is guaranteed to stay visible to the scanner for at least tapHoldScans scans: if
+// the host's up arrives sooner (a fast tap can deliver down+up while Step holds the mutex
+// for a whole slice, i.e. before a single instruction runs in between), the release is
+// deferred so the OS ISR still sees the key.
+func (e *Emulator) KeyDown(row, col uint32) {
+	e.mu.Lock()
+	e.mmio.keysc.press(row, col)
+	e.downAt[[2]uint32{row, col}] = e.cpu.cycles
+	cyc := e.cpu.cycles
+	e.mu.Unlock()
+	if e.dbg != nil {
+		e.dbg(fmt.Sprintf("down r=%d c=%d cyc=%d", row, col, cyc))
+	}
+}
+
+func (e *Emulator) KeyUp(row, col uint32) {
+	e.mu.Lock()
+	key := [2]uint32{row, col}
+	minHold := tapHoldScans * e.mmio.keysc.scanPeriod
+	at, ok := e.downAt[key]
+	deferred := false
+	if ok && e.cpu.cycles-at < minHold {
+		e.pendingUp = append(e.pendingUp, pendingRelease{key, at + minHold})
+		deferred = true
+	} else {
+		e.mmio.keysc.release(row, col)
+	}
+	delete(e.downAt, key)
+	cyc := e.cpu.cycles
+	e.mu.Unlock()
+	if e.dbg != nil {
+		e.dbg(fmt.Sprintf("up   r=%d c=%d cyc=%d deferred=%v", row, col, cyc, deferred))
+	}
+}
+
+type pendingRelease struct {
+	key [2]uint32
+	at  uint64
+}
+
+// flushReleases applies deferred KeyUp releases whose minimum hold has elapsed. Caller holds mu.
+func (e *Emulator) flushReleases() {
+	now := e.cpu.cycles
+	kept := e.pendingUp[:0]
+	for _, p := range e.pendingUp {
+		if now >= p.at {
+			e.mmio.keysc.release(p.key[0], p.key[1])
+		} else {
+			kept = append(kept, p)
+		}
+	}
+	e.pendingUp = kept
+}
+
+// SetKeyScanPeriod sets the KEYSC hardware scan interval in instructions. It is also the OS
+// key-repeat clock (one repeat per scan after a 20-scan delay), so hosts should derive it
+// from their real throughput: ~20 ms worth of instructions (see keysc.go).
+func (e *Emulator) SetKeyScanPeriod(instr uint64) {
+	if instr < 1000 {
+		instr = 1000
+	}
+	e.mu.Lock()
+	e.mmio.keysc.scanPeriod = instr
 	e.mu.Unlock()
 }
 
-// Step advances the machine by n instructions, draining queued key presses at safe points.
+// ReleaseAllKeys clears the matrix and drops queued taps (e.g. when the host loses focus).
+func (e *Emulator) ReleaseAllKeys() {
+	e.mu.Lock()
+	e.mmio.keysc.releaseAll()
+	e.tap = keyTapper{}
+	e.pendingUp = nil
+	for k := range e.downAt {
+		delete(e.downAt, k)
+	}
+	e.mu.Unlock()
+}
+
+// Step advances the machine by n instructions, driving queued taps onto the matrix.
 func (e *Emulator) Step(n int) {
 	e.mu.Lock()
 	for i := 0; i < n; i++ {
 		e.mmio.tick(e.cpu)
 		e.cpu.step()
-		e.driveKeys()
+		e.tap.drive(e.mmio.keysc, e.cpu.cycles)
+		if len(e.pendingUp) != 0 {
+			e.flushReleases()
+		}
 	}
 	e.mu.Unlock()
-}
-
-// driveKeys runs one tick of the decode-confirmed injection state machine. Caller holds mu.
-func (e *Emulator) driveKeys() {
-	cpu := e.cpu
-	if !e.haveKey {
-		if len(e.keys) == 0 {
-			return
-		}
-		e.curKey, e.keys = e.keys[0], e.keys[1:]
-		e.haveKey, e.injected = true, false
-	}
-	if !e.injected {
-		if keySafe(cpu) {
-			injectKey(cpu, e.mem, e.curKey[0], e.curKey[1])
-			e.injected, e.sawDecode, e.injStart, e.retries = true, false, cpu.cycles, 0
-			if e.dbg != nil {
-				e.dbg(fmt.Sprintf("inject r=%d c=%d qdepth=%d", e.curKey[0], e.curKey[1], len(e.keys)))
-			}
-		}
-		return
-	}
-	if cpu.pc >= 0x801952cc && cpu.pc < 0x801952e0 {
-		e.sawDecode = true
-	}
-	if e.sawDecode {
-		e.haveKey = false // landed: the app's getkey decoded (and acted on) the key
-		if e.dbg != nil {
-			e.dbg(fmt.Sprintf("land   r=%d c=%d latency=%d retries=%d qdepth=%d", e.curKey[0], e.curKey[1], cpu.cycles-e.injStart, e.retries, len(e.keys)))
-		}
-	} else if cpu.cycles-e.injStart > keyDecodeTimeout && keySafe(cpu) {
-		// No decode within the timeout: the key was flushed by a redraw (or this screen doesn't
-		// decode via FUN_801952cc). Re-inject. A flushed key never decoded, so re-injection
-		// delivers it exactly once — no double move on the menu.
-		e.retries++
-		if e.retries > keyMaxRetries {
-			e.haveKey = false // give up (key is a no-op in this context)
-			if e.dbg != nil {
-				e.dbg(fmt.Sprintf("giveup r=%d c=%d qdepth=%d", e.curKey[0], e.curKey[1], len(e.keys)))
-			}
-		} else {
-			injectKey(cpu, e.mem, e.curKey[0], e.curKey[1])
-			e.injStart = cpu.cycles
-			if e.dbg != nil {
-				e.dbg(fmt.Sprintf("retry  r=%d c=%d n=%d qdepth=%d", e.curKey[0], e.curKey[1], e.retries, len(e.keys)))
-			}
-		}
-	}
 }
 
 // FramebufferRGB565 copies the raw 384x216 RGB565 (big-endian) frame into dst (>= fbBytes).
@@ -182,7 +208,13 @@ func (e *Emulator) Resume(blob []byte) error {
 	}
 	e.cpu.cycles, e.mmio.timerNext, e.mmio.timerTicks = 0, e.mmio.timerPeriod, 0
 	e.cpu.pending = nil
-	e.haveKey, e.injected, e.keys = false, false, nil
+	e.tap = keyTapper{}
+	e.pendingUp = nil
+	for k := range e.downAt {
+		delete(e.downAt, k)
+	}
+	e.mmio.keysc.releaseAll()
+	e.mmio.keysc.resumeDefaults() // peripheral config isn't in the snapshot; restore post-init state
 	return nil
 }
 

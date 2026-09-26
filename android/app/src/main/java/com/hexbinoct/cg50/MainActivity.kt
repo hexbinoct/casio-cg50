@@ -2,6 +2,7 @@ package com.hexbinoct.cg50
 
 import android.os.Bundle
 import android.util.Log
+import android.view.MotionEvent
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.LinearLayout
@@ -53,6 +54,8 @@ class MainActivity : AppCompatActivity() {
             "no save-state — cold boot (first-boot setup will show)"
         }
         binding.screenView.onEmulatorReady()
+        // KEYSC scan interval = the OS key-repeat clock: 20 ms worth of our instruction budget.
+        NativeBridge.setKeyScanPeriod(binding.screenView.instrPerFrame * 60L / 50L)
     }
 
     private fun buildKeypad() {
@@ -68,7 +71,26 @@ class MainActivity : AppCompatActivity() {
                     text = key.label
                     isAllCaps = false
                     layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f)
-                    setOnClickListener { NativeBridge.injectKey(key.row, key.col) }
+                    // Touch down/up = matrix press/release, so holding an arrow auto-repeats
+                    // exactly as on the calculator (the OS runs its own repeat timing).
+                    setOnTouchListener { v, ev ->
+                        when (ev.actionMasked) {
+                            MotionEvent.ACTION_DOWN -> {
+                                v.isPressed = true
+                                val t = System.nanoTime()
+                                NativeBridge.keyDown(key.row, key.col)
+                                Log.i("cg50-key", "ui down ${key.label} jni=${(System.nanoTime() - t) / 1000}us")
+                            }
+                            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                                v.isPressed = false
+                                val t = System.nanoTime()
+                                NativeBridge.keyUp(key.row, key.col)
+                                Log.i("cg50-key", "ui up   ${key.label} jni=${(System.nanoTime() - t) / 1000}us")
+                                if (ev.actionMasked == MotionEvent.ACTION_UP) v.performClick()
+                            }
+                        }
+                        true
+                    }
                 }
                 rowLayout.addView(b)
             }
@@ -79,6 +101,7 @@ class MainActivity : AppCompatActivity() {
     override fun onPause() {
         super.onPause()
         binding.screenView.pauseRendering()
+        NativeBridge.releaseAllKeys()
         // Persist the session so the next launch resumes here (the OS's backup-battery RAM
         // is captured in the save-state; flash-only persistence isn't enough).
         try {

@@ -158,6 +158,7 @@ func main() {
 			cpu.cycles = 0 // restart the free-running counter (OS uses timer deltas only)
 			mmio.timerNext = mmio.timerPeriod
 			mmio.timerTicks = 0
+			mmio.keysc.resumeDefaults()
 			resumed = true
 			fmt.Printf("save-state: RESUMED from %s at pc=0x%08x (skipped boot + first-setup)\n", statePath, cpu.pc)
 		}

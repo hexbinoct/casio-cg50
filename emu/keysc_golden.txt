@@ -1,0 +1,89 @@
+press 2 7
+tick 100
+r 014/2 = 0
+irq
+release 2 7
+w 00c 8000
+w 014 00ff
+w 014 4800
+w 00e 8042
+w 018 00c8
+w 010 0200
+r 00c/2 = 8000
+r 00e/2 = 8042
+r 010/2 = 200
+r 012/2 = 0
+r 014/2 = 4800
+tick 200
+r 014/2 = 4800
+irq
+press 2 7
+press 6 9
+tick 300
+r 000/4 = 0
+r 006/2 = 400
+r 006/1 = 4
+r 007/1 = 0
+r 008/2 = 4000
+r 008/4 = 40000000
+r 014/2 = 480a
+irq be0/13
+w 014 760a
+r 014/2 = 7600
+tick 350
+r 014/2 = 7600
+irq
+tick 400
+r 014/2 = 7602
+irq be0/13
+w 014 7602
+release 2 7
+tick 500
+r 006/2 = 0
+r 014/2 = 7602
+irq be0/13
+w 014 7602
+release 6 9
+tick 600
+r 014/2 = 7602
+irq be0/13
+w 014 7602
+tick 700
+r 014/2 = 7602
+irq be0/13
+w 014 7602
+tick 800
+r 014/2 = 7600
+irq
+w 014 4800
+press 0 0
+tick 900
+r 000/2 = 1
+r 014/2 = 480a
+irq be0/13
+release 0 0
+w 014 00ff
+w 010 0800
+tick 1000
+r 014/2 = 2
+irq
+w 014 00ff
+w 010 0400
+press 1 8
+tick 1100
+r 014/2 = 8
+irq
+tick 1200
+r 014/2 = 8
+irq
+w 010 0000
+tick 1300
+r 014/2 = 8
+irq
+release 1 8
+press 9 0
+press 0 12
+r 000/2 = 0
+r 00a/2 = 0
+w 01a 0fff
+r 01a/2 = fff

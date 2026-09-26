@@ -12,6 +12,10 @@ int      EmuHeight();
 int      EmuResume(const uint8_t *blob, int n);
 void     EmuStep(int n);
 void     EmuInjectKey(int row, int col);
+void     EmuKeyDown(int row, int col);
+void     EmuKeyUp(int row, int col);
+void     EmuReleaseAllKeys(void);
+void     EmuSetKeyScanPeriod(long long instr);
 int      EmuFramebufferRGBA(uint8_t *dst, int capacity);
 uint8_t *EmuSnapshot(int *outLen);
 void     EmuFree(uint8_t *p);
@@ -41,6 +45,19 @@ extern "C" JNIEXPORT void JNICALL NB(step)(JNIEnv *, jobject, jint n) { EmuStep(
 
 extern "C" JNIEXPORT void JNICALL NB(injectKey)(JNIEnv *, jobject, jint row, jint col) {
     EmuInjectKey(row, col);
+}
+
+// Physical-style press/release: the key stays down in the emulated matrix until keyUp, so the
+// OS's own key-repeat runs while an on-screen button is held.
+extern "C" JNIEXPORT void JNICALL NB(keyDown)(JNIEnv *, jobject, jint row, jint col) {
+    EmuKeyDown(row, col);
+}
+extern "C" JNIEXPORT void JNICALL NB(keyUp)(JNIEnv *, jobject, jint row, jint col) {
+    EmuKeyUp(row, col);
+}
+extern "C" JNIEXPORT void JNICALL NB(releaseAllKeys)(JNIEnv *, jobject) { EmuReleaseAllKeys(); }
+extern "C" JNIEXPORT void JNICALL NB(setKeyScanPeriod)(JNIEnv *, jobject, jlong instr) {
+    EmuSetKeyScanPeriod(instr);
 }
 
 // Fills the caller's byte[] (Width*Height*4 RGBA). Returns bytes written, or -1 if too small.

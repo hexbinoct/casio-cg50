@@ -9,7 +9,87 @@
   pending, so the next session can continue without being reminded.
 ============================================================================= -->
 
-> ## ⏯ RESUME HERE (last session end: 2026-06-10 cont.18k)
+> ## ⏯ RESUME HERE (last session end: 2026-09-26 cont.18l)
+>
+> ### 🏆 cont.18l — REAL KEYBOARD PATH SHIPPED: KEYSC key-scan unit modelled, injection hack deleted.
+> Keys now reach the OS exactly as on the calculator: the host sets bits in the emulated **KEYSC/KIU
+> matrix at 0xA44B0000**, the unit raises **INTEVT 0xBE0**, and the OS's own keyboard ISR scans,
+> debounces, repeats and enqueues. The enqueue-shortcut injector (FUN_801e684c + decode-confirm +
+> 20M-cycle retry timeout = the menu "reversal hang") is GONE from `emulator.go`/`webui.go`
+> (`main.go` keeps `injectKey` only for the old RE harness modes).
+> **Measured (TestKeyscMenuTap): DOWN tap at the menu → keyboard ISR after 39 instr (key-detect is
+> edge-triggered), framebuffer changes after 48k instr. Before: 20,000,000 instr (first injection
+> flushed by the redraw, re-injected only after the 20M-cycle timeout).**
+>
+> **What the RE established (all static, from os.bin via `re/disasm_static.py`; Ghidra was down):**
+>   · cont.18k's "PFC port scan" lead was WRONG: 0xA4050100/120/14e/162 + 0xA44C00xx traffic at idle is
+>     pin-function setup + an ETMU timer, and `mmio.go`'s old "KEYSC @0xA4080000" was really the **INTC**
+>     (IPRA..IPRL +0x00.., IMR +0x80.., IMCR +0xC0..; IPRF[15:12]=13 = KEYSC priority, IMR5 bit7 = its mask).
+>   · **KEYSC @0xA44B0000** (now `emu_go/keysc.go` / `emu/mmio.py KeyScan`, byte-identical models):
+>     +0x00..0x0B six 16-bit key words — **word = col>>1, bit = row + 8*(col&1)** (0-based KEYMAP grid;
+>     AC/ON=(0,0)=word0 bit0, DOWN=(2,7)=word3 bit10, UP=(1,8)=word4 bit1); +0x0C ctrl (bit15 enable);
+>     +0x10 mode (0x200 normal = detect+auto-scan, 0x400 detect-only, 0x800 scan-now, 0 off); +0x12 busy;
+>     +0x14 = [15:8] IRQ-enable per flag | [7:0] flags W1C: **bit3 key-detect, bit1 scan-complete**.
+>     OS init (FUN_801e51c8, values confirmed by a reset boot dump): 0x8000 / 0x8042 / mode 0x200 /
+>     IE 0x48 / 0xC8 / 0xFFF / 0xFF. ISR = **FUN_801e4c00** (via wrapper 0x801dedcc): state machine at
+>     0x8c090c00 (0 idle → 1 pressed → 4 released → 0); idle waits for flag3, pressed/released wait for
+>     flag1; decoder **FUN_801e49bc** → (row,col) → table **0x8068fa70[col*8+row] = (row+1)<<8|(col+1)**
+>     (matches every KEYMAP.md entry); events posted via FUN_801e504c(type 1 press/2 repeat/3 release).
+>     Repeat = OS logic: first repeat after **20 scans** (*0x8c08ba38), then **one per scan** (*0x8c08ba3c=0).
+>     Sync scan FUN_801e5700 = mode 0x800 + wait flag1. IRQ disable/enable helpers 0x801dedd2/0x801dedda.
+>   · **3.60 interrupt dispatcher** (VBR 0x80020f00 → 0x80021500): handler = *(0xFD8010C8 +
+>     ((INTEVT-0x40)>>3)) [byte offset], IMASK byte at 0xFD8012C8+((INTEVT-0x40)>>5). Timer 0x560 →
+>     0x801ded94; KEYSC 0xBE0 → 0x801dedcc; also 0x1b8/0x1c0/0x2d8 → 0x801deebe/0x801def3a/0x801dfc6c.
+>   · Idle profile: 64% of idle instructions are memcmp(0x80384a42)/memset(0x803851b8); `sleep` executes
+>     at 0xa00208e8 (treated as nop). Menu cursor move redraw = ~1.3M instr.
+>
+> **Model behaviour** (`keysc.go` header has the full contract): every `scanPeriod` instr: press edge →
+> flag3 (a press into an empty matrix scans at the very next tick); while held (+2 scans after
+> release) → flag1; mode 0x800 → flag1 always; IRQ 0xBE0 level 13
+> while flags&IE. `keyTapper` turns queued taps into hold-3-scans/gap-3-scans edges. `Emulator` API:
+> InjectKey (tap), **KeyDown/KeyUp** (real hold → OS auto-repeat), ReleaseAllKeys, SetKeyScanPeriod.
+> Resume/LoadState call `keysc.resumeDefaults()` (peripheral regs aren't in the save-state).
+> **scanPeriod = the OS key-repeat clock** (instruction-based like all our time): default 500k
+> (≈20 ms @25M ips); Android sets it to 20 ms of its budget (`MainActivity` → setKeyScanPeriod).
+> Android: `NativeBridge.keyDown/keyUp/releaseAllKeys/setKeyScanPeriod` + JNI + Go exports; keypad
+> buttons now use touch down/up (held arrows auto-repeat). `.so` rebuilt (build_go_lib.ps1), APK
+> built with `:app:assembleDebug` — NOT yet installed/verified on the phone (no adb device in the office).
+>
+> **Tests (all green):** 57/57 conformance + 2M golden boot **byte-identical after regen** (boot never
+> presses keys) + `keysc_test.go`: protocol, matrix layout, **oracle transcript parity**
+> (`emu/keysc_selftest.py` → `emu/keysc_golden.txt`), menu-tap e2e, hold-repeat e2e. Tools added:
+> `re/find_portrefs.py`, `re/find_callers.py`, `re/patch_keysc_wiring.py`, `re/patch_keysc_android.py`.
+>
+> **ON-DEVICE (POCO X3, same session, later):** APK installed + launched fine (22M ips, blit 2.5 ms). Two
+> findings: (a) a **fast tap** delivers touch down+up while `Step` holds the mutex for a whole 500k slice,
+> so the matrix was pressed+released before one instruction ran → FIXED: `KeyDown/KeyUp` enforce a minimum
+> hold of tapHoldScans (deferred release, `pendingUp`, test `TestKeyscFastTapStillLands`); Kotlin logs
+> `cg50-key` "ui down/up" with JNI µs. (b) **MENU from inside Run-Matrix does NOT return to the main menu**
+> (user-observed; reproduced on desktop from the phone's snapshot AND from the June `cg50_state.bin`:
+> EXE→Run-Matrix, MENU → screen clears then Run-Matrix redraws with the last answer, AC/ON-like). It is
+> NOT the new key path: the OLD enqueue injector fails identically, even with KEYSC reads stubbed to 0
+> (June behaviour). Notes cont.15/18h claim "MENU 3-7 (back to menu)" worked — probably from a fresh
+> scripted boot or via load-state, not from within an app after Resume. Lead: the MENU app-switch path
+> aborts and redraws — suspect a storage/FTL or peripheral dependency after Resume (fls0 mount state, cf.
+> cont.18f) or an unmodelled register the switch reads. (Also: adb `input tap` works on this MIUI 14 phone
+> when the app has focus; earlier "no reaction" was Settings' pairing dialog holding focus.)
+>
+> **NEXT:**
+>   0. **MENU-from-app**: trace after the MENU decode (0x801952cc → app-switch routine) on the June state:
+>      PC histogram + unmapped-MMIO reads + flash-write attempts between the screen clear and the redraw.
+>   1. On the phone: install `android/app/build/outputs/apk/debug/app-debug.apk` (flash/state files on
+>      the device are unchanged), check menu feel + held-arrow repeat + typing in Run-Matrix (SHIFT/ALPHA
+>      taps still work as modifier keys). If a screen ignores keys, log `cg50-key` (taps are logged).
+>   2. Calibrate the repeat clock against the real calc: hold RIGHT at the MAIN MENU, time the initial
+>      delay (= 20 scans) and moves/sec (= 1/scan) → set DefaultKeyScanPeriod / the Android divisor.
+>   3. PERF next (from the cont.18l assessment): real `sleep` semantics + wall-clock-anchored timer (OS
+>      time currently = instr/30000 per tick → runs at different speeds per host; TMU ch1 at boot was
+>      TCOR=0x2d000, TCR=0x23 (Pϕ/256, IRQ on) — steady-state value still unknown), then interpreter
+>      fast paths (decode table, direct DRAM fetch, batched IRQ/timer checks), then memcmp/memset HLE.
+>   4. Skin: real CG50 keycap layout with SHIFT (yellow)/ALPHA (red) legends, annunciators, haptics.
+> ⚠ Ghidra MCP (port 8080) was NOT running this session; static disasm covered everything.
+>
+> ## ⏯ (prev) RESUME HERE (last session end: 2026-06-10 cont.18k)
 >
 > ### 🚀 cont.18k — Android PERF win shipped + input-latency ROOT CAUSE found (matrix scan = PFC ports).
 > Two threads this session; the perf wins are solid, the input fix is scoped + grounded but NOT yet built.

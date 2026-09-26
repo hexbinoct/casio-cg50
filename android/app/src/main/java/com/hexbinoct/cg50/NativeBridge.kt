@@ -25,8 +25,18 @@ object NativeBridge {
     /** Advance the machine by n instructions. */
     external fun step(n: Int)
 
-    /** Enqueue a matrix key press, 0-based (row,col); see re/KEYMAP.md. */
+    /** Tap a matrix key (press, hold a few scans, release), 0-based (row,col); see re/KEYMAP.md. */
     external fun injectKey(row: Int, col: Int)
+
+    /** Hold / release a matrix key like a finger on the real keypad (OS key-repeat works). */
+    external fun keyDown(row: Int, col: Int)
+    external fun keyUp(row: Int, col: Int)
+
+    /** Release every key and drop queued taps (call when the activity pauses). */
+    external fun releaseAllKeys()
+
+    /** KEYSC scan interval in emulated instructions (= the OS key-repeat clock); ~20 ms worth. */
+    external fun setKeyScanPeriod(instr: Long)
 
     /** Fill dst (width*height*4 bytes) with RGBA pixels; returns bytes written or -1. */
     external fun framebufferRGBA(dst: ByteArray): Int

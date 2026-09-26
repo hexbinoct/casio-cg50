@@ -54,10 +54,12 @@ func (d *dmac) read(va, size uint32) uint32 {
 	return d.regs[off]
 }
 
-// KEYSC / KIU: all keys released = 0 in every data register.
-type keysc struct{ base }
+// INTC (0xA4080000, SH7724-style IPR/IMR/IMCR — NOT the keyboard; cont.18l). The OS
+// programs priorities/masks around its ISRs; masking isn't modelled (CPU-side IMASK/BL
+// gating suffices), and reads return 0 as they always did.
+type intcStub struct{ base }
 
-func (k *keysc) read(va, size uint32) uint32 { return 0 }
+func (k *intcStub) read(va, size uint32) uint32 { return 0 }
 
 // ETMU: one-shot delays poll elapsed/underflow (bit15) at +0x60 -> report elapsed.
 type etmu struct{ base }
@@ -270,6 +272,7 @@ type MMIOBus struct {
 	watchBase uint32         // if nonzero, reads in [watchBase, watchBase+0x1000) are attributed to cpu.pc
 
 	timerPeriod uint64
+	keysc       *keyscUnit // key-scan unit @0xA44B0000 (keysc.go): the real key path
 	timerNext   uint64
 	timerTicks  uint64
 
@@ -300,9 +303,9 @@ func scanWatched(va uint32) (string, uint32, bool) {
 	b := (va & 0x1FFFFFFF) | 0xA0000000
 	switch b &^ 0xFFF {
 	case 0xA4080000:
-		return "KEYSC", b & 0xFFF, true
+		return "INTC", b & 0xFFF, true
 	case 0xA44B0000:
-		return "KIU", b & 0xFFF, true
+		return "KEYSC", b & 0xFFF, true
 	case 0xA4050000:
 		return "PFC", b & 0xFFF, true
 	case 0xA44C0000: // port strobe/clock pins the matrix scan toggles (found cont.18k)
@@ -337,18 +340,19 @@ func NewMMIOBus() *MMIOBus {
 	b.periphIRQ = &periphIRQ{base: newBase("PERIPH_IRQ", 0xA4610000, 0x1000)}
 	b.etmu2 = &etmuCounter{base: newBase("ETMU2", 0xA44D0000, 0x1000)}
 	b.etmu2.bus = b
+	b.keysc = newKeysc()
 	b.regions = []region{
 		&cpg{base: newBase("CPG", 0xA4150000, 0x1000)},
 		&base{nm: "PFC", bs: 0xA4050000, sz: 0x1000, regs: map[uint32]uint32{}},
 		&base{nm: "WDT", bs: 0xA4520000, sz: 0x1000, regs: map[uint32]uint32{}},
-		&keysc{base: newBase("KEYSC", 0xA4080000, 0x1000)},
+		&intcStub{base: newBase("INTC", 0xA4080000, 0x1000)},
 		&base{nm: "TMU", bs: 0xA4490000, sz: 0x1000, regs: map[uint32]uint32{}},
 		&etmu{base: newBase("ETMU", 0xA44A0000, 0x1000)},
 		b.etmu2,
 		b.periphIRQ,
 		&freeCounter{base: newBase("FRC", 0xA4130000, 0x10000)},
 		&intx{base: newBase("INTX", 0xA4140000, 0x1000)},
-		&keysc{base: newBase("KIU_DATA", 0xA44B0000, 0x1000)},
+		b.keysc,
 		&bcdALU{base: newBase("BCDALU", 0xA4CB0000, 0x1000)},
 		&base{nm: "BSC", bs: 0xFEC10000, sz: 0x1000, regs: map[uint32]uint32{}},
 		&dmac{base: newBase("DMAC", 0xFE008000, 0x1000)},
@@ -435,6 +439,7 @@ func (b *MMIOBus) FrameSAR() (uint32, bool) {
 // tick: cycle-driven timer. Every timerPeriod instructions set the PERIPH_IRQ flag
 // and request INTEVT 0x560. Gated by cpu.BL/IMASK in accept, so safe to free-run.
 func (b *MMIOBus) tick(cpu *CPU) {
+	b.keysc.tick(cpu)
 	if b.timerPeriod == 0 {
 		return
 	}
