@@ -74,6 +74,17 @@
 > cont.18f) or an unmodelled register the switch reads. (Also: adb `input tap` works on this MIUI 14 phone
 > when the app has focus; earlier "no reaction" was Settings' pairing dialog holding focus.)
 >
+> **IN FLIGHT at session end (2026-09-26 late, home):** building the fxSDK/gint cross-toolchain as a
+> Docker image on this Windows box so add-ins can be built here (no Mac needed):
+> `docker build -t fxsdk:latest tools/fxsdk-docker` (Dockerfile = GiteaPC route; the 18-min apt layer +
+> udisks2/ncurses layer + GiteaPC + fxsdk are cached; the interrupted stage was sh-elf-binutils/gcc
+> 14.1 download+compile, ~20-40 min). Re-run the same command; it resumes from cache. Then build the
+> probe: `docker run --rm -v "/F/ru/myprojects/may/cg50/tools/keyprobe:/work" fxsdk:latest fxsdk build-cg`
+> → `KEYPROBE.g3a`; copy to the calc over USB mass storage, run it (hold RIGHT when told, release when
+> told), then read `KEYPROBE.TXT` from the calc's drive. What it measures + how to interpret:
+> `re/keyprobe_note.md` (also pushed to noted). Source: `tools/keyprobe/src/main.c` (writes the file via
+> BFile; also pages on screen). Unknowns to expect: `gint_world_switch` name, INTC IMR5/IMCR5 addresses.
+>
 > **NEXT:**
 >   0. **MENU-from-app**: trace after the MENU decode (0x801952cc → app-switch routine) on the June state:
 >      PC histogram + unmapped-MMIO reads + flash-write attempts between the screen clear and the redraw.
