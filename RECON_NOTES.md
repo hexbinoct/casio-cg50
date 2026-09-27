@@ -11,6 +11,11 @@
 
 > ## ⏯ RESUME HERE (last session end: 2026-09-27 cont.18u)
 >
+> **Sibling directory (2026-09-27): `F:\ru\myprojects\september\cg50_addons\`** — new add-in projects
+> (first: `dasm/`, an on-device SH-4A disassembler; then a field/contour plotter; later our own runtime
+> instead of gint). Its `README.md` lists what to reuse from here (emulator, `re/sh4dis.py`, syscall
+> tables, KEYMAP, fxSDK Docker, `tools/tickprobe` skeleton). This project stays the toolkit/emulator.
+>
 > ### 🖌 cont.18u — Native (HLE) OS blitter shipped. Phone menu hold now at the OS's 33 Hz cap (22/1.2 s).
 > **What:** `emu_go/hle.go` `CPU.hleBlit` replaces the OS bitmap blitter **0x80056900** (3.60) natively. The
 > CPU loop (`step`/`run`) checks `pc == hlePC` (0 = off); `Emulator.EnableHLE` / bridge `EmuSetHLE`; **on in
