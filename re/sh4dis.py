@@ -6,16 +6,41 @@ Covers the integer + system/control instruction set used by OS/driver/ISR code
 
 This is reusable project infra: `from sh4dis import disasm` or run as a script:
     python sh4dis.py 0x80001a40 0x80001b00
+    python sh4dis.py --image path/to/os.bin 0x80001a40 0x80001b00
 File offset of a vaddr = vaddr & 0x0FFFFFFF (P1/P2 both mirror the image).
+
+The image is only read when first needed (importing never touches it or the command line).
+Default: os/os_image/cg50_os_3.80.plain.bin relative to the repo; override with --image,
+the SH4DIS_IMAGE environment variable, or set_image(path_or_bytes) from an importing script.
+Without an image, decode() still works — PC-relative literals just show as "=?".
 
 Not a verification oracle — Ghidra/casio-emu remain authoritative for the CPU
 core. Good enough to read control flow, MMIO accesses, and call graphs.
 """
+import os
 import struct
 import sys
+from pathlib import Path
 
-IMG = r"F:\ru\myprojects\may\cg50\os\os_image\cg50_os_3.80.plain.bin"
-_data = open(IMG, "rb").read()
+IMG = Path(os.environ.get("SH4DIS_IMAGE") or
+           Path(__file__).resolve().parent.parent / "os" / "os_image" / "cg50_os_3.80.plain.bin")
+_data = None
+
+
+def set_image(src):
+    """Use another OS image: a path, or the image bytes themselves."""
+    global IMG, _data
+    if isinstance(src, (bytes, bytearray)):
+        _data = bytes(src)
+    else:
+        IMG, _data = Path(src), None
+
+
+def _image():
+    global _data
+    if _data is None:
+        _data = IMG.read_bytes()
+    return _data
 
 
 def _off(va):
@@ -24,12 +49,20 @@ def _off(va):
 
 def w16(va):
     o = _off(va)
-    return struct.unpack(">H", _data[o:o + 2])[0]
+    return struct.unpack(">H", _image()[o:o + 2])[0]
 
 
 def w32(va):
     o = _off(va)
-    return struct.unpack(">I", _data[o:o + 4])[0]
+    return struct.unpack(">I", _image()[o:o + 4])[0]
+
+
+def _lit(read, ea, width):
+    """A literal for the disassembly comment, or '?' when no image is available."""
+    try:
+        return f"{read(ea):0{width}x}"
+    except (OSError, struct.error):
+        return "?"
 
 
 def decode(x, pc):
@@ -161,7 +194,7 @@ def decode(x, pc):
     # ---- 0x9: mov.w @(disp,PC),Rn ----
     if hi == 0x9:
         ea = pc + 4 + d8 * 2
-        return f"mov.w @(0x{d8*2:x},pc),r{n}    ; =0x{w16(ea):04x}"
+        return f"mov.w @(0x{d8*2:x},pc),r{n}    ; =0x{_lit(w16, ea, 4)}"
     # ---- 0xA/0xB: bra/bsr ----
     if hi == 0xA:
         disp = d12 - 0x1000 if d12 >= 0x800 else d12
@@ -184,7 +217,7 @@ def decode(x, pc):
     # ---- 0xD: mov.l @(disp,PC),Rn ----
     if hi == 0xD:
         ea = (pc & ~3) + 4 + d8 * 4
-        return f"mov.l @(0x{d8*4:x},pc),r{n}    ; =0x{w32(ea):08x}"
+        return f"mov.l @(0x{d8*4:x},pc),r{n}    ; =0x{_lit(w32, ea, 8)}"
     # ---- 0xE: mov #imm,Rn ----
     if hi == 0xE:
         return f"mov #0x{d8:x},r{n}    ; {simm8}"
@@ -205,6 +238,14 @@ def disasm(start, end, label=""):
 
 
 if __name__ == "__main__":
-    a = int(sys.argv[1], 0) if len(sys.argv) > 1 else 0x80001a40
-    b = int(sys.argv[2], 0) if len(sys.argv) > 2 else a + 0xC0
+    args = sys.argv[1:]
+    if len(args) >= 2 and args[0] == "--image":
+        set_image(args[1])
+        args = args[2:]
+    try:
+        _image()
+    except OSError as e:
+        sys.exit(f"sh4dis: cannot read OS image {IMG} ({e.strerror}); pass --image PATH or set SH4DIS_IMAGE")
+    a = int(args[0], 0) if len(args) > 0 else 0x80001a40
+    b = int(args[1], 0) if len(args) > 1 else a + 0xC0
     disasm(a, b)

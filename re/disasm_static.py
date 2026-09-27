@@ -8,6 +8,7 @@ import sh4dis
 
 IMG = os.path.join(os.path.dirname(__file__), "..", "os", "flash_dump", "flash_full.bin")
 img = open(IMG, "rb").read()
+sh4dis.set_image(img)   # literal comments from the image we're disassembling (3.60), not sh4dis's default
 
 def r16(va):
     off = va & 0x1FFFFFFF
