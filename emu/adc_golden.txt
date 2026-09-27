@@ -1,0 +1,63 @@
+ips 1000000
+at 0 0
+tick
+irq 560
+r 88 c000
+at 30000 0
+tick
+irq 560
+r 88 c000
+w 88 0042
+w 8a 0000
+at 40000 0
+w 88 4042
+w 88 6042
+r 88 4042
+at 40050 0
+tick
+irq
+r 88 4042
+at 40100 0
+tick
+irq 560
+r 88 c042
+at 40101 0
+tick
+irq
+at 60000 0
+tick
+irq
+w 88 0042
+w 8a 01cf
+w 8c 0000
+w 88 0042
+w 8c 8000
+w 8a 01cf
+r 8c 8000
+at 100000 0
+tick
+irq
+at 110000 10000
+tick
+irq
+at 115625 15625
+tick
+irq 560
+r 8c 0000
+r 88 c1cf
+w 88 0042
+w 8c 8000
+at 120000 20000
+tick
+irq
+w 8c 0000
+w 8c 8000
+at 130000 30000
+tick
+irq
+w 8c 0000
+at 200000 90000
+tick
+irq
+r 82 7140
+r 84 7140

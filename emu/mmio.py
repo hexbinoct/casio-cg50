@@ -329,11 +329,26 @@ class FreeCounter(Region):
 ADC_BATTERY_RAW = 0x7140
 
 class PeriphIRQ(Region):
-    """0xA4610000 timer/peripheral interrupt block. The OS idle loop polls the flag
-    register at +0x88 (bits 14/15 = timer underflow) and the timer ISR (INTEVT 0x188)
-    acks it by clearing those bits. We let the run-loop's timer set the flag; the ISR's
-    write-back clears it. Flag lives at offset 0x88 (treat the 0x88..0x8B word as one).
-    +0x82/+0x84 are the battery-voltage ADC data registers (see ADC_BATTERY_RAW)."""
+    """0xA4610000: the battery ADC (mirror of emu_go/mmio.go periphIRQ — read it for the full
+    model). +0x82/+0x84 = result (ADC_BATTERY_RAW), end flags bits 14/15 at +0x88 (the
+    0x88..0x8B word is treated as one), cleared by the INTEVT 0x560 ISR. Two starts:
+      - software start, a write of +0x88 with bit 13: completes after ips/ADC_SOFT_DIV cycles;
+      - idle-routine start, +0x8C bit 15: completes after ips/ADC_SLEEP_DIV cycles of CPU sleep
+        (cpu.idle); writing +0x8C without bit 15 cancels it.
+    Completion sets the flags and raises 0x560 once. Until the OS first starts a conversion
+    (adc_mode), the legacy periodic tick (MMIOBus.timer_period) keeps running."""
+    ADC_SLEEP_DIV = 64
+    ADC_SOFT_DIV = 10000
+
+    def __init__(self, name, base, size):
+        super().__init__(name, base, size)
+        self.bus = None
+        self.adc_mode = False
+        self.armed = False
+        self.done_at = 0
+        self.sw_armed = False
+        self.sw_done_at = 0
+
     def read(self, va, size):
         roff = (va - self.base) & 0xFFFF
         if roff == 0x82 or roff == 0x84:
@@ -342,8 +357,30 @@ class PeriphIRQ(Region):
         return self.regs.get(off, 0)
 
     def write(self, va, size, val):
-        off = (va - self.base) & ~3 if (0x88 <= (va - self.base) < 0x8C) else (va - self.base)
+        raw = va - self.base
+        cpu = self.bus.cpu if self.bus is not None else None
+        if raw == 0x88 and (val & 0x2000) and cpu is not None:
+            self.adc_mode = self.sw_armed = True
+            self.sw_done_at = cpu.cycles + self.bus.instr_per_sec // self.ADC_SOFT_DIV
+            val &= ~0x2000                                   # the start bit is a trigger
+        off = raw & ~3 if (0x88 <= raw < 0x8C) else raw
         self.regs[off] = val
+        if off == 0x8C and cpu is not None:
+            self.armed = bool(val & 0x8000)
+            if self.armed:
+                self.adc_mode = True
+                self.done_at = cpu.idle + self.bus.instr_per_sec // self.ADC_SLEEP_DIV
+
+    def adc_tick(self, cpu):
+        if self.sw_armed and cpu.cycles >= self.sw_done_at:
+            self.sw_armed = False
+            self.set_timer_flag()
+            cpu.raise_irq(MMIOBus.TIMER_INTEVT, MMIOBus.TIMER_LEVEL)
+        if self.armed and cpu.idle >= self.done_at:
+            self.armed = False
+            self.regs[0x8C] = self.regs.get(0x8C, 0) & ~0x8000
+            self.set_timer_flag()
+            cpu.raise_irq(MMIOBus.TIMER_INTEVT, MMIOBus.TIMER_LEVEL)
 
     def set_timer_flag(self):
         self.regs[0x88] = self.regs.get(0x88, 0) | 0xC000   # bits 14,15
@@ -623,6 +660,7 @@ class MMIOBus:
         self.log = log
         self.cpu = None         # set by the runner; used by cycle-based timers
         self.periph_irq = PeriphIRQ("PERIPH_IRQ", 0xA4610000, 0x1000)
+        self.periph_irq.bus = self
         self.etmu2 = ETMUCounter("ETMU2", 0xA44D0000, 0x1000)
         self.etmu2.bus = self
         self.keysc = KeyScan("KEYSC", 0xA44B0000, 0x1000)
@@ -666,7 +704,9 @@ class MMIOBus:
         if not self.timer_period:
             return          # pure-boot mode (goldens): no interrupt sources at all
         self.rtc.tick(cpu)
-        if cpu.cycles >= self.timer_next:
+        if getattr(self.periph_irq, "adc_mode", False):
+            self.periph_irq.adc_tick(cpu)
+        elif cpu.cycles >= self.timer_next:
             self.timer_next = cpu.cycles + self.timer_period
             self.timer_ticks += 1
             self.periph_irq.set_timer_flag()
@@ -744,6 +784,14 @@ def upgrade_bus(mmio, cpu):
         mmio.etmu2.count_div = 0
     if "BCDALU" not in names:
         mmio.regions.insert(0, BCDALU("BCDALU", 0xA4CB0000, 0x1000))
+    p = mmio.periph_irq
+    for attr, default in (("adc_mode", False), ("armed", False), ("done_at", 0),
+                          ("sw_armed", False), ("sw_done_at", 0)):
+        if not hasattr(p, attr):
+            setattr(p, attr, default)
+    p.bus = mmio
+    if not hasattr(cpu, "idle"):
+        cpu.idle = 0
     if not isinstance(getattr(mmio, "lcd", None), LCD):
         pfc = next(r for r in mmio.regions if getattr(r, "name", "") == "PFC")
         mmio.lcd = LCD("LCD_R61524", 0xB4000000, 0x20000, pfc)

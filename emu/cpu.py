@@ -64,6 +64,7 @@ class CPU:
         self.halted = False
         self.pending = []        # list of (level, intevt_code) interrupt requests
         self.sleeping = False    # `sleep` executed: halted until an interrupt is accepted
+        self.idle = 0            # cycles spent asleep (drives the ADC model, see mmio.PeriphIRQ)
         self.irq_count = 0
 
     # ---- SR with register-bank handling ----
@@ -120,6 +121,7 @@ class CPU:
             # even with SR.BL set (SH-4: the request wakes the CPU; the exception is accepted
             # once BL/IMASK allow). Mirrors emu_go cpu.go.
             self.cycles += 1
+            self.idle += 1
             if self.pending:
                 self.sleeping = False
             return

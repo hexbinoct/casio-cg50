@@ -237,6 +237,9 @@ func (e *Emulator) Step(n int) {
 			e.due = e.nextDue()
 			continue
 		}
+		if e.cpu.sleeping {
+			e.due = e.nextDue() // entering sleep can bring an ADC completion forward
+		}
 		stop := min(e.due, end)
 		if e.cpu.sleeping {
 			if len(e.cpu.pending) == 0 {
@@ -258,7 +261,16 @@ func (e *Emulator) nextDue() uint64 {
 	m := e.mmio
 	d := m.keysc.scanNext
 	if m.timerPeriod != 0 {
-		d = min(d, m.timerNext)
+		if p := m.periphIRQ; !p.adcMode {
+			d = min(d, m.timerNext)
+		} else {
+			if p.swArmed {
+				d = min(d, p.swDoneAt)
+			}
+			if p.armed && e.cpu.sleeping { // sleeping cycles advance cycles and idle together
+				d = min(d, e.cpu.cycles+(p.doneAt-min(p.doneAt, e.cpu.idle)))
+			}
+		}
 		if m.rtc.rcr2&0x70 != 0 {
 			d = min(d, m.rtc.nextPeriodic)
 		}
@@ -333,6 +345,7 @@ func (e *Emulator) Snapshot() ([]byte, error) {
 func (e *Emulator) Resume(blob []byte) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	e.cpu.cycles, e.cpu.idle = 0, 0 // before restoring: the ADC deadline is relative to idle
 	if err := ResumeBytes(blob, e.cpu, e.mem); err != nil {
 		return err
 	}

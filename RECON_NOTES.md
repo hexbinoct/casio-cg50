@@ -9,7 +9,53 @@
   pending, so the next session can continue without being reminded.
 ============================================================================= -->
 
-> ## ⏯ RESUME HERE (last session end: 2026-09-27 cont.18r)
+> ## ⏯ RESUME HERE (last session end: 2026-09-27 cont.18s)
+>
+> ### 🔋 cont.18s — 0x560 is the BATTERY ADC; conversion-driven model shipped. Idle ≈ free. Scroll speed still ~⅔ of the calc.
+> **What changed (Go `emu_go/mmio.go periphIRQ` + Python `emu/mmio.py PeriphIRQ`, identical):** INTEVT 0x560's
+> source is the battery ADC at 0xA4610000 (+0x82/+0x84 result = 0x7140 modelled battery voltage, +0x88/+0x8A
+> control with end flags bits 14/15 — the 0x88..0x8B word is one register in the model, +0x8C bit15 start).
+> Two ways the OS starts a conversion, both now modelled:
+>   · **software start** `+0x88 |= 0x2000` — battery monitor 0x801de54a (start 0x801de64a) then busy-waits,
+>     CPU running, for the ISR's event 1 or `+0x88` bit15 → completes after ips/10000 (100 µs), awake or not;
+>   · **idle-routine start** `+0x8C = 0x8000` (0x802ae87a, right before `sleep`) → completes only after
+>     ips/64 cycles of CPU *sleep* since the start (counted in the new `cpu.idle`), per the on-device probes.
+>   Either sets the end flags and raises 0x560 once. The old periodic tick (timerPeriod, every 30k instr) still
+>   runs until the OS first starts a conversion (fresh boot was proven with it) — after that `adcMode`.
+>   Scheduler: `nextDue` includes the software deadline, and the ADC sleep deadline while sleeping (Step
+>   recomputes `due` when entering sleep). Save-state keys 0x10000.. in the PERIPH_IRQ map (mode, armed + left).
+>   `Emulator.Resume` zeroes cycles/idle BEFORE restoring (deadlines are relative). Python: `upgrade_bus` adds
+>   the new attrs; `CPU.idle`.
+> **Tests (all green):** 68/68 conformance, golden boot byte-identical (pure boot never starts the ADC), all
+> goldens regenerated identical, NEW `emu/adc_selftest.py` → `emu/adc_golden.txt` ↔ `TestADCOracleTranscript`
+> (legacy tick, software start, sleep-only completion, re-arm/cancel), `TestScheduledStepMatchesExact` still
+> bit-identical, cursor blink / RTC 2 Hz / keys / MENU / add-in e2e all pass.
+> **Measured:** idle work at the 100M time base 11.4M → **0.23M instr executed per emulated s** (desktop and
+> phone; phone step 9 ms → 1 ms per frame). Desktop moves/s (TestRepeatRateProbe, emulated time) unchanged or
+> slightly better (9.1 @22M, 17.8 @44M, 24.5 @66M, 29 @100M). **Phone 1.2 s RIGHT hold from Run-Matrix: 6, 6,
+> 7 moves (cont.18r build: 9; real calc 11+).** Cause: host DVFS — with idle nearly free Android clocks the
+> CPU down, so the first few hundred ms of a burst run on slow cores (blit went 5 → 9-10 ms/frame on the same
+> work). Not an emulation regression.
+> **On-device probes (`tools/tickprobe`, results `os/devic_probes/tickprobe_v1..3_2026-09-27.txt`):** see
+> cont.18r notes below. ⚠ v4 (sleep test) RESET the calculator to first-boot setup — compiled out behind
+> TICKPROBE_SLEEP_TEST. **Never execute `sleep` / write CPG 0xA4150020 from a probe add-in.** Probes are
+> deleted from the calc after use (none left on it now).
+> **Phone state:** new APK installed (MD5-verified) — it has everything through cont.18s.
+>
+> **NEXT (in this order):**
+>   1. **Android performance hints (ADPF)** — `PerformanceHintManager` (API 31+; POCO X3 is Android 12+):
+>      create a hint session for the render thread with target 16.7 ms and `reportActualWorkDuration(step+blit)`
+>      each frame, so clocks ramp as soon as the OS gets busy. Re-measure the 1.2 s hold (goal ≥ 9, then 11+).
+>      Optional: skip the blit when the displayed frame is unchanged (LCD GRAM dirty flag) — idle battery.
+>   2. **Native (HLE) OS bitmap blitter** 0x80056a40-0x80056bc0 region (find the function entry; ~100 instr per
+>      pixel; ~70% of a menu move) + the ~20% region 0x8017b920-0x8017ba40. Implement in Go with a
+>      differential test vs the interpreter (same inputs → identical memory/regs), host-side only.
+>   3. Skin polish (S/A annunciator state on SHIFT/ALPHA keys), release signing.
+> Tools this session: probes (tag `probe`) TestRepeatRateProbe, TestMenuMoveHotspots, TestIdleCostProbe,
+> TestADCStuckProbe, bench `bench_probe_test.go` (MenuHold exact vs scheduled). Windows box has 9+ days uptime
+> with hibernations → absolute desktop benchmarks are noisy; compare within one run or ask for a reboot.
+>
+> ## ⏯ (prev) RESUME HERE (last session end: 2026-09-27 cont.18r)
 >
 > ### ⚡ cont.18r — SPEED: menu auto-repeat was ~3.4× slower than the real calc. Partly fixed.
 > User: holding RIGHT on the MAIN MENU is ~3× slower on the phone than on the calc. **Measured (probe

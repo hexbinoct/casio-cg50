@@ -28,7 +28,7 @@ blinking cursor, and **third-party add-ins (`.g3a`)**.
 | `android/` | **The Android app** (Kotlin + JNI over the Go core): the screen, a keypad drawn in the real fx-CG50 layout, save-state resume. See [`android/README.md`](android/README.md). |
 | `docs/ANDROID.md` | The host API (C ABI) the Go core exports, and how the app is wired. |
 | `re/` | Reverse-engineering scripts: SH-4 disassembler (`sh4dis.py` — `--image PATH` or `SH4DIS_IMAGE`; `disasm_static.py`), syscall resolvers (`syscall360.py` for OS 3.60), the keymap generator (`dump_keymap.py` → `KEYMAP.md`) and label audit (`audit_keymap.py`), and many single-purpose probes. |
-| `tools/` | On-calculator helpers: `flash_dump/` (a gint/fxlink flash **dumper**), `fxsdk-docker/` (fxSDK/gint toolchain in Docker), and probe add-ins (`keyprobe/`, `timerprobe/`) used to measure the real hardware. |
+| `tools/` | On-calculator helpers: `flash_dump/` (a gint/fxlink flash **dumper**), `fxsdk-docker/` (fxSDK/gint toolchain in Docker), and probe add-ins (`keyprobe/`, `timerprobe/`, `tickprobe/`) used to measure the real hardware. |
 | `RECON_NOTES.md` | The full reverse-engineering log. The **RESUME HERE** block at the top is the current state and next steps. |
 
 ### What the emulator models
@@ -45,7 +45,8 @@ blinking cursor, and **third-party add-ins (`.g3a`)**.
 - **Time:** RTC (calendar + 2 Hz periodic IRQ that drives the cursor blink), the 32.768 kHz
   counter and the key-scan rate, all derived from the host's real instructions/second.
 - **Other:** NOR flash with a program/erase command state machine (settings persist), the
-  hardware BCD ALU the number formatter needs, DMAC, INTC, CPG and friends.
+  hardware BCD ALU the number formatter needs, the battery ADC (its "done" interrupt wakes the
+  idle OS — measured on the real calculator with `tools/tickprobe`), DMAC, INTC, CPG and friends.
 
 ## Status
 
@@ -61,9 +62,9 @@ blinking cursor, and **third-party add-ins (`.g3a`)**.
   a 2000-checkpoint golden boot trace, and transcript parity for the KEYSC and LCD models.
 - ✅ All keys behave like the real calculator (checked by hand on the phone, and every label
   audited against the codes the OS produces).
-- ⏳ Next: speed — menus scroll ~20% slower than the real calculator on a phone (measure the
-  real rate of the OS's periodic timer interrupt; run the OS's bitmap blitter natively), then
-  skin polish (S/A annunciator state on the keys).
+- ⏳ Next: speed — held-key menu scrolling on a phone is still ~⅔ of the real calculator (ask
+  Android for CPU clocks via performance hints; run the OS's bitmap blitter natively), then skin
+  polish (S/A annunciator state on the keys).
 
 ## Getting a flash dump
 

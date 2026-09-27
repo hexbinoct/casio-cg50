@@ -129,7 +129,47 @@ func (f *freeCounter) read(va, size uint32) uint32 {
 
 // PeriphIRQ (0xA4610000): flag at +0x88 (bits14/15 = timer underflow). Timer sets it,
 // ISR acks by clearing. Treat the 0x88..0x8B word as one.
-type periphIRQ struct{ base }
+// periphIRQ: the battery ADC block at 0xA4610000 (cont.18r/18s, tools/tickprobe on the real
+// calc). +0x82/+0x84 = A/D result, +0x88/+0x8A = control with end flags bits 14/15 (the
+// INTEVT 0x560 ISR 0x801ded94 clears them), +0x8C bit15 = start. The OS idle routine 0x802ae87a
+// starts a conversion right before every `sleep`; on the real calc a started conversion never
+// completes within 2 s while the CPU runs, yet readings do arrive — i.e. it converts while the
+// CPU sleeps. There are two ways to start a conversion:
+//   - the idle routine's start, +0x8C bit15: completes after 1/adcSleepDiv s of CPU *sleep*
+//     since the start (counted in cpu.idle, so scheduled and per-instruction loops agree);
+//   - a software start, +0x88 |= 0x2000 (battery monitor 0x801de54a: start routine 0x801de64a
+//     then waits, CPU running, for the ISR's event or +0x88 bit15): completes after
+//     1/adcSoftDiv s (a normal A/D conversion time), awake or asleep.
+//
+// Either raises 0x560 once and sets the end flags. Until the OS first starts a conversion, the
+// legacy periodic tick (timerPeriod) keeps running — the fresh boot from reset was proven with it.
+type periphIRQ struct {
+	base
+	bus      *MMIOBus
+	adcMode  bool   // the OS has started a conversion: 0x560 is conversion-driven from now on
+	armed    bool   // an idle-routine conversion is in progress
+	doneAt   uint64 // cpu.idle value at which it completes
+	swArmed  bool   // a software-started conversion is in progress
+	swDoneAt uint64 // cpu.cycles value at which it completes
+}
+
+// adcSleepDiv: an idle-routine conversion needs 1/adcSleepDiv s of CPU sleep. The real latency
+// is unknown (probing it by sleeping from an add-in reset the calculator); readings arriving at
+// most 64 times per idle second is plenty for a battery gauge and costs almost nothing.
+// adcSoftDiv: a software-started conversion takes 1/adcSoftDiv s (100 µs).
+const (
+	adcSleepDiv = 64
+	adcSoftDiv  = 10000
+)
+
+// adc keys in the save-state's per-region map (beyond the real register offsets)
+const (
+	adcKeyMode   = 0x10000
+	adcKeyArmed  = 0x10001
+	adcKeyLeft   = 0x10002 // doneAt - cpu.idle
+	adcKeySw     = 0x10003
+	adcKeySwLeft = 0x10004 // swDoneAt - cpu.cycles
+)
 
 // Battery-voltage ADC reading reported at PERIPH_IRQ +0x82/+0x84. The OS battery
 // monitor (FUN_801de54a) averages two samples and buckets the result (>>6) against
@@ -151,10 +191,38 @@ func (p *periphIRQ) read(va, size uint32) uint32 {
 }
 func (p *periphIRQ) write(va, size, val uint32) {
 	off := va - p.bs
+	if off == 0x88 && val&0x2000 != 0 && p.bus != nil && p.bus.cpu != nil {
+		p.adcMode, p.swArmed = true, true
+		p.swDoneAt = p.bus.cpu.cycles + p.bus.instrPerSec/adcSoftDiv
+		val &^= 0x2000 // the start bit is a trigger
+	}
 	if off >= 0x88 && off < 0x8C {
 		off = 0x88
 	}
 	p.regs[off] = val
+	if off == 0x8C && p.bus != nil && p.bus.cpu != nil {
+		p.armed = val&0x8000 != 0
+		if p.armed {
+			p.adcMode = true
+			p.doneAt = p.bus.cpu.idle + p.bus.instrPerSec/adcSleepDiv
+		}
+	}
+}
+
+// adcTick completes conversions that are due: a software start after its conversion time, an
+// idle-routine start once the CPU has slept long enough.
+func (p *periphIRQ) adcTick(cpu *CPU) {
+	if p.swArmed && cpu.cycles >= p.swDoneAt {
+		p.swArmed = false
+		p.setTimerFlag()
+		cpu.raiseIRQ(TimerINTEVT, TimerLevel)
+	}
+	if p.armed && cpu.idle >= p.doneAt {
+		p.armed = false
+		p.regs[0x8C] &^= 0x8000
+		p.setTimerFlag()
+		cpu.raiseIRQ(TimerINTEVT, TimerLevel)
+	}
 }
 func (p *periphIRQ) setTimerFlag() { p.regs[0x88] |= 0xC000 }
 
@@ -382,7 +450,7 @@ func (b *MMIOBus) captureScan(va, size, val uint32, write bool) {
 
 func NewMMIOBus() *MMIOBus {
 	b := &MMIOBus{unknown: map[uint32]int{}}
-	b.periphIRQ = &periphIRQ{base: newBase("PERIPH_IRQ", 0xA4610000, 0x1000)}
+	b.periphIRQ = &periphIRQ{base: newBase("PERIPH_IRQ", 0xA4610000, 0x1000), bus: b}
 	b.etmu2 = &etmuCounter{base: newBase("ETMU2", 0xA44D0000, 0x1000)}
 	b.etmu2.bus = b
 	b.keysc = newKeysc()
@@ -522,6 +590,21 @@ func (b *MMIOBus) regionRegs() map[string]map[uint32]uint32 {
 			out[x.nm] = map[uint32]uint32{0x1C: x.rcr1, 0x1E: x.rcr2}
 		case *lcd:
 			out[x.nm] = x.stateMap()
+		case *periphIRQ:
+			m := make(map[uint32]uint32, len(x.regs)+3)
+			for k, v := range x.regs {
+				m[k] = v
+			}
+			if x.adcMode {
+				m[adcKeyMode] = 1
+			}
+			if x.armed && b.cpu != nil {
+				m[adcKeyArmed], m[adcKeyLeft] = 1, uint32(x.doneAt-min(x.doneAt, b.cpu.idle))
+			}
+			if x.swArmed && b.cpu != nil {
+				m[adcKeySw], m[adcKeySwLeft] = 1, uint32(x.swDoneAt-min(x.swDoneAt, b.cpu.cycles))
+			}
+			out[x.nm] = m
 		}
 	}
 	return out
@@ -549,6 +632,22 @@ func (b *MMIOBus) restoreRegionRegs(saved map[string]map[uint32]uint32) {
 		}
 		if x, isC := r.(*ccn); isC {
 			x.restoreState(m)
+			continue
+		}
+		if x, isP := r.(*periphIRQ); isP {
+			for k := range x.regs {
+				delete(x.regs, k)
+			}
+			for k, v := range m {
+				if k < adcKeyMode {
+					x.regs[k] = v
+				}
+			}
+			x.adcMode, x.armed, x.swArmed = m[adcKeyMode] == 1, m[adcKeyArmed] == 1, m[adcKeySw] == 1
+			if b.cpu != nil {
+				x.doneAt = b.cpu.idle + uint64(m[adcKeyLeft])
+				x.swDoneAt = b.cpu.cycles + uint64(m[adcKeySwLeft])
+			}
 			continue
 		}
 		var dst map[uint32]uint32
@@ -615,7 +714,9 @@ func (b *MMIOBus) tick(cpu *CPU) {
 		return // pure-boot mode (goldens): no interrupt sources at all
 	}
 	b.rtc.tick(cpu)
-	if cpu.cycles >= b.timerNext {
+	if b.periphIRQ.adcMode {
+		b.periphIRQ.adcTick(cpu)
+	} else if cpu.cycles >= b.timerNext {
 		b.timerNext = cpu.cycles + b.timerPeriod
 		b.timerTicks++
 		b.periphIRQ.setTimerFlag()

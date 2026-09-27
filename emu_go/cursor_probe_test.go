@@ -841,3 +841,63 @@ func TestADCProbe(t *testing.T) {
 	e.Step(1_000_000)
 	t.Logf("in 1M instr: %d synthetic 0x560 IRQs, %d ADC-block writes logged", e.mmio.timerTicks-t0, n)
 }
+
+// Where does the OS get stuck with the conversion-driven ADC model? PC histogram + ADC-block
+// accesses after resuming at the menu.
+func TestADCStuckProbe(t *testing.T) {
+	flash, _ := os.ReadFile("../os/flash_dump/flash_full.bin")
+	st, _ := os.ReadFile("../os/flash_dump/cg50_state.bin")
+	e := NewEmulator(flash)
+	if err := e.Resume(st); err != nil {
+		t.Fatal(err)
+	}
+	e.SetInstrPerSecond(100_000_000)
+	n := 0
+	e.mem.mmioHook = func(va, size, val uint32) {
+		if va&^0xFF == 0xA4610000 && n < 16 && e.cpu.cycles > 3_000_000 {
+			t.Logf("  @%9d w%d %08x = %04x (pc %08x) sleeping=%v", e.cpu.cycles, size*8, va, val, e.cpu.pc, e.cpu.sleeping)
+			n++
+		}
+	}
+	e.Step(3_000_000)
+	e.InjectKey(2, 1) // EXE -> Run-Matrix (where the tests got stuck)
+	e.Step(30_000_000)
+	h := map[uint32]int{}
+	for i := 0; i < 200_000; i++ {
+		h[e.cpu.pc&^0xF]++
+		e.Step(1)
+	}
+	type kv struct {
+		a uint32
+		n int
+	}
+	var l []kv
+	for a, c := range h {
+		l = append(l, kv{a, c})
+	}
+	sort.Slice(l, func(i, j int) bool { return l[i].n > l[j].n })
+	for i := 0; i < 8 && i < len(l); i++ {
+		t.Logf("  hot %08x %d", l[i].a, l[i].n)
+	}
+	t.Logf("adcMode=%v armed=%v idle=%d doneAt=%d sleeping=%v", e.mmio.periphIRQ.adcMode, e.mmio.periphIRQ.armed, e.cpu.idle, e.mmio.periphIRQ.doneAt, e.cpu.sleeping)
+}
+
+// Real work per emulated second at idle (menu) and while holding RIGHT, at the 100M time base.
+func TestIdleCostProbe(t *testing.T) {
+	flash, _ := os.ReadFile("../os/flash_dump/flash_full.bin")
+	st, _ := os.ReadFile("../os/flash_dump/cg50_state.bin")
+	e := NewEmulator(flash)
+	if err := e.Resume(st); err != nil {
+		t.Fatal(err)
+	}
+	e.SetInstrPerSecond(100_000_000)
+	e.Step(20_000_000)
+	x0 := e.Executed()
+	e.Step(200_000_000) // 2 emulated s idle
+	t.Logf("idle: %.2fM instr executed per emulated second", float64(e.Executed()-x0)/2e6)
+	e.KeyDown(1, 7)
+	x0 = e.Executed()
+	e.Step(200_000_000)
+	e.KeyUp(1, 7)
+	t.Logf("RIGHT held: %.2fM instr executed per emulated second, %d pushes", float64(e.Executed()-x0)/2e6, e.Pushes())
+}

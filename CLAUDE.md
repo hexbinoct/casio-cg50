@@ -30,14 +30,16 @@ The **Python emulator (`emu/`) is the reference oracle**, not dead code.
 
 - **Always write/update tests.** When you change CPU/MMIO behaviour in `emu/cpu.py` or
   `emu/mmio.py`: (1) regenerate the frozen goldens —
-  `python emu/conformance_gen.py && python emu/gen_golden.py` — and add new conformance cases
-  for any new/edge instruction behaviour; (2) prove the Go port still matches with
-  `go -C emu_go test .` (conformance 53/53 + 2M-instr golden boot). Never validate the port by
-  ad-hoc running and eyeballing.
+  `python emu/conformance_gen.py && python emu/gen_golden.py`, plus `python emu/keysc_selftest.py`,
+  `emu/lcd_selftest.py`, `emu/adc_selftest.py` for those devices — and add new conformance cases for
+  any new/edge instruction behaviour; (2) prove the Go port still matches with `go -C emu_go test .`
+  (conformance 68/68 incl. MMU cases, 2M-instr golden boot, the three device transcripts, and the
+  scheduled-vs-exact equivalence test). Never validate the port by ad-hoc running and eyeballing.
 - Run the Go emulator: `go -C "F:/ru/myprojects/may/cg50/emu_go" run . [maxIns] [timerPeriod] [mode]`
   (no leading `cd`; the `-C` flag keeps the allowlist token = `go`). `mode=ftl` probes flash-FTL returns.
-- Boots the real **3.60** full flash (`os/flash_dump/flash_full.bin`); reaches system idle. See
-  `RECON_NOTES.md` RESUME block for the open render-gate.
+- Boots the real **3.60** full flash (`os/flash_dump/flash_full.bin`); runs every built-in app and add-ins;
+  the Android app (`android/`) runs it on the user's phone. See the `RECON_NOTES.md` RESUME block for the
+  current open task (speed of held-key scrolling on the phone).
 
 ## Ghidra (this project)
 
