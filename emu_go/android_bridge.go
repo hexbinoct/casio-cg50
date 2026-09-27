@@ -129,6 +129,27 @@ func EmuExecuted() C.longlong {
 	return C.longlong(gEmu.Executed())
 }
 
+// EmuPushes returns the number of VRAM->LCD frame pushes so far (one per OS redraw, e.g. per
+// menu cursor move); the app logs it so a held-key burst can be measured from logcat.
+//
+//export EmuPushes
+func EmuPushes() C.longlong {
+	if gEmu == nil {
+		return 0
+	}
+	return C.longlong(gEmu.Pushes())
+}
+
+// EmuFrameGen changes whenever the panel contents do; the app skips the blit when it hasn't.
+//
+//export EmuFrameGen
+func EmuFrameGen() C.longlong {
+	if gEmu == nil {
+		return 0
+	}
+	return C.longlong(gEmu.FrameGen())
+}
+
 // EmuSetClock sets the emulated RTC calendar (unix seconds).
 //
 //export EmuSetClock

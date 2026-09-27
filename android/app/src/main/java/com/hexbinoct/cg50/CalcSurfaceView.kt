@@ -1,10 +1,14 @@
 package com.hexbinoct.cg50
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Rect
+import android.os.Build
+import android.os.PerformanceHintManager
+import android.os.Process
 import android.util.AttributeSet
 import android.util.Log
 import android.view.SurfaceHolder
@@ -12,17 +16,27 @@ import android.view.SurfaceView
 import java.nio.ByteBuffer
 
 /**
- * Draws the emulator's framebuffer and drives the run loop on its own thread: each frame it
- * steps the core a fixed instruction budget, pulls the RGBA frame, and blits it (scaled,
- * nearest-neighbour) to the surface. Paced to ~60 fps. The emulator must be init'd/resumed
- * (MainActivity does that) before onEmulatorReady() is called.
+ * Draws the emulator's framebuffer and drives the machine, on two threads:
+ *
+ *  - `cg50-emu` runs the core in CHUNK-instruction slices paced against real time: it steps
+ *    whenever emulated time is behind the wall clock and sleeps only when it is ahead. An idle
+ *    machine (sleeping CPU, fast-forwarded in the core) costs nearly nothing; a busy one runs
+ *    this thread flat out. That matters on big.LITTLE phones: the scheduler places a thread by
+ *    its *running* utilisation, and the old single loop (step ~10 ms, then block in
+ *    lockCanvas, then sleep) looked like a 40 % task that "fits" a little core, so key-repeat
+ *    bursts ran on an A55 at 1 GHz with the big cores idle. A saturated thread is migrated up
+ *    within a few tens of ms.
+ *  - `cg50-render` pulls the RGBA frame and blits it (scaled by the compositor) at ~60 fps.
+ *
+ * The emulator must be init'd/resumed (MainActivity does that) before onEmulatorReady().
  */
 class CalcSurfaceView @JvmOverloads constructor(context: Context, attrs: AttributeSet? = null) :
-    SurfaceView(context, attrs), SurfaceHolder.Callback, Runnable {
+    SurfaceView(context, attrs), SurfaceHolder.Callback {
 
     @Volatile private var running = false
     @Volatile private var emulatorReady = false
-    private var thread: Thread? = null
+    private var emuThread: Thread? = null
+    private var renderThread: Thread? = null
 
     private var w = 0
     private var h = 0
@@ -32,29 +46,28 @@ class CalcSurfaceView @JvmOverloads constructor(context: Context, attrs: Attribu
     private val dst = Rect()
     private val paint = Paint().apply { isFilterBitmap = false } // crisp pixels
 
-    /**
-     * Instructions executed per frame. Measured raw core speed on arm64 is ~29 M/s, so with a
-     * cheap (GPU-composited) blit we budget ~30 M/s at 60 fps. Tune per device after measuring.
-     */
-    var instrPerFrame = 500_000
+    /** `am start ... --ez adpf false` runs without the ADPF hint session (A/B measuring). */
+    @Volatile var useHints = true
 
     /**
      * Time base: the emulated machine runs at MAX_IPS — about the real fx-CG50 (SH7305 at
      * ~118 MHz) — and that never changes (MainActivity sets it once). An emulated second is
      * always MAX_IPS instructions, so the OS's clocks, key repeat and CPU work stay consistent.
      *
-     * Budget: each frame runs up to MAX_IPS/60 instructions (real time), sized so step() takes
-     * about STEP_TARGET_NS of the 16.7 ms frame (the rest is blit + UI), changing by at most
-     * ±25% per frame. Idle frames are cheap (a sleeping CPU fast-forwards in the core), so the
-     * budget sits at real time; when this phone can't keep up with heavy OS work the budget
-     * shrinks and the whole machine slows uniformly — like a slower calculator — instead of the
-     * OS's timers drifting against its CPU work. (A per-second setInstrPerSec feedback did
-     * exactly that: idle seconds raised the rate, then key repeat ran at half speed while busy.)
+     * Pacing: the emu thread advances CHUNK instructions (= CHUNK_NS of emulated time) each
+     * time the wall clock reaches the chunk's due time. If the phone can't keep up, the machine
+     * falls behind real time; once the debt exceeds MAX_DEBT_NS it is dropped, so the whole
+     * machine slows uniformly — like a slower calculator — rather than its timers drifting
+     * against its CPU work. (A per-second setInstrPerSec feedback did exactly that: idle seconds
+     * raised the rate, then key repeat ran at half speed while busy.)
      */
     companion object {
         const val MAX_IPS = 100_000_000
-        const val MIN_PER_FRAME = 200_000
-        const val STEP_TARGET_NS = 11_000_000L
+        const val CHUNK = MAX_IPS / 200                 // 5 ms of emulated time
+        const val CHUNK_NS = 1_000_000_000L / 200
+        const val MAX_DEBT_NS = 20_000_000L
+        const val FRAME_NS = 1_000_000_000L / 60
+        const val WARM_NS = 300_000_000L
     }
 
     init {
@@ -81,93 +94,164 @@ class CalcSurfaceView @JvmOverloads constructor(context: Context, attrs: Attribu
         emulatorReady = true
     }
 
-    override fun surfaceCreated(holder: SurfaceHolder) = startThread()
+    override fun surfaceCreated(holder: SurfaceHolder) = startThreads()
     override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
         // dst tracks the canvas buffer, which is the fixed native size once setFixedSize takes effect.
         dst.set(0, 0, width, height)
+        needsRedraw = true
     }
-    override fun surfaceDestroyed(holder: SurfaceHolder) = stopThread()
 
-    fun pauseRendering() = stopThread()
+    /** Set when the surface itself changed, so the next frame is drawn even if the panel didn't. */
+    @Volatile private var needsRedraw = true
+    override fun surfaceDestroyed(holder: SurfaceHolder) = stopThreads()
+
+    fun pauseRendering() = stopThreads()
     fun resumeRendering() {
-        if (thread == null && holder.surface?.isValid == true) startThread()
+        if (emuThread == null && holder.surface?.isValid == true) startThreads()
     }
 
-    private fun startThread() {
-        if (thread != null) return
+    private fun startThreads() {
+        if (emuThread != null) return
         running = true
-        thread = Thread(this, "cg50-render").also { it.start() }
+        emuThread = Thread(::emuLoop, "cg50-emu").also { it.start() }
+        renderThread = Thread(::renderLoop, "cg50-render").also { it.start() }
     }
 
-    private fun stopThread() {
+    private fun stopThreads() {
         running = false
-        thread?.join(500)
-        thread = null
+        emuThread?.join(1000)
+        renderThread?.join(1000)
+        emuThread = null
+        renderThread = null
     }
 
-    override fun run() {
-        val frameNs = 1_000_000_000L / 60
+    private fun sleepNs(ns: Long) {
+        try {
+            Thread.sleep(ns / 1_000_000, (ns % 1_000_000).toInt())
+        } catch (_: InterruptedException) {
+        }
+    }
+
+    /**
+     * ADPF: a performance-hint session for the emu thread (API 31+). Each chunk reports its
+     * actual duration against the CHUNK_NS target so the kernel raises the clocks as soon as the
+     * emulated OS gets busy. Null on older devices or where the power HAL lacks hint sessions
+     * (e.g. the POCO X3 / Android 12) — then the thread's own saturation has to do it.
+     */
+    private fun createHintSession(targetNs: Long): PerformanceHintManager.Session? {
+        if (!useHints || Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return null
+        return try {
+            context.getSystemService(PerformanceHintManager::class.java)
+                ?.createHintSession(intArrayOf(Process.myTid()), targetNs)
+                .also { Log.i("cg50-perf", "ADPF hint session: ${if (it != null) "on" else "unavailable"}") }
+        } catch (e: Exception) {
+            Log.w("cg50-perf", "ADPF hint session failed: $e")
+            null
+        }
+    }
+
+    @SuppressLint("NewApi") // `hint` is only non-null on API 31+ (createHintSession)
+    private fun emuLoop() {
+        Process.setThreadPriority(Process.THREAD_PRIORITY_DISPLAY)
+        val hint = createHintSession(CHUNK_NS)
+        var due = System.nanoTime()   // wall time at which the next chunk is due
         // --- perf instrumentation (logcat tag "cg50-perf"): accumulate over ~1s windows ---
         var statWindowStartNs = System.nanoTime()
-        var statInstr = 0L          // emulated instructions executed this window
+        var statChunks = 0L         // chunks run this window (emulated time = chunks * CHUNK_NS)
         var statStepNs = 0L         // wall-time spent inside step()
+        var statDrops = 0           // times the debt was dropped (phone couldn't keep up)
+        var statExecuted0 = NativeBridge.executed()
+        while (running) {
+            if (!emulatorReady) {
+                sleepNs(CHUNK_NS)
+                due = System.nanoTime()
+                continue
+            }
+            val now = System.nanoTime()
+            if (due > now) {
+                sleepNs(due - now)
+                continue
+            }
+            NativeBridge.step(CHUNK)
+            val t1 = System.nanoTime()
+            val stepNs = t1 - now
+            hint?.reportActualWorkDuration(stepNs.coerceIn(1L, 200_000_000L))
+            due += CHUNK_NS
+            if (t1 - due > MAX_DEBT_NS) {
+                due = t1
+                statDrops++
+            }
+            statChunks++
+            statStepNs += stepNs
+            // Report once per ~1s: emulated vs executed instr/s, how busy the thread was, drops.
+            val winNs = t1 - statWindowStartNs
+            if (winNs >= 1_000_000_000L) {
+                val executed = NativeBridge.executed()
+                Log.i(
+                    "cg50-perf",
+                    "emu: emulated=%.1fM/s (real calc=%dM) executed=%.2fM/s busy=%.0f%% step=%.2fms/chunk drops=%d".format(
+                        statChunks * CHUNK * 1e3 / winNs, MAX_IPS / 1_000_000,
+                        (executed - statExecuted0) * 1e3 / winNs,
+                        statStepNs * 100.0 / winNs, statStepNs / 1e6 / statChunks, statDrops
+                    )
+                )
+                statWindowStartNs = t1
+                statChunks = 0L; statStepNs = 0L; statDrops = 0; statExecuted0 = executed
+            }
+        }
+        hint?.close()
+    }
+
+    private fun renderLoop() {
+        var statWindowStartNs = System.nanoTime()
         var statBlitNs = 0L         // wall-time spent pulling+blitting the frame
         var statFrames = 0          // render-loop iterations this window
-        var statExecuted = 0L       // instructions actually executed (idle excluded)
+        var statDrawn = 0           // frames actually blitted (panel changed or surface did)
+        var statPushes0 = NativeBridge.pushes() // LCD frame pushes at window start (= OS redraws)
+        var drawnGen = -1L          // panel generation of the last blitted frame
+        var changedNs = 0L          // when the panel last changed
         while (running) {
             val t0 = System.nanoTime()
             if (emulatorReady) {
-                val exec0 = NativeBridge.executed()
-                val tStep = System.nanoTime()
-                NativeBridge.step(instrPerFrame)
-                val tBlit = System.nanoTime()
-                val executed = NativeBridge.executed() - exec0
-                NativeBridge.framebufferRGBA(buf)
-                bmp.copyPixelsFromBuffer(ByteBuffer.wrap(buf))
-                val c = holder.lockCanvas()
-                if (c != null) {
-                    try {
-                        c.drawColor(Color.BLACK)
-                        if (!dst.isEmpty) c.drawBitmap(bmp, src, dst, paint)
-                    } finally {
-                        holder.unlockCanvasAndPost(c)
+                val gen = NativeBridge.frameGen()
+                if (gen != drawnGen) changedNs = t0
+                // Keep drawing every frame for a while after a change: a surface that is only
+                // drawn now and then takes 20-30 ms per draw (cold buffer path) instead of ~9,
+                // which is latency the user sees during typing. Truly idle = no draws at all.
+                if (t0 - changedNs < WARM_NS || needsRedraw) {
+                    needsRedraw = false
+                    drawnGen = gen
+                    NativeBridge.framebufferRGBA(buf)
+                    bmp.copyPixelsFromBuffer(ByteBuffer.wrap(buf))
+                    val c = holder.lockCanvas()
+                    if (c != null) {
+                        try {
+                            c.drawColor(Color.BLACK)
+                            if (!dst.isEmpty) c.drawBitmap(bmp, src, dst, paint)
+                        } finally {
+                            holder.unlockCanvasAndPost(c)
+                        }
                     }
+                    statBlitNs += System.nanoTime() - t0
+                    statDrawn++
                 }
-                val tEnd = System.nanoTime()
-                statInstr += instrPerFrame
-                statExecuted += executed
-                val stepNs = maxOf(tBlit - tStep, 1L)
-                instrPerFrame = (instrPerFrame * STEP_TARGET_NS / stepNs)
-                    .coerceIn(instrPerFrame * 3L / 4, instrPerFrame * 5L / 4)
-                    .coerceIn(MIN_PER_FRAME.toLong(), (MAX_IPS / 60).toLong())
-                    .toInt()
-                statStepNs += tBlit - tStep
-                statBlitNs += tEnd - tBlit
                 statFrames++
             }
-            // Report once per ~1s: achieved emulated instr/s, render fps, and where time went.
             val winNs = System.nanoTime() - statWindowStartNs
             if (winNs >= 1_000_000_000L && statFrames > 0) {
-                val ips = statInstr * 1_000_000_000.0 / winNs
-                val fps = statFrames * 1_000_000_000.0 / winNs
+                val pushes = NativeBridge.pushes()
                 Log.i(
                     "cg50-perf",
-                    "emulated=%.2fM/s (real calc=%dM) executed=%.2fM/s fps=%.1f step=%.1fms/f blit=%.1fms/f budget=%d".format(
-                        ips / 1e6, MAX_IPS / 1_000_000, statExecuted * 1e3 / winNs,
-                        fps, statStepNs / 1e6 / statFrames, statBlitNs / 1e6 / statFrames,
-                        instrPerFrame
+                    "render: fps=%.1f drawn=%d blit=%.1fms/drawn pushes=%d".format(
+                        statFrames * 1_000_000_000.0 / winNs, statDrawn,
+                        statBlitNs / 1e6 / maxOf(statDrawn, 1), pushes - statPushes0
                     )
                 )
                 statWindowStartNs = System.nanoTime()
-                statInstr = 0L; statStepNs = 0L; statBlitNs = 0L; statFrames = 0; statExecuted = 0L
+                statBlitNs = 0L; statFrames = 0; statDrawn = 0; statPushes0 = pushes
             }
-            val sleep = frameNs - (System.nanoTime() - t0)
-            if (sleep > 0) {
-                try {
-                    Thread.sleep(sleep / 1_000_000, (sleep % 1_000_000).toInt())
-                } catch (_: InterruptedException) {
-                }
-            }
+            val sleep = FRAME_NS - (System.nanoTime() - t0)
+            if (sleep > 0) sleepNs(sleep)
         }
     }
 }

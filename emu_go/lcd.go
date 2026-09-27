@@ -38,6 +38,7 @@ type lcd struct {
 	reg  [lcdReg]uint16
 	h, v uint32 // GRAM address counter
 	gram []uint16
+	gen  uint64 // bumped on every GRAM write: a host skips redrawing an unchanged frame
 }
 
 func newLCD(pfc *base) *lcd {
@@ -120,6 +121,7 @@ func (l *lcd) setAddress() {
 func (l *lcd) pixel(c uint16) {
 	if l.h < panelW && l.v < panelH {
 		l.gram[l.v*panelW+l.h] = c
+		l.gen++
 	}
 	em := l.reg[0x003]
 	hsa, hea, vsa, vea := l.window()
@@ -193,6 +195,7 @@ func (l *lcd) seedFromVRAM(src []byte) {
 			l.gram[y*panelW+osOriginH-x] = uint16(src[i])<<8 | uint16(src[i+1])
 		}
 	}
+	l.gen++
 }
 
 // save-state encoding (in the MMIO section's per-region map): marker, index, address

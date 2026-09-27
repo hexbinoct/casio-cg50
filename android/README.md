@@ -67,12 +67,20 @@ The app snapshots back to `cg50_state.bin` on pause, so your session persists ac
   about the real fx-CG50; `MainActivity` sets it once (`setInstrPerSec`), and the core derives
   the RTC, the 32.768 kHz counter and the 33 Hz key scan from it. `setClock` sets the calendar
   from the phone's clock.
-- **Frame budget:** `CalcSurfaceView` runs the core in 60 fps slices of up to MAX_IPS/60
-  instructions, adapting the slice (`instrPerFrame`, ±25% per frame) so `step()` takes about
-  11 ms of each frame. Idle frames are cheap (a sleeping CPU fast-forwards), so the machine
-  runs at real-calculator speed; when the phone can't keep up with heavy OS work, the whole
-  machine slows uniformly rather than its timers drifting against the CPU. The `cg50-perf`
-  logcat line shows emulated vs actually-executed instructions per second.
+- **Two threads** (`CalcSurfaceView`): `cg50-emu` runs the core in 5 ms chunks (MAX_IPS/200
+  instructions) paced against the wall clock — it steps whenever emulated time is behind real
+  time and sleeps only when ahead, so an idle machine (sleeping CPU, fast-forwarded in the
+  core) costs almost nothing and a busy one saturates the thread. That saturation is what gets
+  it onto a phone's big cores: the scheduler places threads by running utilisation, and the
+  old step-then-blit-then-sleep loop looked like a 40 % task that fit a little core. When the
+  phone can't keep up the debt is dropped past 20 ms, so the whole machine slows uniformly
+  rather than its timers drifting against the CPU. `cg50-render` blits at ~60 fps, skipping
+  frames when the panel hasn't changed for 300 ms (`EmuFrameGen`). An ADPF hint session is
+  used where the device supports it (`am start ... --ez adpf false` disables it). The
+  `cg50-perf` logcat lines show emulated vs executed instr/s, thread busy %, debt drops,
+  fps, frames drawn and LCD pushes; `python re/phone.py` builds, installs and measures
+  (`menuhold` = held RIGHT on the MAIN MENU, counting pushes = menu moves, with CPU
+  frequency / core sampling).
 - **Add-ins** (`.g3a` in your flash dump) run like on the calculator — select their icon on
   the MAIN MENU.
 

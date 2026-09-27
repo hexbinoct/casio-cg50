@@ -9,7 +9,30 @@
   pending, so the next session can continue without being reminded.
 ============================================================================= -->
 
-> ## ⏯ RESUME HERE (last session end: 2026-09-27 cont.18s)
+> ## ⏯ RESUME HERE (last session end: 2026-09-27 cont.18t)
+>
+> ### 🧵 cont.18t — Phone: emu thread decoupled from rendering. 1.2 s RIGHT hold 6-7 → 9-13 moves (calc 11+).
+> **ADPF is a dead end on this phone:** POCO X3 NFC (sm6150, Android 12 / MIUI 14, schedutil) —
+> `PerformanceHintManager.createHintSession` returns null (vendor power HAL has no hint sessions). The code
+> stays in (`CalcSurfaceView.createHintSession`, works on devices that have it; `--ez adpf false` disables).
+> **Real cause, measured** (`re/phone.py menuhold`: `input swipe` hold + logcat pushes + a 50 ms sampler of
+> cpu0/cpu6 freq and the thread's cpu): the run-loop thread lived on the LITTLE A55 cores (cpu0-5, 1.0-1.8
+> GHz) for the whole burst; big cores idle at 652 MHz; it only touched cpu6/7 for ~200 ms of touch boost.
+> EAS places by *running* utilisation and the old loop (step ~10 ms → block in lockCanvas ~8 ms → sleep) was a
+> ~40 % task that "fits" a little core. **Fix:** `cg50-emu` thread steps CHUNK=MAX_IPS/200 (5 ms) whenever
+> emulated time ≤ wall clock, sleeps only when ahead, drops debt > 20 ms (= slows uniformly, same policy as
+> before; `drops` in the log); `cg50-render` blits at 60 fps, only while the panel changed in the last 300 ms
+> (`lcd.gen` → `Emulator.FrameGen` → `EmuFrameGen`; sparse draws cost 20-30 ms each, so a warm window). Idle:
+> emu busy 7 %, 0 draws/s (Run-Matrix cursor blink = 2 draws/s). Bursts: executed 9→22-25M instr/s.
+> **Measured 1.2 s holds (pushes):** before 7,6,6 → after 12,11,12 / 13,8,12 / 13,9,11,9,11. Spread = core
+> placement (13 when the hold rides the touch boost on cpu6/7; 9-11 on little cores at 1.8 GHz — the emu
+> thread still isn't up-migrated reliably). Go tests all green (lcd.gen is presentation-only, not in
+> save-state); `EmuPushes` also exported for measuring.
+> **NEXT:** (1) if more speed is wanted: try `sched_setaffinity` to cpu6-7 for the emu thread during bursts
+> (JNI, own thread — allowed without root) and measure with `menuhold`; (2) the native (HLE) blitter (below,
+> #2) — less work per move helps on any core; (3) skin polish, release signing. Phone has this build.
+>
+> ## ⏯ (prev) RESUME HERE (last session end: 2026-09-27 cont.18s)
 >
 > ### 🔋 cont.18s — 0x560 is the BATTERY ADC; conversion-driven model shipped. Idle ≈ free. Scroll speed still ~⅔ of the calc.
 > **What changed (Go `emu_go/mmio.go periphIRQ` + Python `emu/mmio.py PeriphIRQ`, identical):** INTEVT 0x560's

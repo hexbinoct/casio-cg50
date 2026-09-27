@@ -47,6 +47,12 @@ object NativeBridge {
     /** Instructions actually executed so far (idle cycles excluded) — sizes the frame budget. */
     external fun executed(): Long
 
+    /** VRAM->LCD frame pushes so far (one per OS redraw, e.g. per menu cursor move). */
+    external fun pushes(): Long
+
+    /** Changes whenever the panel contents do (any GRAM write) — skip the blit when it hasn't. */
+    external fun frameGen(): Long
+
     /** Fill dst (width*height*4 bytes) with RGBA pixels; returns bytes written or -1. */
     external fun framebufferRGBA(dst: ByteArray): Int
 

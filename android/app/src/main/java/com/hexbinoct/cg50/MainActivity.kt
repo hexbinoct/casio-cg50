@@ -48,6 +48,8 @@ class MainActivity : AppCompatActivity() {
             Log.i(TAG, "no save-state; cold boot")
             "no save-state — cold boot (first-boot setup will show)"
         }
+        // A/B switch for measuring: `am start ... --ez adpf false` runs without the ADPF hint session.
+        binding.screenView.useHints = intent.getBooleanExtra("adpf", true)
         binding.screenView.onEmulatorReady()
         // The time base: an emulated second = the real calculator's instructions per second. The
         // core derives the RTC periodic interrupt (cursor blink / idle heartbeat), the 32.768 kHz
