@@ -63,10 +63,16 @@ The app snapshots back to `cg50_state.bin` on pause, so your session persists ac
   timing; multi-touch works; each press gives a haptic tap. SHIFT/ALPHA are real keys: tap
   one, then the target. `python re/audit_keymap.py` checks the labels against the codes the
   OS produces for each matrix position.
-- **Time base:** `CalcSurfaceView` runs the core in ~60 fps slices (`instrPerFrame`, default
-  500 000) and reports the measured instructions/second to the core each second
-  (`setInstrPerSec`), which scales the emulated RTC, the 32.768 kHz counter and the key-scan
-  rate to real time; `setClock` sets the calendar from the phone's clock.
+- **Time base:** an emulated second is always `CalcSurfaceView.MAX_IPS` = 100 M instructions,
+  about the real fx-CG50; `MainActivity` sets it once (`setInstrPerSec`), and the core derives
+  the RTC, the 32.768 kHz counter and the 33 Hz key scan from it. `setClock` sets the calendar
+  from the phone's clock.
+- **Frame budget:** `CalcSurfaceView` runs the core in 60 fps slices of up to MAX_IPS/60
+  instructions, adapting the slice (`instrPerFrame`, ±25% per frame) so `step()` takes about
+  11 ms of each frame. Idle frames are cheap (a sleeping CPU fast-forwards), so the machine
+  runs at real-calculator speed; when the phone can't keep up with heavy OS work, the whole
+  machine slows uniformly rather than its timers drifting against the CPU. The `cg50-perf`
+  logcat line shows emulated vs actually-executed instructions per second.
 - **Add-ins** (`.g3a` in your flash dump) run like on the calculator — select their icon on
   the MAIN MENU.
 

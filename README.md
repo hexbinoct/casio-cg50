@@ -22,12 +22,12 @@ blinking cursor, and **third-party add-ins (`.g3a`)**.
 
 | Path | What |
 |------|------|
-| `emu_go/` | **The emulator (Go)** — the primary implementation. SH-4A core, the SH7305 memory map + MMU, and models of the peripherals the OS needs (below). ~60–85 M instr/s on a desktop, ~20–30 M on a phone. Also the desktop web UI and the cgo bridge for Android. |
+| `emu_go/` | **The emulator (Go)** — the primary implementation. SH-4A core, the SH7305 memory map + MMU, and models of the peripherals the OS needs (below). Devices run only at their scheduled events and an idle CPU fast-forwards, so waiting is nearly free; a mid-range phone executes ~28 M instr/s of real work (the real calculator ~100 M). Also the desktop web UI and the cgo bridge for Android. |
 | `emu/` | **The Python reference emulator** — the *oracle*. Slower, but the authoritative model the Go port is validated against; every CPU-visible behaviour exists in both. |
 | `emu/conformance.json` | Cross-language, curated SH-4 instruction conformance suite (synthetic — not derived from any OS). Both cores replay the same frozen cases. |
 | `android/` | **The Android app** (Kotlin + JNI over the Go core): the screen, a keypad drawn in the real fx-CG50 layout, save-state resume. See [`android/README.md`](android/README.md). |
 | `docs/ANDROID.md` | The host API (C ABI) the Go core exports, and how the app is wired. |
-| `re/` | Reverse-engineering scripts: SH-4 disassembler (`sh4dis.py`, `disasm_static.py`), syscall resolvers (`syscall360.py` for OS 3.60), the keymap generator (`dump_keymap.py` → `KEYMAP.md`) and label audit (`audit_keymap.py`), and many single-purpose probes. |
+| `re/` | Reverse-engineering scripts: SH-4 disassembler (`sh4dis.py` — `--image PATH` or `SH4DIS_IMAGE`; `disasm_static.py`), syscall resolvers (`syscall360.py` for OS 3.60), the keymap generator (`dump_keymap.py` → `KEYMAP.md`) and label audit (`audit_keymap.py`), and many single-purpose probes. |
 | `tools/` | On-calculator helpers: `flash_dump/` (a gint/fxlink flash **dumper**), `fxsdk-docker/` (fxSDK/gint toolchain in Docker), and probe add-ins (`keyprobe/`, `timerprobe/`) used to measure the real hardware. |
 | `RECON_NOTES.md` | The full reverse-engineering log. The **RESUME HERE** block at the top is the current state and next steps. |
 
@@ -59,8 +59,11 @@ blinking cursor, and **third-party add-ins (`.g3a`)**.
   legends), haptics, multi-touch, save-state on pause.
 - ✅ Go core validated against the Python oracle: **68-case** instruction/MMU conformance suite,
   a 2000-checkpoint golden boot trace, and transcript parity for the KEYSC and LCD models.
-- ⏳ Next: a key-by-key check on the phone, interpreter speed-ups, skin polish (S/A
-  annunciator state on the keys).
+- ✅ All keys behave like the real calculator (checked by hand on the phone, and every label
+  audited against the codes the OS produces).
+- ⏳ Next: speed — menus scroll ~20% slower than the real calculator on a phone (measure the
+  real rate of the OS's periodic timer interrupt; run the OS's bitmap blitter natively), then
+  skin polish (S/A annunciator state on the keys).
 
 ## Getting a flash dump
 

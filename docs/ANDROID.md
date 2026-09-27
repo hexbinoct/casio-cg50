@@ -37,7 +37,8 @@ The same facade drives the desktop web UI (`go -C emu_go run . 0 30000 web`) and
 | `EmuKeyDown(int row, int col)` / `EmuKeyUp(int row, int col)` | press / release a key in the emulated key-scan matrix (0-based, see `re/KEYMAP.md`); holding a key auto-repeats with the OS's own timing, and a very short tap is held long enough to register |
 | `EmuInjectKey(int row, int col)` | a complete tap (press, hold a few scans, release) |
 | `EmuReleaseAllKeys()` | release everything (call on pause / focus loss) |
-| `EmuSetInstrPerSec(long long ips)` | the host's measured throughput; scales the RTC, the 32.768 kHz counter and the key-scan rate to real time |
+| `EmuSetInstrPerSec(long long ips)` | the time base: instructions per emulated second (the app sets 100 M, about the real calculator, once); the RTC, the 32.768 kHz counter and the key-scan rate derive from it |
+| `EmuExecuted() -> long long` | instructions actually executed so far (idle cycles, which the core fast-forwards, excluded) — for perf reporting |
 | `EmuSetClock(long long unixSec)` | set the calendar clock |
 | `EmuSetKeyScanPeriod(long long instr)` | override the key-scan period (normally derived from `EmuSetInstrPerSec`) |
 | `EmuFramebufferRGBA(uint8* dst, int cap) -> int` | fill `Width*Height*4` RGBA bytes of the **displayed** frame (the LCD panel, not live VRAM) |
