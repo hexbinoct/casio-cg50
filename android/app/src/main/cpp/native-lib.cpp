@@ -16,6 +16,8 @@ void     EmuKeyDown(int row, int col);
 void     EmuKeyUp(int row, int col);
 void     EmuReleaseAllKeys(void);
 void     EmuSetKeyScanPeriod(long long instr);
+void     EmuSetInstrPerSec(long long ips);
+void     EmuSetClock(long long unixSec);
 int      EmuFramebufferRGBA(uint8_t *dst, int capacity);
 uint8_t *EmuSnapshot(int *outLen);
 void     EmuFree(uint8_t *p);
@@ -59,6 +61,8 @@ extern "C" JNIEXPORT void JNICALL NB(releaseAllKeys)(JNIEnv *, jobject) { EmuRel
 extern "C" JNIEXPORT void JNICALL NB(setKeyScanPeriod)(JNIEnv *, jobject, jlong instr) {
     EmuSetKeyScanPeriod(instr);
 }
+extern "C" JNIEXPORT void JNICALL NB(setInstrPerSec)(JNIEnv *, jobject, jlong ips) { EmuSetInstrPerSec(ips); }
+extern "C" JNIEXPORT void JNICALL NB(setClock)(JNIEnv *, jobject, jlong unixSec) { EmuSetClock(unixSec); }
 
 // Fills the caller's byte[] (Width*Height*4 RGBA). Returns bytes written, or -1 if too small.
 extern "C" JNIEXPORT jint JNICALL NB(framebufferRGBA)(JNIEnv *env, jobject, jbyteArray dst) {

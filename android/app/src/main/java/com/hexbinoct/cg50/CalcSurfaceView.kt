@@ -124,6 +124,8 @@ class CalcSurfaceView @JvmOverloads constructor(context: Context, attrs: Attribu
                         instrPerFrame
                     )
                 )
+                // feed the measured throughput back so emulated time tracks wall-clock
+                if (ips > 1_000_000) NativeBridge.setInstrPerSec(ips.toLong())
                 statWindowStartNs = System.nanoTime()
                 statInstr = 0L; statStepNs = 0L; statBlitNs = 0L; statFrames = 0
             }

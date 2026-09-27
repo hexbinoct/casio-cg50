@@ -42,9 +42,14 @@ func (c *cpg) read(va, size uint32) uint32 {
 	return c.regs[off]
 }
 
-// DMAC: CHCR of each channel at base+0xC (spaced 0x10). OS waits on TE (bit1);
-// we complete instantly -> always report TE set.
-type dmac struct{ base }
+// DMAC: per channel (spaced 0x10) SAR +0, DAR +4, TCR +8, CHCR +0xC. OS waits on TE
+// (bit1); we complete instantly -> always report TE set. The OS pushes VRAM to the LCD
+// (area 5, DAR 0x14000000) with a DMA transfer; starting such a channel (CHCR.DE=1) is the
+// moment the real screen changes, so onLCDPush (if set) is told the source address then.
+type dmac struct {
+	base
+	onLCDPush func(sar uint32)
+}
 
 func (d *dmac) read(va, size uint32) uint32 {
 	off := va - d.bs
@@ -52,6 +57,14 @@ func (d *dmac) read(va, size uint32) uint32 {
 		return d.regs[off] | 0x2
 	}
 	return d.regs[off]
+}
+
+func (d *dmac) write(va, size, val uint32) {
+	off := va - d.bs
+	d.regs[off] = val
+	if (off&0xF) == 0xC && off < 0x40 && val&1 != 0 && d.onLCDPush != nil && d.regs[off-0xC+4] == 0x14000000 {
+		d.onLCDPush(d.regs[off-0xC])
+	}
 }
 
 // INTC (0xA4080000, SH7724-style IPR/IMR/IMCR — NOT the keyboard; cont.18l). The OS
@@ -147,17 +160,26 @@ func (x *intx) read(va, size uint32) uint32 {
 type etmuCounter struct {
 	base
 	bus *MMIOBus
+	// countDiv: instructions per counter tick. The real counter (0xA44D00D8, aliased at
+	// +0xC8) is a 32-bit down-counter at 32.768 kHz (measured on the calc: 65,533 counts in
+	// 2 s, tools/timerprobe 2026-09-27); hosts derive countDiv = instrPerSec/32768. 0 keeps the
+	// pre-2026-09-27 behaviour (every 4 instr, 24-bit) that the boot golden was frozen with.
+	countDiv uint64
 }
 
 func (e *etmuCounter) read(va, size uint32) uint32 {
-	if (va-e.bs)&0xFFFF == 0xD8 {
+	off := (va - e.bs) & 0xFFFF
+	if off == 0xD8 || off == 0xC8 {
 		var cyc uint64
 		if e.bus != nil && e.bus.cpu != nil {
 			cyc = e.bus.cpu.cycles
 		}
-		return uint32(-(cyc >> 2)) & 0xFFFFFF
+		if e.countDiv == 0 {
+			return uint32(-(cyc >> 2)) & 0xFFFFFF
+		}
+		return uint32(-(cyc / e.countDiv))
 	}
-	return e.regs[va-e.bs]
+	return e.regs[off]
 }
 
 // bcdALU: hardware multi-word BCD arithmetic unit @0xA4CB0000 (RE'd cont.18c, command
@@ -272,7 +294,11 @@ type MMIOBus struct {
 	watchBase uint32         // if nonzero, reads in [watchBase, watchBase+0x1000) are attributed to cpu.pc
 
 	timerPeriod uint64
-	keysc       *keyscUnit // key-scan unit @0xA44B0000 (keysc.go): the real key path
+	keysc       *keyscUnit     // key-scan unit @0xA44B0000 (keysc.go): the real key path
+	dmac        *dmac          // DMA controller; its LCD-push hook drives frame presentation
+	wcount      map[string]int // if non-nil: MMIO writes per region (diagnostics)
+	rtc         *rtc           // real-time clock: calendar, 64 Hz counter, periodic IRQ (rtc.go)
+	instrPerSec uint64         // host throughput; converts cycles to time for RTC/ETMU/KEYSC
 	timerNext   uint64
 	timerTicks  uint64
 
@@ -310,6 +336,8 @@ func scanWatched(va uint32) (string, uint32, bool) {
 		return "PFC", b & 0xFFF, true
 	case 0xA44C0000: // port strobe/clock pins the matrix scan toggles (found cont.18k)
 		return "PORTL", b & 0xFFF, true
+	case 0xA44D0000:
+		return "ETMU2", b & 0xFFF, true
 	}
 	return "", 0, false
 }
@@ -341,6 +369,9 @@ func NewMMIOBus() *MMIOBus {
 	b.etmu2 = &etmuCounter{base: newBase("ETMU2", 0xA44D0000, 0x1000)}
 	b.etmu2.bus = b
 	b.keysc = newKeysc()
+	b.rtc = newRTC(b)
+	b.instrPerSec = 70_000_000
+	b.dmac = &dmac{base: newBase("DMAC", 0xFE008000, 0x1000)}
 	b.regions = []region{
 		&cpg{base: newBase("CPG", 0xA4150000, 0x1000)},
 		&base{nm: "PFC", bs: 0xA4050000, sz: 0x1000, regs: map[uint32]uint32{}},
@@ -350,12 +381,13 @@ func NewMMIOBus() *MMIOBus {
 		&etmu{base: newBase("ETMU", 0xA44A0000, 0x1000)},
 		b.etmu2,
 		b.periphIRQ,
+		b.rtc, // listed before FRC: same page, must win the lookup
 		&freeCounter{base: newBase("FRC", 0xA4130000, 0x10000)},
 		&intx{base: newBase("INTX", 0xA4140000, 0x1000)},
 		b.keysc,
 		&bcdALU{base: newBase("BCDALU", 0xA4CB0000, 0x1000)},
 		&base{nm: "BSC", bs: 0xFEC10000, sz: 0x1000, regs: map[uint32]uint32{}},
-		&dmac{base: newBase("DMAC", 0xFE008000, 0x1000)},
+		b.dmac,
 		&ccn{base: newBase("CCN", 0xFF000000, 0x1000)},
 		&base{nm: "LCD_R61524", bs: 0xB4000000, sz: 0x20000, regs: map[uint32]uint32{}},
 	}
@@ -416,9 +448,117 @@ func (b *MMIOBus) Write(va, size, val uint32) {
 	r, hit := b.findHit(va)
 	if r == nil {
 		b.unknown[va]++
+		if b.wcount != nil {
+			b.wcount[fmt.Sprintf("unmapped %08x", va)]++
+		}
 		return
 	}
+	if b.wcount != nil {
+		b.wcount[r.name()]++
+	}
 	r.write(hit, size, val)
+}
+
+// SetInstrPerSecond tells the bus how many instructions the host executes per real second,
+// so instruction-based time maps to wall-clock: the KEYSC scan (33 Hz measured), the 32.768 kHz
+// free counter, and the RTC (calendar + periodic interrupt) all derive from it.
+func (b *MMIOBus) SetInstrPerSecond(ips uint64) {
+	if ips < 1_000_000 {
+		ips = 1_000_000
+	}
+	b.instrPerSec = ips
+	b.keysc.scanPeriod = ips / KeyScanHz
+	b.etmu2.countDiv = ips / 32768
+	if b.rtc.rcr2&0x70 != 0 {
+		b.rtc.alignPeriodic()
+	}
+}
+
+// regionRegs returns each region's last-written register map by name (for save-states).
+// KEYSC keeps its live state in fields, so it is exported as offsets 0x0C/0x10/0x14.
+func (b *MMIOBus) regionRegs() map[string]map[uint32]uint32 {
+	out := map[string]map[uint32]uint32{}
+	for _, r := range b.regions {
+		switch x := r.(type) {
+		case *keyscUnit:
+			out[x.nm] = map[uint32]uint32{0x0C: x.ctrl, 0x10: x.mode, 0x14: x.ie << 8}
+		case *base:
+			out[x.nm] = x.regs
+		case *cpg:
+			out[x.nm] = x.regs
+		case *dmac:
+			out[x.nm] = x.regs
+		case *etmu:
+			out[x.nm] = x.regs
+		case *etmuCounter:
+			out[x.nm] = x.regs
+		case *intcStub:
+			out[x.nm] = x.regs
+		case *ccn:
+			out[x.nm] = x.regs
+		case *rtc:
+			out[x.nm] = map[uint32]uint32{0x1C: x.rcr1, 0x1E: x.rcr2}
+		}
+	}
+	return out
+}
+
+// restoreRegionRegs applies a saved register map (see regionRegs). Unknown names are ignored.
+func (b *MMIOBus) restoreRegionRegs(saved map[string]map[uint32]uint32) {
+	for _, r := range b.regions {
+		m, ok := saved[r.name()]
+		if !ok {
+			continue
+		}
+		if k, isK := r.(*keyscUnit); isK {
+			k.ctrl, k.mode, k.ie, k.flags = m[0x0C], m[0x10], m[0x14]>>8, 0
+			k.scanLeft, k.wasHeld = 0, false
+			continue
+		}
+		if x, isR := r.(*rtc); isR {
+			x.rcr1, x.rcr2, x.nextPeriodic = m[0x1C], m[0x1E]&0x7F, 0
+			continue
+		}
+		var dst map[uint32]uint32
+		switch x := r.(type) {
+		case *base:
+			dst = x.regs
+		case *cpg:
+			dst = x.regs
+		case *dmac:
+			dst = x.regs
+		case *etmu:
+			dst = x.regs
+		case *etmuCounter:
+			dst = x.regs
+		case *intcStub:
+			dst = x.regs
+		case *ccn:
+			dst = x.regs
+		}
+		if dst == nil {
+			continue
+		}
+		for off := range dst {
+			delete(dst, off)
+		}
+		for off, v := range m {
+			dst[off] = v
+		}
+	}
+}
+
+// applyLegacyResumeDefaults sets the peripheral state a pre-MMIO-section snapshot needs to
+// behave like the machine it was taken on: the display-enable bit in PFC port data
+// 0xA405013C bit4 (both LCD push routines return early without it, so the OS would never
+// push VRAM to the LCD again) and the KEYSC post-init configuration.
+func (b *MMIOBus) applyLegacyResumeDefaults() {
+	for _, r := range b.regions {
+		if x, ok := r.(*base); ok && x.nm == "PFC" {
+			x.regs[0x13C] |= 0x10
+		}
+	}
+	b.keysc.resumeDefaults()
 }
 
 // FrameSAR returns the source address of any DMAC channel currently programmed to
@@ -441,8 +581,9 @@ func (b *MMIOBus) FrameSAR() (uint32, bool) {
 func (b *MMIOBus) tick(cpu *CPU) {
 	b.keysc.tick(cpu)
 	if b.timerPeriod == 0 {
-		return
+		return // pure-boot mode (goldens): no interrupt sources at all
 	}
+	b.rtc.tick(cpu)
 	if cpu.cycles >= b.timerNext {
 		b.timerNext = cpu.cycles + b.timerPeriod
 		b.timerTicks++

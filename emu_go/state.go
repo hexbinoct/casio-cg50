@@ -14,9 +14,15 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 )
 
 const stateMagic = "CG50ST01"
+
+// mmioMagic introduces the optional trailing peripheral-register section (2026-09-27):
+// without it a resumed machine has every MMIO register at 0, which among other things makes
+// the OS think the display is off (PFC 0xA405013C bit4) and stop pushing frames to the LCD.
+const mmioMagic = "MMIO"
 
 // statePath is the default save-state file (git-ignored under os/, since it holds OS-derived
 // RAM/flash bytes). Shared by the `provision`/auto-resume path in main and the web UI buttons.
@@ -78,6 +84,43 @@ func SnapshotBytes(cpu *CPU, mem *Memory) ([]byte, error) {
 	for _, blk := range [][]byte{mem.dram, mem.ilram, mem.ocram, mem.flashDeltaBytes()} {
 		if err := wBlock(blk); err != nil {
 			return nil, err
+		}
+	}
+	// peripheral registers: MMIO, nregions, then per region: name block, nregs, (off,val)*
+	if mem.mmio != nil {
+		if _, err := gz.Write([]byte(mmioMagic)); err != nil {
+			return nil, err
+		}
+		saved := mem.mmio.regionRegs()
+		names := make([]string, 0, len(saved))
+		for n := range saved {
+			names = append(names, n)
+		}
+		sort.Strings(names)
+		if err := wU32(uint32(len(names))); err != nil {
+			return nil, err
+		}
+		for _, n := range names {
+			if err := wBlock([]byte(n)); err != nil {
+				return nil, err
+			}
+			m := saved[n]
+			offs := make([]uint32, 0, len(m))
+			for off := range m {
+				offs = append(offs, off)
+			}
+			sort.Slice(offs, func(i, j int) bool { return offs[i] < offs[j] })
+			if err := wU32(uint32(len(offs))); err != nil {
+				return nil, err
+			}
+			for _, off := range offs {
+				if err := wU32(off); err != nil {
+					return nil, err
+				}
+				if err := wU32(m[off]); err != nil {
+					return nil, err
+				}
+			}
 		}
 	}
 	if err := gz.Close(); err != nil {
@@ -181,5 +224,49 @@ func ResumeBytes(raw []byte, cpu *CPU, mem *Memory) error {
 	}
 	p += int(fn)
 	cpu.pending = nil // resume cleanly; a fresh timer IRQ will re-arm
+	cpu.sleeping = false
+
+	// optional peripheral-register section; legacy snapshots get sane defaults instead
+	if mem.mmio != nil {
+		if p+4 <= len(data) && string(data[p:p+4]) == mmioMagic {
+			p += 4
+			nRegions, err := rU32()
+			if err != nil {
+				return err
+			}
+			saved := map[string]map[uint32]uint32{}
+			for i := uint32(0); i < nRegions; i++ {
+				nl, err := rU32()
+				if err != nil {
+					return err
+				}
+				if p+int(nl) > len(data) {
+					return fmt.Errorf("save-state: mmio name overruns file")
+				}
+				name := string(data[p : p+int(nl)])
+				p += int(nl)
+				n, err := rU32()
+				if err != nil {
+					return err
+				}
+				m := make(map[uint32]uint32, n)
+				for j := uint32(0); j < n; j++ {
+					off, err := rU32()
+					if err != nil {
+						return err
+					}
+					v, err := rU32()
+					if err != nil {
+						return err
+					}
+					m[off] = v
+				}
+				saved[name] = m
+			}
+			mem.mmio.restoreRegionRegs(saved)
+		} else {
+			mem.mmio.applyLegacyResumeDefaults()
+		}
+	}
 	return nil
 }

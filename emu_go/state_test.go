@@ -26,6 +26,12 @@ func TestSaveStateRoundtrip(t *testing.T) {
 	mem.ocram[0x40] = 0xC3          // OCRAM
 	mem.flash[0x01000000] = 0x42    // a storage-tail flash byte (differs from 0xFF baseline)
 	mem.flash[0x01040abc] = 0x7E
+	// peripheral registers (MMIO section): PFC display-enable byte, a DMAC channel register,
+	// and the KEYSC live configuration
+	mem.Write(0xA405013C, 1, 0x1D)
+	mem.Write(0xFE008024, 4, 0x14000000)
+	mem.Write(0xA44B0010, 2, 0x400)
+	mem.Write(0xA44B0014, 2, 0x7600)
 
 	path := filepath.Join(t.TempDir(), "st.bin")
 	if err := SaveState(path, cpu, mem); err != nil {
@@ -57,5 +63,38 @@ func TestSaveStateRoundtrip(t *testing.T) {
 	// a byte we never touched must equal the fresh baseline (image prefix / erased tail)
 	if mem2.flash[0x01000001] != 0xFF || mem2.flash[0x10] != img[0x10] {
 		t.Errorf("baseline corrupted: tail=%02x img=%02x", mem2.flash[0x01000001], mem2.flash[0x10])
+	}
+	if v := mem2.Read(0xA405013C, 1); v != 0x1D {
+		t.Errorf("PFC register not restored: %#x", v)
+	}
+	if v := mem2.Read(0xFE008024, 4); v != 0x14000000 {
+		t.Errorf("DMAC register not restored: %#x", v)
+	}
+	if k := mem2.mmio.keysc; k.mode != 0x400 || k.ie != 0x76 || k.flags != 0 {
+		t.Errorf("KEYSC state not restored: mode=%#x ie=%#x flags=%#x", k.mode, k.ie, k.flags)
+	}
+}
+
+// A snapshot without the MMIO section (every state saved before 2026-09-27, including the
+// phone's) must resume with the display-enable bit set and KEYSC configured, else the OS
+// never pushes VRAM to the LCD again and keys are dead.
+func TestLegacyStateDefaults(t *testing.T) {
+	img := make([]byte, 0x1000)
+	mem := NewMemory(img, nil) // nil bus: SnapshotBytes then writes no MMIO section
+	cpu := NewCPU(mem)
+	blob, err := SnapshotBytes(cpu, mem)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mem2 := NewMemory(img, NewMMIOBus())
+	cpu2 := NewCPU(mem2)
+	if err := ResumeBytes(blob, cpu2, mem2); err != nil {
+		t.Fatal(err)
+	}
+	if v := mem2.Read(0xA405013C, 1); v&0x10 == 0 {
+		t.Errorf("legacy resume left display disabled: PFC 0x13C=%#x", v)
+	}
+	if k := mem2.mmio.keysc; k.ctrl != 0x8000 || k.mode != 0x200 || k.ie != 0x48 {
+		t.Errorf("legacy resume left KEYSC unconfigured: %+v", *k)
 	}
 }

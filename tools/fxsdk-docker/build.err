@@ -1,265 +1,0 @@
-#0 building with "desktop-linux" instance using docker driver
-
-#1 [internal] load build definition from Dockerfile
-#1 transferring dockerfile: 1.74kB 0.0s done
-#1 DONE 0.0s
-
-#2 [internal] load metadata for docker.io/library/debian:12
-#2 DONE 0.1s
-
-#3 [internal] load .dockerignore
-#3 transferring context: 2B done
-#3 DONE 0.0s
-
-#4 [1/7] FROM docker.io/library/debian:12@sha256:9344f8b8992482f80cba753f323adeaf17690076c095ccff6cc9536be98185dc
-#4 resolve docker.io/library/debian:12@sha256:9344f8b8992482f80cba753f323adeaf17690076c095ccff6cc9536be98185dc 0.0s done
-#4 DONE 0.0s
-
-#5 [2/7] RUN apt-get update && apt-get install -y --no-install-recommends         git ca-certificates curl build-essential cmake ninja-build pkg-config python3 python3-pil         libpng-dev libusb-1.0-0-dev libudev-dev libsdl2-dev         libgmp-dev libmpfr-dev libmpc-dev libisl-dev zlib1g-dev texinfo flex bison     && rm -rf /var/lib/apt/lists/*
-#5 CACHED
-
-#6 [3/7] RUN apt-get update && apt-get install -y --no-install-recommends libudisks2-dev libglib2.0-dev libncurses-dev     && rm -rf /var/lib/apt/lists/*
-#6 0.869 Get:1 http://deb.debian.org/debian bookworm InRelease [151 kB]
-#6 3.772 Get:2 http://deb.debian.org/debian bookworm-updates InRelease [55.4 kB]
-#6 6.550 Get:3 http://deb.debian.org/debian-security bookworm-security InRelease [34.8 kB]
-#6 13.04 Get:4 http://deb.debian.org/debian bookworm/main amd64 Packages [8790 kB]
-#6 24.15 Get:5 http://deb.debian.org/debian bookworm-updates/main amd64 Packages [6924 B]
-#6 24.32 Get:6 http://deb.debian.org/debian-security bookworm-security/main amd64 Packages [345 kB]
-#6 25.64 Fetched 9383 kB in 25s (371 kB/s)
-#6 25.64 Reading package lists...
-#6 26.65 Reading package lists...
-#6 28.04 Building dependency tree...
-#6 28.34 Reading state information...
-#6 28.63 libglib2.0-dev is already the newest version (2.74.6-2+deb12u9).
-#6 28.63 libglib2.0-dev set to manually installed.
-#6 28.63 The following additional packages will be installed:
-#6 28.63   gir1.2-udisks-2.0 libncurses6 libudisks2-0
-#6 28.63 Suggested packages:
-#6 28.63   ncurses-doc
-#6 28.63 Recommended packages:
-#6 28.63   libgpm2
-#6 28.80 The following NEW packages will be installed:
-#6 28.80   gir1.2-udisks-2.0 libncurses-dev libncurses6 libudisks2-0 libudisks2-dev
-#6 29.23 0 upgraded, 5 newly installed, 0 to remove and 1 not upgraded.
-#6 29.23 Need to get 1292 kB of archives.
-#6 29.23 After this operation, 13.0 MB of additional disk space will be used.
-#6 29.23 Get:1 http://deb.debian.org/debian bookworm/main amd64 libudisks2-0 amd64 2.9.4-4+deb12u2 [146 kB]
-#6 29.78 Get:2 http://deb.debian.org/debian bookworm/main amd64 gir1.2-udisks-2.0 amd64 2.9.4-4+deb12u2 [30.6 kB]
-#6 30.02 Get:3 http://deb.debian.org/debian bookworm/main amd64 libncurses6 amd64 6.4-4 [103 kB]
-#6 30.08 Get:4 http://deb.debian.org/debian bookworm/main amd64 libncurses-dev amd64 6.4-4 [349 kB]
-#6 30.83 Get:5 http://deb.debian.org/debian bookworm/main amd64 libudisks2-dev amd64 2.9.4-4+deb12u2 [663 kB]
-#6 31.35 debconf: delaying package configuration, since apt-utils is not installed
-#6 31.39 Fetched 1292 kB in 2s (585 kB/s)
-#6 31.44 Selecting previously unselected package libudisks2-0:amd64.
-#6 31.44 (Reading database ... (Reading database ... 5%(Reading database ... 10%(Reading database ... 15%(Reading database ... 20%(Reading database ... 25%(Reading database ... 30%(Reading database ... 35%(Reading database ... 40%(Reading database ... 45%(Reading database ... 50%(Reading database ... 55%(Reading database ... 60%(Reading database ... 65%(Reading database ... 70%(Reading database ... 75%(Reading database ... 80%(Reading database ... 85%(Reading database ... 90%(Reading database ... 95%(Reading database ... 100%(Reading database ... 24673 files and directories currently installed.)
-#6 31.49 Preparing to unpack .../libudisks2-0_2.9.4-4+deb12u2_amd64.deb ...
-#6 31.50 Unpacking libudisks2-0:amd64 (2.9.4-4+deb12u2) ...
-#6 31.56 Selecting previously unselected package gir1.2-udisks-2.0:amd64.
-#6 31.56 Preparing to unpack .../gir1.2-udisks-2.0_2.9.4-4+deb12u2_amd64.deb ...
-#6 31.56 Unpacking gir1.2-udisks-2.0:amd64 (2.9.4-4+deb12u2) ...
-#6 31.64 Selecting previously unselected package libncurses6:amd64.
-#6 31.64 Preparing to unpack .../libncurses6_6.4-4_amd64.deb ...
-#6 31.65 Unpacking libncurses6:amd64 (6.4-4) ...
-#6 31.73 Selecting previously unselected package libncurses-dev:amd64.
-#6 31.74 Preparing to unpack .../libncurses-dev_6.4-4_amd64.deb ...
-#6 31.74 Unpacking libncurses-dev:amd64 (6.4-4) ...
-#6 31.90 Selecting previously unselected package libudisks2-dev:amd64.
-#6 31.91 Preparing to unpack .../libudisks2-dev_2.9.4-4+deb12u2_amd64.deb ...
-#6 31.92 Unpacking libudisks2-dev:amd64 (2.9.4-4+deb12u2) ...
-#6 32.13 Setting up libncurses6:amd64 (6.4-4) ...
-#6 32.15 Setting up libudisks2-0:amd64 (2.9.4-4+deb12u2) ...
-#6 32.16 Setting up libncurses-dev:amd64 (6.4-4) ...
-#6 32.18 Setting up gir1.2-udisks-2.0:amd64 (2.9.4-4+deb12u2) ...
-#6 32.20 Setting up libudisks2-dev:amd64 (2.9.4-4+deb12u2) ...
-#6 32.21 Processing triggers for libc-bin (2.36-9+deb12u14) ...
-#6 DONE 32.4s
-
-#7 [4/7] RUN git clone --depth 1 https://gitea.planet-casio.com/Lephenixnoir/GiteaPC.git /opt/GiteaPC     && cd /opt/GiteaPC && make install
-#7 0.376 Cloning into '/opt/GiteaPC'...
-#7 3.685 warning: redirecting to https://git.planet-casio.com/Lephenixnoir/GiteaPC.git/
-#7 4.983 install -d ""/root/.local/bin
-#7 4.989 sed -e 's*%PREFIX%*/root/.local*; s*%VERSION%*1.1*' giteapc.py > ""/root/.local/bin/giteapc
-#7 4.993 chmod +x ""/root/.local/bin/giteapc
-#7 4.995 install -d ""/root/.local/lib/giteapc/giteapc
-#7 5.002 install giteapc/*.py ""/root/.local/lib/giteapc/giteapc
-#7 DONE 5.0s
-
-#8 [5/7] RUN giteapc install -y Lephenixnoir/fxsdk Lephenixnoir/sh-elf-gcc
-#8 13.24 -- The C compiler identification is GNU 12.2.0
-#8 13.26 -- Detecting C compiler ABI info
-#8 13.40 -- Detecting C compiler ABI info - done
-#8 13.42 -- Check for working C compiler: /usr/bin/cc - skipped
-#8 13.42 -- Detecting C compile features
-#8 13.42 -- Detecting C compile features - done
-#8 13.43 -- Found PkgConfig: /usr/bin/pkg-config (found version "1.8.1") 
-#8 13.43 -- Checking for module 'libpng16'
-#8 13.45 --   Found libpng16, version 1.6.39
-#8 13.52 -- Checking for module 'libusb-1.0'
-#8 13.55 --   Found libusb-1.0, version 1.0.26
-#8 13.61 -- Checking for module 'udisks2'
-#8 13.65 --   Found udisks2, version 2.9.4
-#8 13.74 -- Checking for module 'sdl2'
-#8 13.76 --   Found sdl2, version 2.26.5
-#8 13.83 -- Checking for module 'ncurses'
-#8 13.85 --   Found ncurses, version 6.4.20221231
-#8 13.93 -- Configuring done
-#8 13.99 -- Generating done
-#8 14.00 -- Build files have been written to: /root/.local/share/giteapc/Lephenixnoir/fxsdk/build
-#8 14.01 make[1]: Entering directory '/root/.local/share/giteapc/Lephenixnoir/fxsdk/build'
-#8 14.07 make[2]: Entering directory '/root/.local/share/giteapc/Lephenixnoir/fxsdk/build'
-#8 14.07 make[3]: Entering directory '/root/.local/share/giteapc/Lephenixnoir/fxsdk/build'
-#8 14.10 make[3]: Leaving directory '/root/.local/share/giteapc/Lephenixnoir/fxsdk/build'
-#8 14.10 make[3]: Entering directory '/root/.local/share/giteapc/Lephenixnoir/fxsdk/build'
-#8 14.13 [  3%] Building C object CMakeFiles/fxgxa.dir/fxgxa/dump.c.o
-#8 14.33 [  6%] Building C object CMakeFiles/fxgxa.dir/fxgxa/edit.c.o
-#8 14.54 [  9%] Building C object CMakeFiles/fxgxa.dir/fxgxa/file.c.o
-#8 14.64 [ 12%] Building C object CMakeFiles/fxgxa.dir/fxgxa/icon.c.o
-#8 14.78 [ 16%] Building C object CMakeFiles/fxgxa.dir/fxgxa/main.c.o
-#8 14.95 [ 19%] Building C object CMakeFiles/fxgxa.dir/fxgxa/util.c.o
-#8 15.07 [ 22%] Linking C executable fxgxa
-#8 15.14 make[3]: Leaving directory '/root/.local/share/giteapc/Lephenixnoir/fxsdk/build'
-#8 15.16 [ 22%] Built target fxgxa
-#8 15.17 make[3]: Entering directory '/root/.local/share/giteapc/Lephenixnoir/fxsdk/build'
-#8 15.20 make[3]: Leaving directory '/root/.local/share/giteapc/Lephenixnoir/fxsdk/build'
-#8 15.20 make[3]: Entering directory '/root/.local/share/giteapc/Lephenixnoir/fxsdk/build'
-#8 15.22 make[3]: Leaving directory '/root/.local/share/giteapc/Lephenixnoir/fxsdk/build'
-#8 15.24 [ 22%] Built target fxg1a
-#8 15.25 make[3]: Entering directory '/root/.local/share/giteapc/Lephenixnoir/fxsdk/build'
-#8 15.27 make[3]: Leaving directory '/root/.local/share/giteapc/Lephenixnoir/fxsdk/build'
-#8 15.28 make[3]: Entering directory '/root/.local/share/giteapc/Lephenixnoir/fxsdk/build'
-#8 15.30 [ 25%] Generating fxsdk.sh
-#8 15.32 make[3]: Leaving directory '/root/.local/share/giteapc/Lephenixnoir/fxsdk/build'
-#8 15.34 [ 25%] Built target fxsdk
-#8 15.34 make[3]: Entering directory '/root/.local/share/giteapc/Lephenixnoir/fxsdk/build'
-#8 15.37 make[3]: Leaving directory '/root/.local/share/giteapc/Lephenixnoir/fxsdk/build'
-#8 15.37 make[3]: Entering directory '/root/.local/share/giteapc/Lephenixnoir/fxsdk/build'
-#8 15.40 [ 29%] Building C object CMakeFiles/libfxlink.dir/libfxlink/defs.c.o
-#8 15.57 [ 32%] Building C object CMakeFiles/libfxlink.dir/libfxlink/devices.c.o
-#8 15.93 [ 35%] Building C object CMakeFiles/libfxlink.dir/libfxlink/filter.c.o
-#8 16.08 [ 38%] Building C object CMakeFiles/libfxlink.dir/libfxlink/logging.c.o
-#8 16.21 [ 41%] Building C object CMakeFiles/libfxlink.dir/libfxlink/protocol.c.o
-#8 16.41 [ 45%] Linking C static library libfxlink.a
-#8 16.47 make[3]: Leaving directory '/root/.local/share/giteapc/Lephenixnoir/fxsdk/build'
-#8 16.49 [ 45%] Built target libfxlink
-#8 16.50 make[3]: Entering directory '/root/.local/share/giteapc/Lephenixnoir/fxsdk/build'
-#8 16.53 make[3]: Leaving directory '/root/.local/share/giteapc/Lephenixnoir/fxsdk/build'
-#8 16.53 make[3]: Entering directory '/root/.local/share/giteapc/Lephenixnoir/fxsdk/build'
-#8 16.57 [ 48%] Building C object CMakeFiles/fxlink.dir/fxlink/main.c.o
-#8 16.80 [ 51%] Building C object CMakeFiles/fxlink.dir/fxlink/modes/interactive.c.o
-#8 18.08 [ 54%] Building C object CMakeFiles/fxlink.dir/fxlink/modes/list.c.o
-#8 18.25 [ 58%] Building C object CMakeFiles/fxlink.dir/fxlink/modes/push.c.o
-#8 18.37 [ 61%] Building C object CMakeFiles/fxlink.dir/fxlink/modes/udisks2.c.o
-#8 18.73 /root/.local/share/giteapc/Lephenixnoir/fxsdk/fxlink/modes/udisks2.c: In function ‘main_send’:
-#8 18.73 /root/.local/share/giteapc/Lephenixnoir/fxsdk/fxlink/modes/udisks2.c:57:24: warning: assignment discards ‘const’ qualifier from pointer target type [-Wdiscarded-qualifiers]
-#8 18.73    57 |                 folder = mount_points[0];
-#8 18.73       |                        ^
-#8 18.83 [ 64%] Building C object CMakeFiles/fxlink.dir/fxlink/tooling/libpng.c.o
-#8 18.93 [ 67%] Building C object CMakeFiles/fxlink.dir/fxlink/tooling/sdl2.c.o
-#8 19.83 [ 70%] Building C object CMakeFiles/fxlink.dir/fxlink/tooling/udisks2.c.o
-#8 20.36 [ 74%] Building C object CMakeFiles/fxlink.dir/fxlink/tui/commands.c.o
-#8 20.65 [ 77%] Building C object CMakeFiles/fxlink.dir/fxlink/tui/command-util.c.o
-#8 20.89 [ 80%] Building C object CMakeFiles/fxlink.dir/fxlink/tui/input.c.o
-#8 21.05 [ 83%] Building C object CMakeFiles/fxlink.dir/fxlink/tui/layout.c.o
-#8 21.29 [ 87%] Building C object CMakeFiles/fxlink.dir/fxlink/tui/render.c.o
-#8 21.40 [ 90%] Building C object CMakeFiles/fxlink.dir/fxlink/tui/tui-interactive.c.o
-#8 22.89 [ 93%] Linking C executable fxlink
-#8 23.12 make[3]: Leaving directory '/root/.local/share/giteapc/Lephenixnoir/fxsdk/build'
-#8 23.14 [ 93%] Built target fxlink
-#8 23.14 make[3]: Entering directory '/root/.local/share/giteapc/Lephenixnoir/fxsdk/build'
-#8 23.16 make[3]: Leaving directory '/root/.local/share/giteapc/Lephenixnoir/fxsdk/build'
-#8 23.16 make[3]: Entering directory '/root/.local/share/giteapc/Lephenixnoir/fxsdk/build'
-#8 23.18 [ 96%] Building C object CMakeFiles/fxsdk-gdb-bridge.dir/fxsdk/gdb-bridge.c.o
-#8 23.34 [100%] Linking C executable fxsdk-gdb-bridge
-#8 23.39 make[3]: Leaving directory '/root/.local/share/giteapc/Lephenixnoir/fxsdk/build'
-#8 23.40 [100%] Built target fxsdk-gdb-bridge
-#8 23.41 make[2]: Leaving directory '/root/.local/share/giteapc/Lephenixnoir/fxsdk/build'
-#8 23.42 make[1]: Leaving directory '/root/.local/share/giteapc/Lephenixnoir/fxsdk/build'
-#8 23.43 make[1]: Entering directory '/root/.local/share/giteapc/Lephenixnoir/fxsdk/build'
-#8 23.47 make[2]: Entering directory '/root/.local/share/giteapc/Lephenixnoir/fxsdk/build'
-#8 23.47 make[3]: Entering directory '/root/.local/share/giteapc/Lephenixnoir/fxsdk/build'
-#8 23.49 make[3]: Leaving directory '/root/.local/share/giteapc/Lephenixnoir/fxsdk/build'
-#8 23.51 [ 22%] Built target fxgxa
-#8 23.51 make[3]: Entering directory '/root/.local/share/giteapc/Lephenixnoir/fxsdk/build'
-#8 23.53 make[3]: Leaving directory '/root/.local/share/giteapc/Lephenixnoir/fxsdk/build'
-#8 23.53 make[3]: Entering directory '/root/.local/share/giteapc/Lephenixnoir/fxsdk/build'
-#8 23.55 make[3]: Leaving directory '/root/.local/share/giteapc/Lephenixnoir/fxsdk/build'
-#8 23.57 [ 22%] Built target fxg1a
-#8 23.57 make[3]: Entering directory '/root/.local/share/giteapc/Lephenixnoir/fxsdk/build'
-#8 23.59 make[3]: Leaving directory '/root/.local/share/giteapc/Lephenixnoir/fxsdk/build'
-#8 23.61 [ 25%] Built target fxsdk
-#8 23.61 make[3]: Entering directory '/root/.local/share/giteapc/Lephenixnoir/fxsdk/build'
-#8 23.63 make[3]: Leaving directory '/root/.local/share/giteapc/Lephenixnoir/fxsdk/build'
-#8 23.65 [ 45%] Built target libfxlink
-#8 23.66 make[3]: Entering directory '/root/.local/share/giteapc/Lephenixnoir/fxsdk/build'
-#8 23.69 make[3]: Leaving directory '/root/.local/share/giteapc/Lephenixnoir/fxsdk/build'
-#8 23.72 [ 93%] Built target fxlink
-#8 23.73 make[3]: Entering directory '/root/.local/share/giteapc/Lephenixnoir/fxsdk/build'
-#8 23.75 make[3]: Leaving directory '/root/.local/share/giteapc/Lephenixnoir/fxsdk/build'
-#8 23.77 [100%] Built target fxsdk-gdb-bridge
-#8 23.77 make[2]: Leaving directory '/root/.local/share/giteapc/Lephenixnoir/fxsdk/build'
-#8 23.81 Install the project...
-#8 23.83 -- Install configuration: ""
-#8 23.83 -- Installing: /root/.local/bin/fxsdk
-#8 23.83 -- Installing: /root/.local/share/fxsdk/assets
-#8 23.83 -- Installing: /root/.local/share/fxsdk/assets/Makefile
-#8 23.83 -- Installing: /root/.local/share/fxsdk/assets/icon-cg.xcf
-#8 23.84 -- Installing: /root/.local/share/fxsdk/assets/gitignore
-#8 23.84 -- Installing: /root/.local/share/fxsdk/assets/icon-fx.png
-#8 23.84 -- Installing: /root/.local/share/fxsdk/assets/project.cfg
-#8 23.84 -- Installing: /root/.local/share/fxsdk/assets/assets-fx
-#8 23.84 -- Installing: /root/.local/share/fxsdk/assets/assets-fx/fxconv-metadata.txt
-#8 23.84 -- Installing: /root/.local/share/fxsdk/assets/assets-fx/example.png
-#8 23.84 -- Installing: /root/.local/share/fxsdk/assets/assets-cg
-#8 23.84 -- Installing: /root/.local/share/fxsdk/assets/assets-cg/fxconv-metadata.txt
-#8 23.84 -- Installing: /root/.local/share/fxsdk/assets/assets-cg/example.png
-#8 23.84 -- Installing: /root/.local/share/fxsdk/assets/vscode
-#8 23.84 -- Installing: /root/.local/share/fxsdk/assets/vscode/c_cpp_properties.json
-#8 23.84 -- Installing: /root/.local/share/fxsdk/assets/main.c
-#8 23.84 -- Installing: /root/.local/share/fxsdk/assets/icon-cg-sel.png
-#8 23.84 -- Installing: /root/.local/share/fxsdk/assets/icon-cg-uns.png
-#8 23.84 -- Installing: /root/.local/share/fxsdk/assets/CMakeLists.txt
-#8 23.84 -- Installing: /root/.local/share/fxsdk/scripts
-#8 23.84 -- Installing: /root/.local/share/fxsdk/scripts/large_obj.py
-#8 23.84 -- Installing: /root/.local/share/fxsdk/scripts/patch_hh2_filename.py
-#8 23.85 -- Installing: /root/.local/lib/cmake/fxsdk
-#8 23.85 -- Installing: /root/.local/lib/cmake/fxsdk/GenerateG3A.cmake
-#8 23.85 -- Installing: /root/.local/lib/cmake/fxsdk/FXCG50.cmake
-#8 23.85 -- Installing: /root/.local/lib/cmake/fxsdk/GenerateG1A.cmake
-#8 23.85 -- Installing: /root/.local/lib/cmake/fxsdk/FX9860G.cmake
-#8 23.85 -- Installing: /root/.local/lib/cmake/fxsdk/FindSimpleLibrary.cmake
-#8 23.85 -- Installing: /root/.local/lib/cmake/fxsdk/CMakeTestFXCONVCompiler.cmake
-#8 23.85 -- Installing: /root/.local/lib/cmake/fxsdk/GitVersionNumber.cmake
-#8 23.85 -- Installing: /root/.local/lib/cmake/fxsdk/FXCP.cmake
-#8 23.85 -- Installing: /root/.local/lib/cmake/fxsdk/CMakeDetermineFXCONVCompiler.cmake
-#8 23.85 -- Installing: /root/.local/lib/cmake/fxsdk/FxsdkUtils.cmake
-#8 23.85 -- Installing: /root/.local/lib/cmake/fxsdk/GenerateHH2Bin.cmake
-#8 23.85 -- Installing: /root/.local/lib/cmake/fxsdk/CMakeFXCONVCompiler.cmake.in
-#8 23.85 -- Installing: /root/.local/lib/cmake/fxsdk/Fxconv.cmake
-#8 23.86 -- Installing: /root/.local/lib/cmake/fxsdk/CMakeFXCONVInformation.cmake
-#8 23.86 -- Installing: /root/.local/lib/cmake/fxsdk/FX9860G_G3A.cmake
-#8 23.86 -- Installing: /root/.local/bin/fxsdk-gdb-bridge
-#8 23.86 -- Installing: /root/.local/bin/fxgxa
-#8 23.86 -- Installing: /root/.local/bin/fxg1a
-#8 23.86 -- Installing: /root/.local/bin/fxconv
-#8 23.86 -- Installing: /root/.local/bin/fxconv.py
-#8 23.86 -- Installing: /root/.local/include/fxlink/config.h
-#8 23.87 -- Installing: /root/.local/include/fxlink/logging.h
-#8 23.87 -- Installing: /root/.local/include/fxlink/filter.h
-#8 23.87 -- Installing: /root/.local/include/fxlink/defs.h
-#8 23.87 -- Installing: /root/.local/include/fxlink/protocol.h
-#8 23.87 -- Installing: /root/.local/include/fxlink/devices.h
-#8 23.87 -- Installing: /root/.local/lib/cmake/FindLibFxlink.cmake
-#8 23.87 -- Installing: /root/.local/lib/libfxlink.a
-#8 23.87 -- Installing: /root/.local/bin/fxlink
-#8 23.88 make[1]: Leaving directory '/root/.local/share/giteapc/Lephenixnoir/fxsdk/build'
-#8 24.06 <sh-elf-binutils> Based on apt, some dependencies are missing:  libppl-dev
-#8 24.06 <sh-elf-binutils> Do you want to run 'sudo apt install  libppl-dev' to install them (Y/n)? ./configure.sh: line 73: sudo: command not found
-#8 24.06 <sh-elf-binutils> Downloading https://ftpmirror.gnu.org/gnu/binutils/binutils-2.42.tar.xz...
-#8 24.08   % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
-#8 24.08                                  Dload  Upload   Total   Spent    Left  Speed
-#8 24.08   0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0  0     0    0     0    0     0      0      0 --:--:--  0:00:01 --:--:--     0100   166  100   166    0     0     91      0  0:00:01  0:00:01 --:--:--    91
-#8 26.44   0     0    0     0    0     0      0      0 --:--:--  0:00:02 --:--:--     0  0 26.2M    0 53427    0     0  16043      0  0:28:38  0:00:03  0:28:35 55193  0 26.2M    0  253k    0     0  59618      0  0:07:42  0:00:04  0:07:38  127k  3 26.2M    3  842k    0     0   158k      0  0:02:50  0:00:05  0:02:45  283k  6 26.2M    6 1805k    0     0   283k      0  0:01:35  0:00:06  0:01:29  449k 10 26.2M   10 2717k    0     0   367k      0  0:01:13  0:00:07  0:01:06  540k 15 26.2M   15 4207k    0     0   505k      0  0:00:53  0:00:08  0:00:45  832k 23 26.2M   23 6263k    0     0   672k      0  0:00:40  0:00:09  0:00:31 1210k 30 26.2M   30 8322k    0     0   806k      0  0:00:33  0:00:10  0:00:23 1500k 36 26.2M   36 9709k    0     0   856k      0  0:00:31  0:00:11  0:00:20 1592k 44 26.2M   44 11.6M    0     0   968k      0  0:00:27  0:00:12  0:00:15 1862k 55 26.2M   55 14.5M    0     0  1111k      0  0:00:24  0:00:13  0:00:11 2098k 64 26.2M   64 16.8M    0     0  1190k      0  0:00:22  0:00:14  0:00:08 2120k 73 26.2M   73 19.3M    0     0  1250k      0  0:00:21  0:00:15  0:00:06 2079k 77 26.2M   77 20.4M    0     0  1273k      0  0:00:21  0:00:16  0:00:05 2207k 89 26.2M   89 23.4M    0     0  1388k      0  0:00:19  0:00:17  0:00:02 2431k 97 26.2M   97 25.7M    0     0  1431k      0  0:00:18  0:00:18 --:--:-- 2296k100 26.2M  100 26.2M    0     0  1461k      0  0:00:18  0:00:18 --:--:-- 2465k
-#8 42.50 <sh-elf-binutils> Extracting binutils-2.42.tar.xz...
-#8 53.02 touch: cannot touch 'binutils-2.42/intl/plural.c': No such file or directory
-#8 53.03 <sh-elf-binutils> Configuring binutils...
-#8 56.90 <sh-elf-binutils> Compiling binutils (usually 5-10 minutes)...

@@ -107,8 +107,29 @@ func EmuReleaseAllKeys() {
 	}
 }
 
+// EmuSetInstrPerSec tells the core the host's measured throughput (instructions per second)
+// so RTC/timer/key-scan timing runs at wall-clock speed. Call at start and whenever the
+// measured rate drifts.
+//
+//export EmuSetInstrPerSec
+func EmuSetInstrPerSec(ips C.longlong) {
+	if gEmu != nil && ips > 0 {
+		gEmu.SetInstrPerSecond(uint64(ips))
+	}
+}
+
+// EmuSetClock sets the emulated RTC calendar (unix seconds).
+//
+//export EmuSetClock
+func EmuSetClock(unixSec C.longlong) { // not `unix`: Android's compiler predefines that macro
+	if gEmu != nil {
+		gEmu.SetClock(int64(unixSec))
+	}
+}
+
 // EmuSetKeyScanPeriod sets the KEYSC scan interval (= OS key-repeat clock) in emulated
-// instructions; hosts pass ~20 ms worth of their real throughput.
+// instructions; hosts pass ~20 ms worth of their real throughput. (Superseded by
+// EmuSetInstrPerSec, which derives it; kept for compatibility.)
 //
 //export EmuSetKeyScanPeriod
 func EmuSetKeyScanPeriod(instr C.longlong) {

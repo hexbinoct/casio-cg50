@@ -40,10 +40,13 @@ const (
 	// DefaultKeyScanPeriod: instructions between hardware scans. The OS's own repeat logic
 	// (ISR FUN_801e4c00) starts repeating an arrow after 20 scans (*0x8c08ba38) and then posts
 	// one repeat PER SCAN (*0x8c08ba3c = 0 at the menu), so the scan period is the repeat
-	// clock: ~20 ms is the real machine's feel. Time here is instruction-based, so the value
-	// depends on the host's throughput (500k ≈ 20 ms at a phone's ~25M instr/s); hosts set it
-	// from their actual rate via Emulator.SetKeyScanPeriod.
-	DefaultKeyScanPeriod = 500_000
+	// clock. MEASURED on the real fx-CG50 (tools/keyprobe, 2026-09-27): 132 scan-complete
+	// flags in 4 s with RIGHT held = 30.3 ms per scan (33 Hz), and NO scans while idle. So a
+	// held arrow repeats after ~0.6 s and then 33/s. Time here is instruction-based, so the
+	// value depends on host throughput (750k ≈ 30 ms at ~25M instr/s); hosts set it from
+	// their actual rate via Emulator.SetKeyScanPeriod.
+	DefaultKeyScanPeriod = 750_000
+	KeyScanHz            = 33 // measured hardware scan rate while a key is held
 )
 
 type keyscUnit struct {

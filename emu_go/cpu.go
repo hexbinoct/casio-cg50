@@ -31,25 +31,26 @@ func (e IllegalInstruction) Error() string { return "illegal instruction" }
 type pend struct{ level, intevt uint32 }
 
 type CPU struct {
-	mem     *Memory
-	r       [16]uint32
-	rbank1  [8]uint32
-	pc      uint32
-	pr      uint32
-	gbr     uint32
-	vbr     uint32
-	ssr     uint32
-	spc     uint32
-	sgr     uint32
-	mach    uint32
-	macl    uint32
-	fpul    uint32
-	fpscr   uint32
-	sr      uint32
-	cycles  uint64
-	pending []pend
-	irqCnt  uint64
-	fpuOps  uint64
+	mem      *Memory
+	r        [16]uint32
+	rbank1   [8]uint32
+	pc       uint32
+	pr       uint32
+	gbr      uint32
+	vbr      uint32
+	ssr      uint32
+	spc      uint32
+	sgr      uint32
+	mach     uint32
+	macl     uint32
+	fpul     uint32
+	fpscr    uint32
+	sr       uint32
+	cycles   uint64
+	pending  []pend
+	sleeping bool // `sleep` executed: halted until an interrupt is accepted
+	irqCnt   uint64
+	fpuOps   uint64
 }
 
 func NewCPU(mem *Memory) *CPU {
@@ -113,6 +114,16 @@ func (c *CPU) acceptInterrupt() bool {
 }
 
 func (c *CPU) step() {
+	if c.sleeping {
+		// halted: time passes (devices tick on cycles). Any interrupt REQUEST cancels sleep,
+		// even with SR.BL set (SH-4: the request wakes the CPU; the exception itself is only
+		// accepted once BL/IMASK allow it — the OS sleeps with BL=1 and clears it after).
+		c.cycles++
+		if len(c.pending) != 0 {
+			c.sleeping = false
+		}
+		return
+	}
 	c.acceptInterrupt()
 	op := c.mem.R16(c.pc)
 	c.pc += 2
@@ -207,8 +218,11 @@ func (c *CPU) execute(op uint32) {
 	case 0x0058:
 		c.sr |= srS
 		return
-	case 0x0038, 0x00AB, 0x0093, 0x001B:
-		return // ldtlb/synco/(rsv)/sleep -> nop
+	case 0x001B: // sleep: halt until an interrupt (see step)
+		c.sleeping = true
+		return
+	case 0x0038, 0x00AB, 0x0093:
+		return // ldtlb/synco/(rsv) -> nop
 	}
 
 	switch hi {

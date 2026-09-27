@@ -54,8 +54,11 @@ class MainActivity : AppCompatActivity() {
             "no save-state — cold boot (first-boot setup will show)"
         }
         binding.screenView.onEmulatorReady()
-        // KEYSC scan interval = the OS key-repeat clock: 20 ms worth of our instruction budget.
-        NativeBridge.setKeyScanPeriod(binding.screenView.instrPerFrame * 60L / 50L)
+        // Anchor emulated time to wall-clock: the core derives the RTC periodic interrupt (cursor
+        // blink / idle heartbeat), the 32.768 kHz counter and the 33 Hz key scan from our real
+        // throughput. Start from the frame budget; the render loop refines it from measurements.
+        NativeBridge.setInstrPerSec(binding.screenView.instrPerFrame * 60L)
+        NativeBridge.setClock(System.currentTimeMillis() / 1000L)
     }
 
     private fun buildKeypad() {

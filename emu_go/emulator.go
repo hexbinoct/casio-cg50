@@ -43,6 +43,13 @@ type Emulator struct {
 	downAt    map[[2]uint32]uint64 // KeyDown cycle per held key (minimum-hold enforcement)
 	pendingUp []pendingRelease     // KeyUp releases deferred until the minimum hold elapses
 
+	// presented is what the "LCD" shows: a copy of VRAM taken each time the OS starts the
+	// VRAM->LCD DMA push (dmac.onLCDPush), exactly when the real panel updates. Hosts read
+	// this instead of live VRAM, so a redraw in progress (icon by icon, the "no graphics
+	// driver" look) is never visible. pushes counts them (diagnostics/tests).
+	presented []byte
+	pushes    uint64
+
 	// dbg, if set (by the Android bridge), receives one-line key-path diagnostics.
 	// nil on desktop/tests.
 	dbg func(string)
@@ -61,8 +68,24 @@ func NewEmulator(flash []byte) *Emulator {
 		mmio.timerPeriod = 30000 // proven boot timer cadence
 	}
 	mmio.timerNext = 0
-	return &Emulator{cpu: cpu, mem: mem, mmio: mmio, downAt: map[[2]uint32]uint64{}}
+	e := &Emulator{cpu: cpu, mem: mem, mmio: mmio, downAt: map[[2]uint32]uint64{}, presented: make([]byte, fbBytes)}
+	mmio.dmac.onLCDPush = e.presentFrame
+	return e
 }
+
+// presentFrame copies the VRAM the OS is pushing (DMA source address, any P0/P1/P2 alias of
+// DRAM) into the presented buffer. Called from the bus while Step holds mu.
+func (e *Emulator) presentFrame(sar uint32) {
+	phys := sar & 0x1FFFFFFF
+	if phys < DramBase || phys+fbBytes > DramBase+DramSize {
+		return
+	}
+	copy(e.presented, e.mem.dram[phys-DramBase:phys-DramBase+fbBytes])
+	e.pushes++
+}
+
+// Pushes returns how many VRAM->LCD pushes the OS has made (frames actually presented).
+func (e *Emulator) Pushes() uint64 { e.mu.Lock(); defer e.mu.Unlock(); return e.pushes }
 
 // InjectKey queues a tap of the matrix key at 0-based (row,col); see re/KEYMAP.md. The key
 // is held for a few hardware scans then released, and queued taps are spaced so each one is
@@ -144,6 +167,23 @@ func (e *Emulator) SetKeyScanPeriod(instr uint64) {
 	e.mu.Unlock()
 }
 
+// SetInstrPerSecond tells the core the host's real throughput (instructions per wall-clock
+// second) so the OS's time base (RTC periodic interrupt = cursor blink and idle heartbeat,
+// the 32.768 kHz counter, the 33 Hz key scan) runs at real speed. Hosts should call it at
+// start with their budget and again whenever the measured rate changes materially.
+func (e *Emulator) SetInstrPerSecond(ips uint64) {
+	e.mu.Lock()
+	e.mmio.SetInstrPerSecond(ips)
+	e.mu.Unlock()
+}
+
+// SetClock sets the emulated RTC calendar to unix seconds.
+func (e *Emulator) SetClock(unix int64) {
+	e.mu.Lock()
+	e.mmio.rtc.SetClock(unix)
+	e.mu.Unlock()
+}
+
 // ReleaseAllKeys clears the matrix and drops queued taps (e.g. when the host loses focus).
 func (e *Emulator) ReleaseAllKeys() {
 	e.mu.Lock()
@@ -170,18 +210,27 @@ func (e *Emulator) Step(n int) {
 	e.mu.Unlock()
 }
 
-// FramebufferRGB565 copies the raw 384x216 RGB565 (big-endian) frame into dst (>= fbBytes).
+// FramebufferRGB565 copies the presented 384x216 RGB565 (big-endian) frame into dst
+// (>= fbBytes): the last frame the OS pushed to the LCD, not the live VRAM.
 func (e *Emulator) FramebufferRGB565(dst []byte) {
+	e.mu.Lock()
+	copy(dst, e.presented)
+	e.mu.Unlock()
+}
+
+// VRAMRGB565 copies the LIVE VRAM (phys 0x0C000000), including drawing in progress; for
+// diagnostics and tests that watch the OS draw.
+func (e *Emulator) VRAMRGB565(dst []byte) {
 	e.mu.Lock()
 	copy(dst, e.mem.dram[:fbBytes])
 	e.mu.Unlock()
 }
 
-// FramebufferRGBA decodes the frame into dst as 8-bit RGBA (FbWidth*FbHeight*4 bytes), the
-// layout Android's Bitmap.copyPixelsFromBuffer / a host canvas expects.
+// FramebufferRGBA decodes the presented frame into dst as 8-bit RGBA (FbWidth*FbHeight*4
+// bytes), the layout Android's Bitmap.copyPixelsFromBuffer / a host canvas expects.
 func (e *Emulator) FramebufferRGBA(dst []byte) {
 	e.mu.Lock()
-	d := e.mem.dram
+	d := e.presented
 	for i := 0; i < FbWidth*FbHeight; i++ {
 		p := uint16(d[i*2])<<8 | uint16(d[i*2+1])
 		dst[i*4+0] = uint8((p>>11)&0x1F) << 3
@@ -214,7 +263,8 @@ func (e *Emulator) Resume(blob []byte) error {
 		delete(e.downAt, k)
 	}
 	e.mmio.keysc.releaseAll()
-	e.mmio.keysc.resumeDefaults() // peripheral config isn't in the snapshot; restore post-init state
+	e.mmio.keysc.resumeDefaults()           // peripheral config isn't in the snapshot; restore post-init state
+	copy(e.presented, e.mem.dram[:fbBytes]) // show the snapshot's screen until the OS pushes again
 	return nil
 }
 

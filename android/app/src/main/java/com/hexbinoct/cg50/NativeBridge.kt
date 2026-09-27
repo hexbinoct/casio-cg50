@@ -38,6 +38,12 @@ object NativeBridge {
     /** KEYSC scan interval in emulated instructions (= the OS key-repeat clock); ~20 ms worth. */
     external fun setKeyScanPeriod(instr: Long)
 
+    /** Host throughput in emulated instructions per real second: anchors RTC/timers/key scan to wall-clock. */
+    external fun setInstrPerSec(ips: Long)
+
+    /** Set the emulated calculator clock (unix seconds). */
+    external fun setClock(unix: Long)
+
     /** Fill dst (width*height*4 bytes) with RGBA pixels; returns bytes written or -1. */
     external fun framebufferRGBA(dst: ByteArray): Int
 

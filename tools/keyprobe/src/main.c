@@ -114,10 +114,11 @@ static void say(const char *l1, const char *l2){ dclear(C_WHITE); dtext(4, 20, C
 static int save_file(void){
     uint16_t const *path = u"\\\\fls0\\KEYPROBE.TXT";
     BFile_Remove(path);
+    if(olen & 1) out[olen++] = '\n';           // BFile_Write needs an even size
     int size = olen;
     int rc = BFile_Create(path, BFile_File, &size);
     if(rc < 0) return rc;
-    int fd = BFile_Open(path, BFile_WRITE);
+    int fd = BFile_Open(path, BFile_WriteOnly);
     if(fd < 0) return fd;
     rc = BFile_Write(fd, out, olen);
     BFile_Close(fd);

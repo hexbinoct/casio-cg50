@@ -74,6 +74,62 @@
 > cont.18f) or an unmodelled register the switch reads. (Also: adb `input tap` works on this MIUI 14 phone
 > when the app has focus; earlier "no reaction" was Settings' pairing dialog holding focus.)
 >
+> ### 🖥 2026-09-27 (cont.18m) — REAL FRAME PRESENTATION + MMIO IN SAVE-STATES; keyprobe MEASURED.
+> **Display root cause (user: "screen draws like a PC without graphics drivers"):** the app showed live
+> VRAM every frame. Worse: after ANY Resume the OS had stopped pushing VRAM→LCD entirely, because both
+> push routines (3.60: `0x800554a6` area push, `0x8005552c` full Bdisp_PutDisp_DD; DMAC ch2
+> `0xFE008020`, DMAOR `0xFE008060`, LCD `0xB4000000`) gate on **PFC 0xA405013C bit4 (display enable)**
+> then **CHCR2.DE==0**, and save-states held NO MMIO registers → bit4 read 0 → early return forever.
+> Fixes: (1) `dmac.onLCDPush` fires when CHCR (+0xC) is written with DE=1 and DAR==0x14000000; the
+> Emulator copies VRAM(SAR) into a `presented` buffer then — `FramebufferRGBA/RGB565` now return the
+> presented frame (`VRAMRGB565` = live VRAM for diagnostics); (2) save-state gained an optional
+> trailing **"MMIO" section** (all region register maps + KEYSC ctrl/mode/ie); legacy snapshots (the
+> June cg50_state.bin, the phone's) get `applyLegacyResumeDefaults()` = PFC bit4 + KEYSC defaults.
+> Tests: `present_test.go` (0 pushes idle, ≥1 per menu move, presented≠live mid-redraw),
+> `TestLegacyStateDefaults`, round-trip extended with PFC/DMAC/KEYSC regs. All green.
+> **keyprobe (real calc, os/devic_probes/keyprobe-results-2026-09-27.md):** KEYSC scan = **30.3 ms
+> (33 Hz) while held, 0 scans idle**, key words exactly as modelled (RIGHT = word3 bit9), regs
+> 8000/8042/0200/7600/00c8/0fff/00ff as RE'd → `DefaultKeyScanPeriod` 750k, Android divisor 60/33.
+> Timer NOT measured: TSTR=0 (OS tick is not TMU; ETMU suspected), 0xFD8017D0 static. `timerprobe`
+> (diffs timer blocks + RTC + all ILRAM over RTC seconds) is built and on the calc — run it next.
+> **Toolchain on Windows:** `docker build -t fxsdk:latest tools/fxsdk-docker` (done, image exists);
+> build any add-in with `docker run --rm -v "F:\...	ools\<name>:/work" fxsdk:latest fxsdk build-cg`
+> (use a Windows-style path from PowerShell; Git-Bash mangles the mount). Calc mounts as `G:` in USB
+> Flash mode; add-ins write results to `\fls0\*.TXT` (BFile) → read from G:.
+> Still open: MENU-from-app (below), web UI still shows live VRAM (uses mem.dram directly).
+>
+> ### ⏱ 2026-09-27 (cont.18n) — TIME BASE: RTC periodic IRQ + real `sleep` + host ips; cursor blink still open.
+> User asked why the cursor never blinks / whether the OS gets its time base. It did not: the only
+> interrupt we ever delivered was the synthetic 0x560 tick (30k instr) + KEYSC. Found and modelled:
+> · **RTC @0xA413FEC0** (`emu_go/rtc.go`, `emu/mmio.py RTC`): calendar (BCD, fixed 2010 epoch,
+>   `SetClock`), R64CNT (128 Hz increments), RCR1/RCR2. **The OS idle path 0x802ae742 arms RCR2.PES=1/2 s
+>   right before `sleep` and clears it on wake; the periodic ISR (INTEVT 0xAA0 → 0x801dfc6c) clears
+>   RCR2[7:4] and posts main-loop event 0x80** — a 2 Hz heartbeat. Periodic events are phase-aligned
+>   to the RTC clock (re-arming does not restart the period). Verified: ISR runs 6× per 3 emulated s.
+> · **`sleep` is real** (Go+Python): halts, cycles still advance (devices tick), ANY interrupt REQUEST
+>   wakes it even with SR.BL=1 (the OS sleeps with BL set, clears BL after; SH-4 semantics), serviced
+>   once unmasked. Side effect: idle is now nearly free → phone battery. `TestSleepWakesOnRequest`.
+> · **Host time base**: `MMIOBus.SetInstrPerSecond(ips)` (Emulator/`EmuSetInstrPerSec`, Kotlin feeds
+>   the measured ips every second; `EmuSetClock` sets the calendar) derives KEYSC scan (ips/33), the
+>   32.768 kHz free counter (0xA44D00D8/C8, now 32-bit, `countDiv=ips/32768`; measured on the calc:
+>   65,533 counts/2 s) and the RTC. Goldens run with `SetInstrPerSecond(1_000_000)` (gen_golden.py +
+>   golden_test.go) so the boot's R64CNT-timed wait at 0x80000b5c stays short; the pure-boot mode
+>   (timerPeriod=0) still raises no IRQs. Goldens regenerated (final PC 0x801df46e).
+> · Save-state MMIO section now also carries RCR1/RCR2.
+> **Cursor blink: STILL NOT FOUND.** Ruled out (with evidence): the 6-slot software-timer subsystem
+> (ETMU0 @25 ms, Timer_Install 0x800c4978 / Start 0x800c4ac2 / Stop 0x800c4a40; only an inactive
+> 8250-tick APO slot exists; the 250 ms timer 0x80150108 is a USB/power monitor gated by 0x802b0ad2
+> = USB status word 0x95ff), the RTC periodic event (fires, no push follows), the 32.768 kHz counter
+> scaling, the ETMU channels (all TSTR=0 on the real calc too when an add-in launches), and the
+> "tick word" 0xFD8017D0 (= the auto-power-off countdown, minutes×30). In Run-Matrix the only pushes
+> are the full push 0x8005552c from the getkey redraw 0x801951d8 (after keys); the cursor overlay is
+> drawn by 0x80150508(r4=0/1, buf) around it, gated by 0x80150050 (= *0xFD801D28, a power/backlight
+> flag written only by 0x8014ff16..0x80150030). NEXT for the blink: watch VRAM writes at the caret
+> rectangle after a keypress to catch the cursor-draw routine's PC, then its callers/timer.
+> **timerprobe (real calc):** only 0xA44D00C8/D8 moved (32.768 kHz); TMU/ETMU stopped; no ILRAM word
+> changed in 3 s — the world switch does not run OS ISRs, so OS timer activity can't be observed that
+> way. Both probes + results: `tools/keyprobe`, `tools/timerprobe`, `os/devic_probes/*2026-09-27*`.
+>
 > **IN FLIGHT at session end (2026-09-26 late, home):** building the fxSDK/gint cross-toolchain as a
 > Docker image on this Windows box so add-ins can be built here (no Mac needed):
 > `docker build -t fxsdk:latest tools/fxsdk-docker` (Dockerfile = GiteaPC route; the 18-min apt layer +

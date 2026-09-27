@@ -23,6 +23,7 @@ func TestEmulatorFacade(t *testing.T) {
 	// 0x07E0 = full green at pixel 1.
 	e.mem.dram[2], e.mem.dram[3] = 0x07, 0xE0
 	rgba := make([]byte, FbWidth*FbHeight*4)
+	copy(e.presented, e.mem.dram[:fbBytes]) // present the poked VRAM (no OS push in this test)
 	e.FramebufferRGBA(rgba)
 	if rgba[0] != 0xF8 || rgba[1] != 0 || rgba[2] != 0 || rgba[3] != 0xFF {
 		t.Errorf("pixel0 RGBA = %v, want red", rgba[0:4])

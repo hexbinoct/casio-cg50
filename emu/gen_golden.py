@@ -25,8 +25,10 @@ def main():
 
     image = open(IMG, "rb").read()
     mmio = MMIOBus(log=False)            # timer_period=0 -> no interrupts (pure boot)
+    mmio.set_instr_per_second(1_000_000) # tiny time base: RTC-timed boot waits stay short (golden_test.go mirrors)
     mem = Memory(image, mmio)
     cpu = CPU(mem)
+    mmio.cpu = cpu                       # cycle-based devices (RTC, counters) read the CPU clock
     cpu.pc = 0x80000000
 
     recs = []

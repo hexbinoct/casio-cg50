@@ -285,6 +285,10 @@ func TestKeyscMenuTap(t *testing.T) {
 	if fbAt > 3_000_000 {
 		t.Errorf("first redraw took %d instr; expected well under 3M", fbAt)
 	}
+	// the redraw starts before the tap's hold (3 scans) is over: let the tap finish
+	for i := 0; i < 10_000_000 && e.tap.active; i++ {
+		e.Step(1)
+	}
 	if e.tap.active || len(e.tap.queue) != 0 {
 		t.Errorf("tap not finished: %+v", e.tap)
 	}

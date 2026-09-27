@@ -37,8 +37,10 @@ func TestGoldenBoot(t *testing.T) {
 	}
 
 	mmio := NewMMIOBus()
+	mmio.SetInstrPerSecond(1_000_000) // tiny time base, as emu/gen_golden.py: RTC-timed boot waits stay short
 	mem := NewMemory(img, mmio)
 	cpu := NewCPU(mem)
+	mmio.cpu = cpu // cycle-based devices (RTC, counters) read the CPU clock
 	cpu.cycles = 0
 	cpu.pc = 0x80000000
 

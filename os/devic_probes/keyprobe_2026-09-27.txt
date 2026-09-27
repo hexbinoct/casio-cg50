@@ -1,0 +1,12 @@
+== KEYPROBE ==
+FRQCR=0f011112 TSTR=00
+TMU0 TCOR=ffffffff TCNT=ffffffff TCR=0000
+TMU1 TCOR=0002d000 TCNT=0002d000 TCR=0023
+TMU2 TCOR=ffffffff TCNT=00000000 TCR=0003
+KEYSC +00..+1E: 0000 0000 0000 0200 0000 0000 8000 8042 0200 0002 7600 0000 00c8 0fff 00ff 0002
+IPRF=d000 IMR5=77 st_before=7600 st_after=7600
+1s unmasked: ticks=0 tcnt2=0 r64 00->00
+HELD 4s: scans=132 detects=0 other=0 ticks=0 tcnt2=0
+first scan R64=00 data: 0000 0000 0000 0200 0000 0000
+IDLE 2s: scans=0 detects=0 ticks=0
+

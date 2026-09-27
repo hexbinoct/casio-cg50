@@ -59,6 +59,7 @@ class CPU:
         self.trace = False
         self.halted = False
         self.pending = []        # list of (level, intevt_code) interrupt requests
+        self.sleeping = False    # `sleep` executed: halted until an interrupt is accepted
         self.irq_count = 0
 
     # ---- SR with register-bank handling ----
@@ -110,6 +111,14 @@ class CPU:
 
     # ---- fetch/exec ----
     def step(self):
+        if self.sleeping:
+            # halted: time passes (devices tick on cycles). Any interrupt REQUEST cancels sleep,
+            # even with SR.BL set (SH-4: the request wakes the CPU; the exception is accepted
+            # once BL/IMASK allow). Mirrors emu_go cpu.go.
+            self.cycles += 1
+            if self.pending:
+                self.sleeping = False
+            return
         self._accept_interrupt()
         op = self.mem.r16(self.pc)
         self.pc = u32(self.pc + 2)
@@ -149,7 +158,8 @@ class CPU:
         if op == 0x0048: self._sr &= ~self.S; return   # clrs
         if op == 0x0058: self._sr |= self.S; return    # sets
         if op in (0x0038,): return                # ldtlb -> nop (TLB modelled elsewhere)
-        if op in (0x00AB, 0x0093, 0x001B): return  # synco / (rsv) / sleep -> nop for now
+        if op == 0x001B: self.sleeping = True; return   # sleep: halt until an interrupt (see step)
+        if op in (0x00AB, 0x0093): return  # synco / (rsv) -> nop
 
         # ---- 0x0 group ----
         if hi == 0x0:
