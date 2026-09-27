@@ -42,6 +42,12 @@ class CalcSurfaceView @JvmOverloads constructor(context: Context, attrs: Attribu
         holder.addCallback(this)
     }
 
+    /** Height follows width at the panel's 384:216 aspect, so pixels stay square. */
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        val width = MeasureSpec.getSize(widthMeasureSpec)
+        setMeasuredDimension(width, width * 216 / 384)
+    }
+
     /** Call after NativeBridge.init()/resume() so the loop can allocate the frame buffers. */
     fun onEmulatorReady() {
         w = NativeBridge.width()

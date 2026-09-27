@@ -9,7 +9,40 @@
   pending, so the next session can continue without being reminded.
 ============================================================================= -->
 
-> ## ⏯ RESUME HERE (last session end: 2026-09-27 cont.18o)
+> ## ⏯ RESUME HERE (last session end: 2026-09-27 cont.18p)
+>
+> ### ✅ cont.18p — MENU-from-app SOLVED (MENU/EXIT were swapped) + keymap audit + new Android skin.
+> **Root cause:** not the OS, not storage — our **MENU and EXIT keys were swapped**. Matrix (3,7)
+> yields getkey **0x7532 = KEY_CTRL_EXIT** (SHIFT → 0x754d QUIT) and (3,8) yields **0x7533 =
+> KEY_CTRL_MENU** (SHIFT → 0x7555 SETUP) — codes straight from the OS remap tables, names from libfxcg;
+> gint's matrix grouping agrees (EXIT beside DOWN/RIGHT, MENU beside LEFT/UP). So "MENU" sent EXIT,
+> which Run-Matrix handles itself (cursor off, re-evaluate + redraw the last answer — the "AC-like"
+> symptom). Found via `TestMenuDiff` (probe tag: first-call diff of MENU vs a digit key → the MENU run
+> went into Run-Matrix's own handler 0x80194ebc + the BCD evaluate/format chain, no app switch).
+> Pressing (3,8) returns to a frame pixel-identical to the MAIN MENU.
+> **Fixed everywhere:** `re/dump_keymap.py` labels (+ it now also emits the KEYSC-word section that was
+> hand-appended to KEYMAP.md and got lost on regen), regenerated `re/KEYMAP.md`, web UI (Esc=EXIT (3,7),
+> Home=MENU (3,8)), Android keypad. Test: `TestMenuReturnsFromApp` (keysc_test.go).
+> **Keymap audit:** new `re/audit_keymap.py` checks every label in KEYMAP.md and Android `KeyMap.kt`
+> against libfxcg's name for the OS code (fetches `re/libfxcg_keyboard.h`). After the fix: **0
+> mismatches, all 50 physical keys present on distinct matrix positions.** User reports "some keys
+> don't work" — the label audit rules out wrong mappings; still to do: press every key on the phone
+> and note which ones misbehave (could be app-context, touch targets, or OS-side behaviour).
+> **Android skin (new):** `KeypadView.kt` draws the whole keyboard in the real fx-CG50 order (F1-F6;
+> SHIFT OPTN VARS MENU / ALPHA x² ^ EXIT beside a round D-pad; X,θ,T log ln sin cos tan; a/b S⇔D ( ) , →;
+> 7 8 9 DEL AC/ON; 4 5 6 × ÷; 1 2 3 + −; 0 . ×10ˣ (−) EXE) with gradient caps, pressed state, yellow
+> SHIFT / red ALPHA legends above each key, multi-touch, haptic tap. `KeyMap.kt` = data (label, row,
+> col, shift, alpha, cap style). Screen now keeps the 384:216 aspect (it was stretched vertically) in a
+> bezel; no action bar; graphite body. Verified on the POCO X3 (MENU from Run-Matrix → MAIN MENU) and
+> the KeyStudio_API31 AVD. (Do NOT use the Medium_Phone AVD — it hangs at boot; user's call.)
+> Wireless adb on the phone drops when its screen sleeps: `adb kill-server`, `adb mdns services`,
+> `adb connect adb-584c917b-jFkRGG._adb-tls-connect._tcp` once the user wakes it.
+>
+> **NEXT:** 1. Key-by-key check on the phone with the user (which keys "don't work"). 2. Skin polish
+> from user feedback (annunciator S/A state on SHIFT/ALPHA caps, colours). 3. PERF (interpreter fast
+> paths, memcmp/memset HLE). 4. Later: release APK signing; real source of the synthetic 0x560 tick.
+>
+> ## ⏯ (prev) RESUME HERE (last session end: 2026-09-27 cont.18o)
 >
 > ### ✅ cont.18o — CURSOR BLINKS: real R61524 LCD controller model (GRAM is the screen).
 > **Root cause (two bugs):** (1) the OS draws the text cursor **straight into the LCD controller's

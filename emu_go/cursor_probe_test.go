@@ -332,7 +332,7 @@ func TestMenuFromAppProbe(t *testing.T) {
 	e.Step(30_000_000)
 	app := make([]byte, fbBytes)
 	e.FramebufferRGB565(app)
-	e.InjectKey(3, 7) // MENU
+	e.InjectKey(3, 8) // MENU (0x7533; (3,7) is EXIT — they were swapped before cont.18o)
 	cur := make([]byte, fbBytes)
 	for i := 1; i <= 12; i++ {
 		e.Step(10_000_000)
@@ -348,4 +348,109 @@ func TestMenuFromAppProbe(t *testing.T) {
 		}
 		t.Logf("+%3dM instr: pc=%08x pixels differing from menu=%d, from Run-Matrix=%d", i*10, e.cpu.pc, diff(menu), diff(app))
 	}
+}
+
+// MENU trace: shallow call sequence (relative to the idle stack depth) after MENU in
+// Run-Matrix, plus unmapped-MMIO accesses and flash writes during it.
+func TestMenuTrace(t *testing.T) {
+	flash, _ := os.ReadFile("../os/flash_dump/flash_full.bin")
+	st, _ := os.ReadFile("../os/flash_dump/cg50_state.bin")
+	e := NewEmulator(flash)
+	if err := e.Resume(st); err != nil {
+		t.Fatal(err)
+	}
+	e.SetInstrPerSecond(70_000_000)
+	var sh shadow
+	for i := 0; i < 1_000_000; i++ {
+		sh.step(e)
+	}
+	e.InjectKey(2, 1) // EXE -> Run-Matrix
+	for i := 0; i < 30_000_000; i++ {
+		sh.step(e)
+	}
+	for !e.cpu.sleeping { // settle at idle
+		sh.step(e)
+	}
+	base := len(sh.st)
+	t.Logf("idle stack depth %d: %s", base, sh.sig(base))
+	for k := range e.mmio.unknown {
+		delete(e.mmio.unknown, k)
+	}
+	e.mem.fwrites = map[uint32]int{}
+	e.InjectKey(3, 7) // EXIT (this probe was written while (3,7) was mislabelled MENU)
+	lines, lastTop := 0, uint32(0)
+	p0 := e.Pushes()
+	for i := 0; i < 60_000_000 && lines < 400; i++ {
+		pc0 := e.cpu.pc
+		d0 := len(sh.st)
+		sh.step(e)
+		d := len(sh.st)
+		if d > d0 && d <= base+2 && sh.st[d-1] != irqMark {
+			// a call at shallow depth: log caller site -> target
+			if e.cpu.pc != lastTop {
+				t.Logf("  @%9d d%+d call %08x -> %08x  pushes=%d", i, d-base, pc0, e.cpu.pc, e.Pushes()-p0)
+				lines++
+				lastTop = e.cpu.pc
+			}
+		}
+		if d < base && d < d0 {
+			t.Logf("  @%9d RETURN below idle depth (d%+d) to %08x", i, d-base, e.cpu.pc)
+			lines++
+		}
+	}
+	t.Logf("unmapped MMIO: %v", e.mmio.unknown)
+	t.Logf("flash writes by 32KB page: %v", e.mem.fwrites)
+}
+
+// menuDiffRun resumes, enters Run-Matrix, presses (row,col) and returns first-call order of
+// every call target within n instructions (target -> first instr index), plus the order.
+func menuDiffRun(t *testing.T, row, col uint32, n int) (map[uint32]int, []uint32, *Emulator) {
+	flash, _ := os.ReadFile("../os/flash_dump/flash_full.bin")
+	st, _ := os.ReadFile("../os/flash_dump/cg50_state.bin")
+	e := NewEmulator(flash)
+	if err := e.Resume(st); err != nil {
+		t.Fatal(err)
+	}
+	e.SetInstrPerSecond(70_000_000)
+	e.Step(1_000_000)
+	e.InjectKey(2, 1)
+	e.Step(30_000_000)
+	for !e.cpu.sleeping {
+		e.Step(1)
+	}
+	var sh shadow
+	sh.logOn = true
+	e.InjectKey(row, col)
+	first := map[uint32]int{}
+	var order []uint32
+	for i := 0; i < n; i++ {
+		nc := len(sh.calls)
+		sh.step(e)
+		if len(sh.calls) > nc {
+			c := sh.calls[len(sh.calls)-1]
+			if _, ok := first[c]; !ok {
+				first[c] = i
+				order = append(order, c)
+			}
+			sh.calls = sh.calls[:0]
+		}
+	}
+	return first, order, e
+}
+
+func TestMenuDiff(t *testing.T) {
+	const n = 40_000_000
+	one, _, _ := menuDiffRun(t, 6, 2, n)   // '1'
+	_, order, e := menuDiffRun(t, 3, 7, n) // EXIT: the key that was mislabelled MENU
+	shown := 0
+	for _, c := range order {
+		if _, ok := one[c]; ok || c == irqMark {
+			continue
+		}
+		if shown < 250 {
+			t.Logf("  MENU-only call -> %08x", c)
+		}
+		shown++
+	}
+	t.Logf("%d MENU-only call targets; unmapped MMIO: %v", shown, e.mmio.unknown)
 }

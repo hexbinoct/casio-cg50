@@ -2,17 +2,13 @@ package com.hexbinoct.cg50
 
 import android.os.Bundle
 import android.util.Log
-import android.view.MotionEvent
-import android.view.ViewGroup
-import android.widget.Button
-import android.widget.LinearLayout
 import androidx.appcompat.app.AppCompatActivity
 import com.hexbinoct.cg50.databinding.ActivityMainBinding
 import java.io.File
 
 /**
  * Drives the emulator: loads the user's flash dump + (optional) save-state from the app's
- * external files dir, builds the on-screen keypad, runs the screen via CalcSurfaceView, and
+ * external files dir, runs the screen via CalcSurfaceView (the keypad is KeypadView), and
  * snapshots on pause so the next launch resumes exactly where it left off.
  *
  * Put your own files here (the app ships NO Casio firmware):
@@ -33,7 +29,6 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        buildKeypad()
 
         val dir = getExternalFilesDir(null)
         val flash = File(dir, "flash_full.bin")
@@ -59,46 +54,6 @@ class MainActivity : AppCompatActivity() {
         // throughput. Start from the frame budget; the render loop refines it from measurements.
         NativeBridge.setInstrPerSec(binding.screenView.instrPerFrame * 60L)
         NativeBridge.setClock(System.currentTimeMillis() / 1000L)
-    }
-
-    private fun buildKeypad() {
-        for (row in KEYPAD) {
-            val rowLayout = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                layoutParams = LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f
-                )
-            }
-            for (key in row) {
-                val b = Button(this).apply {
-                    text = key.label
-                    isAllCaps = false
-                    layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f)
-                    // Touch down/up = matrix press/release, so holding an arrow auto-repeats
-                    // exactly as on the calculator (the OS runs its own repeat timing).
-                    setOnTouchListener { v, ev ->
-                        when (ev.actionMasked) {
-                            MotionEvent.ACTION_DOWN -> {
-                                v.isPressed = true
-                                val t = System.nanoTime()
-                                NativeBridge.keyDown(key.row, key.col)
-                                Log.i("cg50-key", "ui down ${key.label} jni=${(System.nanoTime() - t) / 1000}us")
-                            }
-                            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                                v.isPressed = false
-                                val t = System.nanoTime()
-                                NativeBridge.keyUp(key.row, key.col)
-                                Log.i("cg50-key", "ui up   ${key.label} jni=${(System.nanoTime() - t) / 1000}us")
-                                if (ev.actionMasked == MotionEvent.ACTION_UP) v.performClick()
-                            }
-                        }
-                        true
-                    }
-                }
-                rowLayout.addView(b)
-            }
-            binding.keypad.addView(rowLayout)
-        }
     }
 
     override fun onPause() {

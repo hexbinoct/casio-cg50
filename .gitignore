@@ -41,3 +41,6 @@ tools/*/build-cg/
 tools/*/*.g3a
 tools/fxsdk-docker/build.err
 tools/fxsdk-docker/build.log
+
+# fetched on demand by re/audit_keymap.py (third-party libfxcg header)
+re/libfxcg_keyboard.h

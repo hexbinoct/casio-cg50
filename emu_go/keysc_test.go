@@ -371,3 +371,38 @@ func TestKeyscHoldRepeats(t *testing.T) {
 		t.Errorf("keys kept arriving after release (%d decodes)", released)
 	}
 }
+
+// MENU is matrix (3,8) (getkey 0x7533 = KEY_CTRL_MENU); (3,7) is EXIT (0x7532). The keypad had
+// them swapped, which looked like "MENU inside an app doesn't return to the main menu" (cont.18o).
+// From Run-Matrix, MENU must bring back exactly the main-menu frame.
+func TestMenuReturnsFromApp(t *testing.T) {
+	flash, err := os.ReadFile("../os/flash_dump/flash_full.bin")
+	if err != nil {
+		t.Skip("no flash image")
+	}
+	st, err := os.ReadFile("../os/flash_dump/cg50_state.bin")
+	if err != nil {
+		t.Skip("no menu save-state")
+	}
+	e := NewEmulator(flash)
+	if err := e.Resume(st); err != nil {
+		t.Fatal(err)
+	}
+	e.SetInstrPerSecond(70_000_000)
+	e.Step(1_000_000)
+	menu := make([]byte, fbBytes)
+	e.FramebufferRGB565(menu)
+	e.InjectKey(2, 1) // EXE -> Run-Matrix
+	e.Step(30_000_000)
+	shown := make([]byte, fbBytes)
+	e.FramebufferRGB565(shown)
+	if bytes.Equal(shown, menu) {
+		t.Fatal("EXE did not open Run-Matrix")
+	}
+	e.InjectKey(3, 8) // MENU
+	e.Step(30_000_000)
+	e.FramebufferRGB565(shown)
+	if !bytes.Equal(shown, menu) {
+		t.Fatal("MENU from Run-Matrix did not return to the main menu")
+	}
+}

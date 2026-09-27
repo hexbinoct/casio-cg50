@@ -108,13 +108,13 @@ LABELS = {
     (8, 7):  ("ALPHA",  "A-LOCK",   "",   "v"),
     (8, 6):  ("x^2",    "sqrt",     "",   "v"),
     (8, 5):  ("^",      "x-root",   "",   "v"),
-    (8, 4):  ("MENU",   "SET UP",   "",   "v"),
+    (8, 4):  ("EXIT",   "QUIT",     "",   "v"),  # getkey 0x7532 = KEY_CTRL_EXIT (was mislabelled MENU until cont.18o)
     (8, 3):  ("DOWN",   "",         "",   "v"),
     (8, 2):  ("RIGHT",  "",         "",   "v"),
     (9, 7):  ("SHIFT",  "",         "",   "v"),
     (9, 6):  ("OPTN",   "",         "",   "v"),
     (9, 5):  ("VARS",   "PRGM",     "",   ""),
-    (9, 4):  ("EXIT",   "QUIT",     "",   ""),
+    (9, 4):  ("MENU",   "SET UP",   "",   "v"),  # 0x7533 = KEY_CTRL_MENU; verified: returns to MAIN MENU from Run-Matrix
     (9, 3):  ("LEFT",   "",         "",   "v"),
     (9, 2):  ("UP",     "",         "",   "v"),
     (10, 7): ("F1",     "Trace",    "",   "v"),
@@ -219,7 +219,7 @@ Empirically confirmed by typing into Run-Matrix and reading the glyphs, or by ob
 - **Modifiers:** SHIFT `6-8` + `sin` → `sin⁻¹`; ALPHA `6-7` + `X,θ,T` → `A`. Confirms the OS applies
   the yellow/red secondary meaning when the modifier key is injected before the target.
 - **Editing / nav / menus:** `DEL` `3-4` (`789`→`78`), `OPTN` `5-8` (opens LIST/MAT-VCT/… softkeys),
-  `MENU` `3-7` (back to MAIN MENU), arrows UP `1-8` / DOWN `2-7` / LEFT `2-8` / RIGHT `1-7`,
+  `MENU` `3-8` (back to MAIN MENU), `EXIT` `3-7`, arrows UP `1-8` / DOWN `2-7` / LEFT `2-8` / RIGHT `1-7`,
   F1 `6-9` & F6 `1-9` (used to drive first-boot setup).
 - **Not yet individually pressed** (codes are table-authoritative, low risk): `->` store, `S<->D`,
   `a b/c`, `VARS`, `EXIT`, `AC/ON`, `F2`-`F5`, and ALPHA letters B-Z (the ALPHA mechanism + table
@@ -232,6 +232,27 @@ Each on-screen button maps to one row in the table above; pressing it should enq
 `(row,col)` we inject here. SHIFT/ALPHA/A-LOCK are stateful toggle buttons (one-shot for SHIFT/ALPHA,
 sticky for A-LOCK) — render the yellow (SHIFT) and red (ALPHA) secondary labels exactly as the physical
 keypad, and drive the S/A annunciators from the same OS state the keypad lights.
+
+## Physical matrix → KEYSC key-data words (cont.18l, RE'd from ISR FUN_801e4c00 / decoder FUN_801e49bc)
+
+The OS reads the keyboard from the SH7305 key-scan unit at **0xA44B0000** (six 16-bit words at
++0x00..+0x0B), not by bit-banging ports. For a key at 0-based `(row, col)` (= this table's `inject`
+`"row-col"`):
+
+    word  = col >> 1            (word w at 0xA44B0000 + 2*w)
+    bit   = row + 8 * (col & 1)  (low byte = even column, high byte = odd column)
+
+e.g. AC/ON `0-0` = word0 bit0, DOWN `2-7` = word3 bit10, UP `1-8` = word4 bit1, F1 `6-9` = word4 bit14.
+The ISR converts (row,col) through the OS table `0x8068fa70[col*8 + row]` (16-bit) which holds
+`(row+1)<<8 | (col+1)` — i.e. exactly the 1-based `grid (C,R)` code of this table — then looks up the
+key code. The emulator models this unit (`emu_go/keysc.go`, `emu/mmio.py KeyScan`), so
+`Emulator.InjectKey`/`KeyDown`/`KeyUp` set matrix bits and the OS's own ISR does the rest
+(INTEVT 0xBE0). The old enqueue shortcut via FUN_801e684c is retired for interactive use.
+
+## Label audit (cont.18o)
+Labels are hand-written; codes come from the OS. `python re/audit_keymap.py` checks every label
+against libfxcg's key names for the OS code (and the Android keypad's labels). It found MENU and
+EXIT swapped (0x7532 = KEY_CTRL_EXIT, 0x7533 = KEY_CTRL_MENU) — fixed; all other keys agree.
 """
 out.append(PROSE.strip() + "\n")
 with open(MD, "w", encoding="utf-8") as f:

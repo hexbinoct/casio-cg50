@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Calculator body: dark graphite, slightly lighter at the top. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <gradient android:angle="270" android:startColor="#2A2F38" android:endColor="#14171C" />
+</shape>

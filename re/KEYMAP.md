@@ -46,13 +46,13 @@ Codes: `0x75xx`=Casio control getkey codes, ASCII=character input, `0x00xx`=edit
 | ALPHA | A-LOCK |  | C8 R7 | `6-7` | 0x22 | 0x7537 | 0x7537 | 0x7537 | 0x7537 | ✓ |
 | x^2 | sqrt |  | C8 R6 | `5-7` | 0x12 | 0x008b | 0x0086 | 0x00cd | 0x00cd | ✓ |
 | ^ | x-root |  | C8 R5 | `4-7` | 0x1b | 0x00a8 | 0x00b8 | 0x00ce | 0x00ce | ✓ |
-| MENU | SET UP |  | C8 R4 | `3-7` | 0x1c | 0x7532 | 0x754d | 0x7532 | 0x7532 | ✓ |
+| EXIT | QUIT |  | C8 R4 | `3-7` | 0x1c | 0x7532 | 0x754d | 0x7532 | 0x7532 | ✓ |
 | DOWN |  |  | C8 R3 | `2-7` | 0x32 | 0x7547 | 0x7565 | 0x7547 | 0x7547 | ✓ |
 | RIGHT |  |  | C8 R2 | `1-7` | 0x30 | 0x7545 | 0x756f | 0x7545 | 0x7545 | ✓ |
 | SHIFT |  |  | C9 R7 | `6-8` | 0x21 | 0x7536 | 0x7536 | 0x7536 | 0x7536 | ✓ |
 | OPTN |  |  | C9 R6 | `5-8` | 0x23 | 0x7538 | 0x756b | 0x7538 | 0x7538 | ✓ |
 | VARS | PRGM |  | C9 R5 | `4-8` | 0x2b | 0x7540 | 0x754c | 0x7540 | 0x7540 |  |
-| EXIT | QUIT |  | C9 R4 | `3-8` | 0x1e | 0x7533 | 0x7555 | 0x7533 | 0x7533 |  |
+| MENU | SET UP |  | C9 R4 | `3-8` | 0x1e | 0x7533 | 0x7555 | 0x7533 | 0x7533 | ✓ |
 | LEFT |  |  | C9 R3 | `2-8` | 0x2f | 0x7544 | 0x756e | 0x7544 | 0x7544 | ✓ |
 | UP |  |  | C9 R2 | `1-8` | 0x2d | 0x7542 | 0x7564 | 0x7542 | 0x7542 | ✓ |
 | F1 | Trace |  | C10 R7 | `6-9` | 0x24 | 0x7539 | 0x7539 | 0x7539 | 0x7539 | ✓ |
@@ -116,7 +116,7 @@ Empirically confirmed by typing into Run-Matrix and reading the glyphs, or by ob
 - **Modifiers:** SHIFT `6-8` + `sin` → `sin⁻¹`; ALPHA `6-7` + `X,θ,T` → `A`. Confirms the OS applies
   the yellow/red secondary meaning when the modifier key is injected before the target.
 - **Editing / nav / menus:** `DEL` `3-4` (`789`→`78`), `OPTN` `5-8` (opens LIST/MAT-VCT/… softkeys),
-  `MENU` `3-7` (back to MAIN MENU), arrows UP `1-8` / DOWN `2-7` / LEFT `2-8` / RIGHT `1-7`,
+  `MENU` `3-8` (back to MAIN MENU), `EXIT` `3-7`, arrows UP `1-8` / DOWN `2-7` / LEFT `2-8` / RIGHT `1-7`,
   F1 `6-9` & F6 `1-9` (used to drive first-boot setup).
 - **Not yet individually pressed** (codes are table-authoritative, low risk): `->` store, `S<->D`,
   `a b/c`, `VARS`, `EXIT`, `AC/ON`, `F2`-`F5`, and ALPHA letters B-Z (the ALPHA mechanism + table
@@ -145,3 +145,8 @@ The ISR converts (row,col) through the OS table `0x8068fa70[col*8 + row]` (16-bi
 key code. The emulator models this unit (`emu_go/keysc.go`, `emu/mmio.py KeyScan`), so
 `Emulator.InjectKey`/`KeyDown`/`KeyUp` set matrix bits and the OS's own ISR does the rest
 (INTEVT 0xBE0). The old enqueue shortcut via FUN_801e684c is retired for interactive use.
+
+## Label audit (cont.18o)
+Labels are hand-written; codes come from the OS. `python re/audit_keymap.py` checks every label
+against libfxcg's key names for the OS code (and the Android keypad's labels). It found MENU and
+EXIT swapped (0x7532 = KEY_CTRL_EXIT, 0x7533 = KEY_CTRL_MENU) — fixed; all other keys agree.
