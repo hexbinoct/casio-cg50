@@ -55,6 +55,7 @@ type CPU struct {
 
 func NewCPU(mem *Memory) *CPU {
 	c := &CPU{mem: mem}
+	mem.cpu = c
 	c.setSR(srMD | srRB | srBL | 0xF0)
 	return c
 }
@@ -125,10 +126,38 @@ func (c *CPU) step() {
 		return
 	}
 	c.acceptInterrupt()
+	if c.mem.mmuAt {
+		c.stepMMU()
+		c.cycles++
+		return
+	}
 	op := c.mem.R16(c.pc)
 	c.pc += 2
 	c.execute(op)
 	c.cycles++
+}
+
+// stepMMU executes one instruction with address translation on. MMU exceptions are precise:
+// if any access of the instruction (fetch, delay slot, operand) faults, every register the
+// instruction had changed is rolled back and exception entry uses the instruction's address
+// (for a delay slot, the branch's) as SPC. See mmu.go.
+func (c *CPU) stepMMU() {
+	pc0, r0, rb0 := c.pc, c.r, c.rbank1
+	pr0, sr0, gbr0, mach0, macl0, fpul0, fpscr0 := c.pr, c.sr, c.gbr, c.mach, c.macl, c.fpul, c.fpscr
+	defer func() {
+		if x := recover(); x != nil {
+			f, ok := x.(mmuFault)
+			if !ok {
+				panic(x)
+			}
+			c.r, c.rbank1 = r0, rb0
+			c.pr, c.sr, c.gbr, c.mach, c.macl, c.fpul, c.fpscr = pr0, sr0, gbr0, mach0, macl0, fpul0, fpscr0
+			c.mem.mmu.raise(c, f, pc0)
+		}
+	}()
+	op := c.mem.R16(c.pc)
+	c.pc += 2
+	c.execute(op)
 }
 
 // callInject runs the OS function at `addr` as a subroutine with args in r4..r7,
@@ -221,8 +250,13 @@ func (c *CPU) execute(op uint32) {
 	case 0x001B: // sleep: halt until an interrupt (see step)
 		c.sleeping = true
 		return
-	case 0x0038, 0x00AB, 0x0093:
-		return // ldtlb/synco/(rsv) -> nop
+	case 0x0038: // ldtlb: PTEH/PTEL/PTEA -> UTLB[MMUCR.URC] (mmu.go)
+		if c.mem.mmu != nil {
+			c.mem.mmu.ldtlb()
+		}
+		return
+	case 0x00AB, 0x0093:
+		return // synco/(rsv) -> nop
 	}
 
 	switch hi {

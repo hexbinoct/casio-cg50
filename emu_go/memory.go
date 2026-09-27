@@ -48,6 +48,8 @@ type Memory struct {
 	ilram   []byte
 	ocram   []byte // on-chip RAM at OcramBase
 	mmio    *MMIOBus
+	mmu     *ccn // MMU (mmu.go); translates P0/U0/P3 when MMUCR.AT=1
+	mmuAt   bool // == mmu.at, kept by the MMU (hot-path flag)
 	trace   bool
 	wpages  map[uint32]int // if non-nil, histogram DRAM write target by 32KB page
 	fwrites map[uint32]int // if non-nil, histogram FLASH write target by 32KB page
@@ -81,7 +83,12 @@ func NewMemory(osImage []byte, mmio *MMIOBus) *Memory {
 	for i := n; i < len(flash); i++ {
 		flash[i] = 0xFF // erased NOR
 	}
-	return &Memory{
+	var mmu *ccn
+	if mmio != nil {
+		mmu = mmio.ccn
+	}
+	m := &Memory{
+		mmu:     mmu,
 		rom:     osImage,
 		romSize: uint32(len(osImage)),
 		flash:   flash,
@@ -90,11 +97,24 @@ func NewMemory(osImage []byte, mmio *MMIOBus) *Memory {
 		ocram:   make([]byte, OcramSize),
 		mmio:    mmio,
 	}
+	if mmu != nil {
+		mmu.mem = m
+	}
+	return m
 }
 
 // Read returns a big-endian value of 1/2/4 bytes at virtual address va.
+// translated reports whether va goes through the MMU (P0/U0 or P3 with MMUCR.AT=1).
+func (m *Memory) translated(va uint32) bool {
+	return m.mmuAt && (va < 0x80000000 || va-0xC0000000 < 0x20000000)
+}
+
+func (m *Memory) priv() bool { return m.cpu == nil || m.cpu.sr&srMD != 0 }
+
 func (m *Memory) Read(va, size uint32) uint32 {
-	va &= 0xFFFFFFFF
+	if m.translated(va) {
+		va = 0xA0000000 | m.mmu.translate(va, false, m.priv())
+	}
 	if va >= 0xE0000000 {
 		if va >= IlramBase && va < IlramBase+IlramSize {
 			return beRead(m.ilram, va-IlramBase, size)
@@ -135,7 +155,9 @@ func (m *Memory) Read(va, size uint32) uint32 {
 }
 
 func (m *Memory) Write(va, size, val uint32) {
-	va &= 0xFFFFFFFF
+	if m.translated(va) {
+		va = 0xA0000000 | m.mmu.translate(va, true, m.priv())
+	}
 	mask := (uint32(1) << (size * 8)) - 1
 	if size == 4 {
 		mask = 0xFFFFFFFF
@@ -363,9 +385,9 @@ func (m *Memory) span(va, n uint32) []byte {
 	if p := va & 0x1FFFFFFF; p >= DramBase && p+n <= DramBase+DramSize {
 		return m.dram[p-DramBase : p-DramBase+n]
 	}
-	b := make([]byte, n)
+	b := make([]byte, n) // DMA addresses are physical: read through the uncached P2 alias
 	for i := uint32(0); i < n; i++ {
-		b[i] = byte(m.Read(va+i, 1))
+		b[i] = byte(m.Read(0xA0000000|(va+i)&0x1FFFFFFF, 1))
 	}
 	return b
 }

@@ -37,6 +37,12 @@ func TestSaveStateRoundtrip(t *testing.T) {
 	mem.Write(0xB4000000, 2, 0x211)
 	mem.Write(0xA405013C, 1, 0x1D)
 	mem.Write(0xB4000000, 2, 0x123)
+	// MMU: one UTLB entry (slot 7) + translation enabled
+	mem.Write(0xFF000000, 4, 0x00300000)
+	mem.Write(0xFF000004, 4, 0x0C01017C)
+	mem.Write(0xFF000010, 4, 7<<10|0x100)
+	mem.mmu.ldtlb()
+	mem.Write(0xFF000010, 4, 7<<10|0x101)
 
 	path := filepath.Join(t.TempDir(), "st.bin")
 	if err := SaveState(path, cpu, mem); err != nil {
@@ -56,8 +62,8 @@ func TestSaveStateRoundtrip(t *testing.T) {
 		t.Errorf("CPU regs not restored: pc=%08x r5=%08x mach=%08x rbank1[2]=%08x",
 			cpu2.pc, cpu2.r[5], cpu2.mach, cpu2.rbank1[2])
 	}
-	if mem2.dram[100] != 0xAB || mem2.R32(0x0C000200) != 0xCAFEF00D {
-		t.Errorf("DRAM not restored: [100]=%02x [0x200]=%08x", mem2.dram[100], mem2.R32(0x0C000200))
+	if mem2.dram[100] != 0xAB || mem2.R32(0x8C000200) != 0xCAFEF00D {
+		t.Errorf("DRAM not restored: [100]=%02x [0x200]=%08x", mem2.dram[100], mem2.R32(0x8C000200))
 	}
 	if mem2.ilram[8] != 0x5A || mem2.ocram[0x40] != 0xC3 {
 		t.Errorf("ILRAM/OCRAM not restored: ilram=%02x ocram=%02x", mem2.ilram[8], mem2.ocram[0x40])
@@ -80,6 +86,9 @@ func TestSaveStateRoundtrip(t *testing.T) {
 	}
 	if v := mem2.Read(0xB4000000, 2); v != 0x123 || mem2.mmio.lcd.reg[0x003] != 0xA0 {
 		t.Errorf("LCD state not restored: R211 read %#x, R003 %#x", v, mem2.mmio.lcd.reg[0x003])
+	}
+	if c := mem2.mmio.ccn; !c.at || c.utlb[7].vpn != 0x00300000 || c.utlb[7].data != 0x0C01017C {
+		t.Errorf("MMU not restored: at=%v utlb[7]=%+v", c.at, c.utlb[7])
 	}
 	// GRAM isn't saved; resume seeds the panel from VRAM (dram[100] = pixel (50,0) high byte)
 	if c := mem2.mmio.lcd.gram[osOriginH-50]; c>>8 != 0xAB {

@@ -39,15 +39,134 @@ class Region:
         self.regs[va - self.base] = val
 
 
+_PAGE_MASK = (0x3FF, 0xFFF, 0xFFFF, 0xFFFFF)   # SZ 1K, 4K, 64K, 1M
+
+
+class MMUFault(Exception):
+    """Raised by a translating access; caught by CPU.step (precise MMU exception)."""
+    def __init__(self, va, expevt, vector):
+        super().__init__(f"MMU fault va=0x{va:08x} expevt=0x{expevt:03x}")
+        self.va, self.expevt, self.vector = va, expevt, vector
+
+
+class TLBEntry:
+    __slots__ = ("vpn", "asid", "data", "ptea")
+
+    def __init__(self):
+        self.vpn = self.asid = self.data = self.ptea = 0
+
+    def mask(self):
+        return _PAGE_MASK[((self.data >> 6) & 2) | ((self.data >> 4) & 1)]
+
+    def addr_word(self):
+        return self.vpn | ((self.data & 0x4) << 7) | (self.data & 0x100) | self.asid
+
+
 class CCN(Region):
-    """MMU/cache control. Reset stub reads the HW model strap at +0x24 (0xFF000024):
-    low16==0x0000->0xCA00, ==0x0020->0xCA01, ==0x0A02->0xCA02 (fx-CG50). Report 0x0A02 so
-    the OS identifies as fx-CG50 (else fls0_init's verify loop @0x80365418 never exits)."""
+    """MMU/cache control block (PTEH 0, PTEL 4, TTB 8, TEA 0xC, MMUCR 0x10, EXPEVT 0x24,
+    INTEVT 0x28, PTEA 0x34) + the 64-entry UTLB. Mirror of emu_go/mmu.go (read it for the
+    full model): ldtlb -> UTLB[MMUCR.URC]; MMUCR.TI invalidates; with AT=1 P0/U0/P3 translate;
+    only V=1 entries match; TLB miss -> VBR+0x400, protection / initial page write ->
+    VBR+0x100. EXPEVT's reset value is the model strap the boot reads (0x0A02 = fx-CG50)."""
+    def __init__(self, name, base, size):
+        super().__init__(name, base, size)
+        self.utlb = [TLBEntry() for _ in range(64)]
+        self.at = False
+        self.last = 0
+
     def read(self, va, size):
         off = (va - self.base) & 0xFFFF
         if off == 0x24:
-            return 0x0A02
+            return self.regs.get(0x24, 0x0A02)
         return self.regs.get(va - self.base, 0)
+
+    def write(self, va, size, val):
+        off = va - self.base
+        if off == 0x10:
+            if val & 4:                     # TI: invalidate all; reads back 0
+                for e in self.utlb:
+                    e.data &= ~0x100
+                val &= ~4
+            self.at = bool(val & 1)
+        self.regs[off] = val
+
+    def ldtlb(self):
+        e = self.utlb[(self.regs.get(0x10, 0) >> 10) & 0x3F]
+        pteh = self.regs.get(0x00, 0)
+        e.vpn, e.asid = pteh & 0xFFFFFC00, pteh & 0xFF
+        e.data = self.regs.get(0x04, 0) & 0x1FFFFDFF
+        e.ptea = self.regs.get(0x34, 0)
+
+    def _matches(self, e, va, md):
+        if not (e.data & 0x100) or ((va ^ e.vpn) & ~e.mask() & 0xFFFFFC00):
+            return False
+        if e.data & 0x2 or (md and self.regs.get(0x10, 0) & 0x100):
+            return True
+        return e.asid == self.regs.get(0x00, 0) & 0xFF
+
+    def translate(self, va, write, md):
+        idx = -1
+        if self._matches(self.utlb[self.last], va, md):
+            idx = self.last
+        else:
+            for i, e in enumerate(self.utlb):
+                if self._matches(e, va, md):
+                    idx = i
+                    break
+        code = 0x060 if write else 0x040
+        if idx < 0:
+            raise MMUFault(va, code, 0x400)
+        self.last = idx
+        e = self.utlb[idx]
+        pr = (e.data >> 5) & 3
+        if (md and write and pr == 0) or (not md and (pr < 2 or (write and pr == 2))):
+            raise MMUFault(va, 0x0C0 if write else 0x0A0, 0x100)
+        if write and not (e.data & 0x4):
+            raise MMUFault(va, 0x080, 0x100)
+        m = e.mask()
+        return ((e.data & 0x1FFFFC00) & ~m) | (va & m)
+
+    def raise_fault(self, cpu, f, spc):
+        self.regs[0x0C] = f.va
+        self.regs[0x00] = (f.va & 0xFFFFFC00) | (self.regs.get(0x00, 0) & 0xFF)
+        self.regs[0x24] = f.expevt
+        cpu.ssr, cpu.spc, cpu.sgr = cpu.sr, spc, cpu.r[15]
+        cpu.set_sr(cpu.sr | cpu.MD | cpu.RB | cpu.BL)
+        cpu.pc = (cpu.vbr + f.vector) & 0xFFFFFFFF
+
+
+class UTLBArrays(Region):
+    """Memory-mapped UTLB address array (0xF6000000) and data arrays (0xF7000000 / PTEA at
+    0xF7800000); entry = address bits 13:8, associative write = bit 7. Mirror of mmu.go."""
+    def __init__(self, name, base, size, ccn):
+        super().__init__(name, base, size)
+        self.ccn = ccn
+
+    def read(self, va, size):
+        e = self.ccn.utlb[(va >> 8) & 0x3F]
+        return e.addr_word() if va < 0xF7000000 else e.data
+
+    def write(self, va, size, val):
+        if va >= 0xF7000000:
+            e = self.ccn.utlb[(va >> 8) & 0x3F]
+            if va < 0xF7800000:
+                e.data = val & 0x1FFFFDFF
+            else:
+                e.ptea = val
+            return
+
+        def set_vd(e):
+            e.data = (e.data & ~0x104) | (val & 0x100) | ((val >> 7) & 0x4)
+        if not (va & 0x80):
+            e = self.ccn.utlb[(va >> 8) & 0x3F]
+            e.vpn, e.asid = val & 0xFFFFFC00, val & 0xFF
+            set_vd(e)
+            return
+        sv = self.ccn.regs.get(0x10, 0) & 0x100
+        for e in self.ccn.utlb:
+            if ((val ^ e.vpn) & ~e.mask() & 0xFFFFFC00) == 0 and \
+                    (e.data & 0x2 or sv or e.asid == val & 0xFF):
+                set_vd(e)
 
 
 class CPG(Region):
@@ -512,6 +631,7 @@ class MMIOBus:
         self.instr_per_sec = 70_000_000   # host throughput; converts cycles to time (RTC/ETMU/KEYSC)
         pfc = Region("PFC", 0xA4050000, 0x1000)
         self.lcd = LCD("LCD_R61524", 0xB4000000, 0x20000, pfc)
+        self.ccn = CCN("CCN", 0xFF000000, 0x1000)
         self.regions = [
             CPG("CPG", 0xA4150000, 0x1000),
             pfc,
@@ -528,7 +648,8 @@ class MMIOBus:
             BCDALU("BCDALU", 0xA4CB0000, 0x1000),        # HW packed-BCD add/sub unit (number formatting)
             Region("BSC", 0xFEC10000, 0x1000),
             DMAC("DMAC", 0xFE008000, 0x1000),
-            CCN("CCN", 0xFF000000, 0x1000),        # MMU/cache/INTEVT/EXPEVT + model strap @+0x24
+            self.ccn,                              # MMU/cache/INTEVT/EXPEVT + UTLB (strap @+0x24)
+            UTLBArrays("UTLB", 0xF6000000, 0x02000000, self.ccn),
             self.lcd,
         ]
         self.unknown = {}       # va -> count, for unmapped MMIO

@@ -40,8 +40,13 @@ type Emulator struct {
 	mu  sync.Mutex // serialises Step vs Snapshot/Resume/keys
 	tap keyTapper  // queued taps -> matrix press/release edges (drained by Step)
 
-	downAt    map[[2]uint32]uint64 // KeyDown cycle per held key (minimum-hold enforcement)
-	pendingUp []pendingRelease     // KeyUp releases deferred until the minimum hold elapses
+	downAt map[[2]uint32]uint64 // KeyDown cycle per held key (minimum-hold enforcement)
+
+	// fault is set when the core hit something it cannot execute (an unmapped access, an
+	// unimplemented instruction): the machine halts there instead of the panic killing the
+	// host process (on Android that closed the app). Resume clears it.
+	fault     string
+	pendingUp []pendingRelease // KeyUp releases deferred until the minimum hold elapses
 
 	// What the user sees is the LCD controller's GRAM (mmio.lcd, lcd.go): the OS updates it
 	// by DMA-pushing VRAM (whole frames, so a redraw in progress — the "no graphics driver"
@@ -189,9 +194,22 @@ func (e *Emulator) ReleaseAllKeys() {
 	e.mu.Unlock()
 }
 
-// Step advances the machine by n instructions, driving queued taps onto the matrix.
+// Step advances the machine by n instructions, driving queued taps onto the matrix. If the
+// core faults, the machine halts (see Fault) rather than panicking into the host.
 func (e *Emulator) Step(n int) {
 	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.fault != "" {
+		return
+	}
+	defer func() {
+		if x := recover(); x != nil {
+			e.fault = fmt.Sprintf("core halted at pc=%08x: %v", e.cpu.pc, x)
+			if e.dbg != nil {
+				e.dbg(e.fault)
+			}
+		}
+	}()
 	for i := 0; i < n; i++ {
 		e.mmio.tick(e.cpu)
 		e.cpu.step()
@@ -200,8 +218,10 @@ func (e *Emulator) Step(n int) {
 			e.flushReleases()
 		}
 	}
-	e.mu.Unlock()
 }
+
+// Fault returns why the core halted ("" while running normally).
+func (e *Emulator) Fault() string { e.mu.Lock(); defer e.mu.Unlock(); return e.fault }
 
 // FramebufferRGB565 copies the displayed 384x216 RGB565 (big-endian) frame into dst
 // (>= fbBytes): the LCD panel's contents (GRAM), not the live VRAM.
@@ -258,6 +278,7 @@ func (e *Emulator) Resume(blob []byte) error {
 	}
 	e.mmio.keysc.releaseAll()
 	e.mmio.keysc.resumeDefaults() // peripheral config isn't in the snapshot; restore post-init state
+	e.fault = ""
 	return nil
 }
 

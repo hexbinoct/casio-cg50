@@ -57,6 +57,8 @@ class Memory:
         self.ilram = bytearray(ILRAM_SIZE)
         self.ocram = bytearray(OCRAM_SIZE)
         self.mmio = mmio            # object with read(phys,size)/write(phys,size,val)
+        self.mmu = getattr(mmio, "ccn", None)   # MMU (mmio.CCN); translates P0/U0/P3 when AT=1
+        self.cpu = None                          # set by CPU(); SR.MD for MMU checks
         self.trace = False
         # NOR command state
         self._fcmd = _F_IDLE
@@ -93,7 +95,15 @@ class Memory:
         return ("unmapped", None, va)
 
     # ---- reads (big-endian) ----
+    def _translate(self, va, write):
+        mmu = self.mmu
+        if mmu is not None and mmu.at and (va < 0x80000000 or 0xC0000000 <= va < 0xE0000000):
+            md = self.cpu is None or bool(self.cpu.sr & 0x40000000)
+            return 0xA0000000 | mmu.translate(va, write, md)
+        return va
+
     def read(self, va, size):
+        va = self._translate(va & 0xFFFFFFFF, False)
         kind, buf, off = self._resolve(va)
         if kind == "mmio":
             return self.mmio.read(va, size)
@@ -109,6 +119,7 @@ class Memory:
         return int.from_bytes(b, "big")
 
     def write(self, va, size, val):
+        va = self._translate(va & 0xFFFFFFFF, True)
         kind, buf, off = self._resolve(va)
         val &= (1 << (size * 8)) - 1
         if kind == "mmio":

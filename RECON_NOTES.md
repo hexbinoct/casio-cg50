@@ -9,7 +9,50 @@
   pending, so the next session can continue without being reminded.
 ============================================================================= -->
 
-> ## ⏯ RESUME HERE (last session end: 2026-09-27 cont.18p)
+> ## ⏯ RESUME HERE (last session end: 2026-09-27 cont.18q)
+>
+> ### ✅ cont.18q — ADD-INS RUN: SH-4A MMU (UTLB, ldtlb, translation, precise TLB exceptions).
+> User: their add-in **helomelo2** (menu icon J; cont.18h misread it as "heronics2"/"howdy") runs on the
+> calc but crashed the Android app. **Root cause: no MMU.** `ldtlb` was a nop and nothing translated, so
+> the add-in's entry 0x00300000 executed OS bytes at phys 0x00300000 (desktop: blank spin; phone: garbage
+> eventually hit an unmapped address → Go panic → app killed). Built-in apps never translate (P1/P2).
+> **How the 3.60 OS runs an add-in** (probe `TestAddinMMUProbe`): launch path 0x8002c84c/0x8002c8a4 writes
+> PTEH/PTEL and `ldtlb` with MMUCR.URC choosing the slot — ONE 4 KB code page 0x00300000→0x00dbb000
+> (.g3a in fls0), eight 64 KB RAM pages 0x0810_0000-0x0817_ffff→DRAM 0x0C16_0000.. (slots 55-62), slot 63
+> = VPN 0 (64 KB, needed: OS memcpys from low addresses during MENU); MMUCR=0x00fc0101 (AT, SV, URB=63);
+> jump 0x00300000. **Every further code page is demand-paged:** TLB miss → VBR+0x400 → dispatcher
+> 0x80021554 (reads EXPEVT 0xFF000024, table 0xFD8010C8) → handler 0x8002c918: page = PTEH&~0xFFF; if
+> ≥0x300000 → phys = 0x8c04cf0c[(page-0x300000)>>12] → map via 0x8002c84c into its own round-robin slot
+> (counter 0x8c04d70c, slots 0..54). Protection codes 0xA0/0xC0 → OS "System ERROR / TLB ERROR" screen.
+> **Implemented (Go `emu_go/mmu.go` + Python `emu/mmio.py CCN/UTLBArrays`, memory.py, cpu.py — identical):**
+> 64-entry UTLB in the CCN block; ldtlb; MMUCR TI/AT/SV/URC (no auto URC increment — OS sets it); AT=1
+> translates P0/U0 + P3; 1K/4K/64K/1M pages; ASID unless SH or SV&MD; **only V=1 entries match** (else
+> zeroed/flushed entries alias VPN 0 — that bug produced a fake "TLB ERROR TARGET=5C" on MENU); precise
+> exceptions via `stepMMU` rollback (SPC = instr, or the branch for a delay slot); miss → +0x400, prot /
+> initial-page-write → +0x100; TEA, PTEH.VPN, EXPEVT (reset value still the 0x0A02 model strap until the
+> first exception); UTLB arrays 0xF6/0xF7; UTLB in save-state (CCN map keys 0x100000|i<<4|{0,4,8}).
+> `Emulator.Step` now halts with `Fault()` (logged via dbg → logcat) instead of panicking the host.
+> Perf: MMU-off overhead ~3-4% raw (hot flag `Memory.mmuAt`); fine vs the pending interpreter fast paths.
+> **Tests:** 68/68 conformance (+11 MMU cases: ldtlb/load/store, miss read, predec-store rollback, initial
+> page write, priv/user protection, delay-slot miss SPC, TI flush, V=0 no-match, UTLB arrays), golden boot
+> byte-identical (boot never enables AT), `TestAddinRunsThroughMMU` (launch J → prompt → key → output →
+> MENU → main menu, no violation), save-state round-trip covers the UTLB. Verified visually: "press a key
+> ...", then its number grid + "y i am done", MENU → MAIN MENU (icon J "hello :)").
+> Probes (tag `probe`): TestAddinProbe / TestAddinInputProbe / TestAddinMenuProbe / TestAddinMMUProbe /
+> TestExcTableProbe; `savePNG` writes `%TEMP%/cg50_<name>.png`.
+> **Phone: VERIFIED (POCO X3)** — `)` → "press a key ...", `1` → number grid + "y i am done", MENU → MAIN
+> MENU (J selected), UP moves the cursor. The icon has a selected ("hello :)") and unselected (yellow "howdy")
+> variant. Gotcha: the phone's saved state had been written after helomelo2 ran on the OLD (MMU-less) build,
+> which executed random OS bytes and corrupted OS RAM — resumed, it showed a black band and ignored keys. Fixed
+> by pushing the clean desktop `cg50_state.bin`; the broken one is kept on the phone as
+> `files/cg50_state.broken-oldbuild.bin`. A snapshot taken during a garbage run is poisoned: replace it.
+> Unmapped but harmless: 0xA44C0000/0xA44C0020 (timer polled by getkey 0x801e6d40/0x801e6dc4) — hit
+> thousands of times inside the add-in; reads 0 and nothing hangs. Model it if timing issues show.
+>
+> **NEXT:** 1. Key-by-key check with the
+> user. 2. PERF. 3. Skin polish. (cont.18p items below still apply.)
+>
+> ## ⏯ (prev) RESUME HERE (last session end: 2026-09-27 cont.18p)
 >
 > ### ✅ cont.18p — MENU-from-app SOLVED (MENU/EXIT were swapped) + keymap audit + new Android skin.
 > **Root cause:** not the OS, not storage — our **MENU and EXIT keys were swapped**. Matrix (3,7)

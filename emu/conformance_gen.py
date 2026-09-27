@@ -94,6 +94,9 @@ def movb_ld(m, n): return 0x6000 | (n << 8) | (m << 4)
 def movw_ld(m, n): return 0x6001 | (n << 8) | (m << 4)
 def movl_ld(m, n): return 0x6002 | (n << 8) | (m << 4)
 def movl_st(m, n): return 0x2002 | (n << 8) | (m << 4)
+def movl_std(m, n, d): return 0x1000 | (n << 8) | (m << 4) | (d & 0xF)  # mov.l Rm,@(d*4,Rn)
+def movl_predec(m, n): return 0x2006 | (n << 8) | (m << 4)           # mov.l Rm,@-Rn
+LDTLB = 0x0038
 def bra(disp):     return 0xA000 | (disp & 0xFFF)
 def bsr(disp):     return 0xB000 | (disp & 0xFFF)
 def bt(disp):      return 0x8900 | (disp & 0xFF)
@@ -249,6 +252,44 @@ def build_cases():
                   data={str(VBR + 0x600): (NOP << 16) | NOP},
                   irq=[0x560, 8]))   # (intevt, level)
 
+    # --- MMU (cont.18q, emu_go/mmu.go): ldtlb, translation, precise MMU exceptions ---
+    # Common: r8 = CCN base; r1 = PTEH (VPN 0x00300000, ASID 0); r2 = PTEL; r3 = MMUCR
+    # (URC=5, SV=1, AT=1). The 4 KB page maps onto DATA's physical page.
+    CCNB, VPN, MD = 0xFF000000, 0x00300000, 0x40000000
+    PPN = DATA & 0x1FFFF000
+    pte = lambda flags: PPN | flags                       # V 0x100, SZ0 0x10 (4K), PR 0x60, C 8, D 4
+    MMUCR = (5 << 10) | 0x100 | 1
+    mmu_regs = [0xFF000000, 0xFF000004, 0xFF00000C, 0xFF000010, 0xFF000024]
+    setup_code = [movl_st(1, 8), movl_std(2, 8, 1), movl_std(3, 8, 4), LDTLB]
+    mmu_setup = lambda ptel, **kw: {"r": reg(r1=VPN, r2=ptel, r3=MMUCR, r8=CCNB, **kw),
+                                    "sr": MD, "vbr": VBR}
+    vec = {str(VBR + 0x100): (NOP << 16) | NOP, str(VBR + 0x400): (NOP << 16) | NOP}
+    C.append(case("mmu_ldtlb_load", setup_code + [movl_ld(4, 5)], steps=5,
+                  setup=mmu_setup(pte(0x17C), r4=VPN + 0x10),
+                  data={str(DATA + 0x10): 0xCAFEBABE}, check=mmu_regs))
+    C.append(case("mmu_store_translated", setup_code + [movl_st(6, 4)], steps=5,
+                  setup=mmu_setup(pte(0x17C), r4=VPN + 0x20, r6=0x12345678),
+                  check=mmu_regs + [DATA + 0x20]))
+    C.append(case("mmu_miss_read", setup_code + [movl_ld(4, 5)], steps=5,
+                  setup=mmu_setup(pte(0x17C), r4=0x00400024, r5=0x55), data=vec, check=mmu_regs))
+    C.append(case("mmu_miss_predec_rollback", setup_code + [movl_predec(6, 4)], steps=5,
+                  setup=mmu_setup(pte(0x17C), r4=0x00400028, r6=7), data=vec, check=mmu_regs))
+    C.append(case("mmu_initial_page_write", setup_code + [movl_st(6, 4)], steps=5,
+                  setup=mmu_setup(pte(0x178), r4=VPN + 4, r6=1), data=vec, check=mmu_regs))   # D=0
+    C.append(case("mmu_protection_write", setup_code + [movl_st(6, 4)], steps=5,
+                  setup=mmu_setup(pte(0x11C), r4=VPN + 4, r6=1), data=vec, check=mmu_regs))   # PR=00
+    C.append(case("mmu_user_protection_read", setup_code + [ldc_sr(9), movl_ld(4, 5)], steps=6,
+                  setup=mmu_setup(pte(0x13C), r4=VPN + 8, r9=0), data=vec, check=mmu_regs))   # PR=01, MD=0
+    C.append(case("mmu_delay_slot_miss", [movl_std(3, 8, 4), bra(4), movl_ld(4, 5)], steps=2,
+                  setup=mmu_setup(0, r4=0x00500000), data=vec, check=mmu_regs))
+    C.append(case("mmu_ti_flush_then_miss", setup_code + [movl_std(7, 8, 4), movl_ld(4, 5)], steps=6,
+                  setup=mmu_setup(pte(0x17C), r4=VPN, r7=MMUCR | 4), data=vec, check=mmu_regs))
+    C.append(case("mmu_invalid_entry_no_match", setup_code + [movl_ld(4, 5)], steps=5,
+                  setup=mmu_setup(pte(0x07C), r4=VPN), data=vec, check=mmu_regs))             # V=0 -> miss
+    C.append(case("mmu_utlb_arrays", [movl_st(1, 9), movl_ld(9, 5), movl_st(2, 10),
+                                      movl_ld(10, 6), movl_ld(9, 7)], steps=5,
+                  setup={"r": reg(r1=VPN | 0x307, r2=pte(0x13C), r9=0xF6000300, r10=0xF7000300),
+                         "sr": MD}))
     return C
 
 

@@ -112,15 +112,6 @@ func (e *etmu) read(va, size uint32) uint32 {
 // and selects model code: low16==0x0000->0xCA00, ==0x0020->0xCA01, ==0x0A02->0xCA02 (fx-CG50).
 // We report 0x0A02 so the OS identifies as fx-CG50 (else fls0_init's verify loop @0x80365418
 // never exits: it needs *(0xfd8018d4)==0xca02).
-type ccn struct{ base }
-
-func (c *ccn) read(va, size uint32) uint32 {
-	if (va-c.bs)&0xFFFF == 0x24 {
-		return 0x0A02
-	}
-	return c.regs[va-c.bs]
-}
-
 // FreeCounter: monotonic counter; boot delay loops read twice and wait for advance.
 type freeCounter struct {
 	base
@@ -320,6 +311,7 @@ type MMIOBus struct {
 	keysc       *keyscUnit     // key-scan unit @0xA44B0000 (keysc.go): the real key path
 	dmac        *dmac          // DMA controller; streams LCD-bound transfers into lcd
 	lcd         *lcd           // R61524 panel controller: GRAM = what the user sees (lcd.go)
+	ccn         *ccn           // MMU/cache control + UTLB (mmu.go)
 	wcount      map[string]int // if non-nil: MMIO writes per region (diagnostics)
 	rtc         *rtc           // real-time clock: calendar, 64 Hz counter, periodic IRQ (rtc.go)
 	instrPerSec uint64         // host throughput; converts cycles to time for RTC/ETMU/KEYSC
@@ -398,6 +390,7 @@ func NewMMIOBus() *MMIOBus {
 	b.dmac = &dmac{base: newBase("DMAC", 0xFE008000, 0x1000), bus: b}
 	pfc := &base{nm: "PFC", bs: 0xA4050000, sz: 0x1000, regs: map[uint32]uint32{}}
 	b.lcd = newLCD(pfc)
+	b.ccn = &ccn{base: newBase("CCN", 0xFF000000, 0x1000)}
 	b.regions = []region{
 		&cpg{base: newBase("CPG", 0xA4150000, 0x1000)},
 		pfc,
@@ -414,7 +407,8 @@ func NewMMIOBus() *MMIOBus {
 		&bcdALU{base: newBase("BCDALU", 0xA4CB0000, 0x1000)},
 		&base{nm: "BSC", bs: 0xFEC10000, sz: 0x1000, regs: map[uint32]uint32{}},
 		b.dmac,
-		&ccn{base: newBase("CCN", 0xFF000000, 0x1000)},
+		b.ccn,
+		&utlbArrays{base: newBase("UTLB", 0xF6000000, 0x02000000), c: b.ccn},
 		b.lcd,
 	}
 	return b
@@ -521,7 +515,7 @@ func (b *MMIOBus) regionRegs() map[string]map[uint32]uint32 {
 		case *intcStub:
 			out[x.nm] = x.regs
 		case *ccn:
-			out[x.nm] = x.regs
+			out[x.nm] = x.stateMap()
 		case *rtc:
 			out[x.nm] = map[uint32]uint32{0x1C: x.rcr1, 0x1E: x.rcr2}
 		case *lcd:
@@ -551,6 +545,10 @@ func (b *MMIOBus) restoreRegionRegs(saved map[string]map[uint32]uint32) {
 			x.restoreState(m)
 			continue
 		}
+		if x, isC := r.(*ccn); isC {
+			x.restoreState(m)
+			continue
+		}
 		var dst map[uint32]uint32
 		switch x := r.(type) {
 		case *base:
@@ -564,8 +562,6 @@ func (b *MMIOBus) restoreRegionRegs(saved map[string]map[uint32]uint32) {
 		case *etmuCounter:
 			dst = x.regs
 		case *intcStub:
-			dst = x.regs
-		case *ccn:
 			dst = x.regs
 		}
 		if dst == nil {

@@ -14,6 +14,9 @@ package main
 
 import (
 	"fmt"
+	"image"
+	"image/color"
+	"image/png"
 	"os"
 	"sort"
 	"strings"
@@ -453,4 +456,216 @@ func TestMenuDiff(t *testing.T) {
 		shown++
 	}
 	t.Logf("%d MENU-only call targets; unmapped MMIO: %v", shown, e.mmio.unknown)
+}
+
+// Launches the user's custom add-in (menu icon J, selected by the ')' key) and watches for a
+// panic (unmapped access), unmapped MMIO, LCD pushes and the PC, saving frames as PNG.
+func TestAddinProbe(t *testing.T) {
+	flash, _ := os.ReadFile("../os/flash_dump/flash_full.bin")
+	st, _ := os.ReadFile("../os/flash_dump/cg50_state.bin")
+	e := NewEmulator(flash)
+	if err := e.Resume(st); err != nil {
+		t.Fatal(err)
+	}
+	e.SetInstrPerSecond(70_000_000)
+	e.Step(1_000_000)
+	for k := range e.mmio.unknown {
+		delete(e.mmio.unknown, k)
+	}
+	save := func(tag string) { savePNG(t, e, "addin_"+tag) }
+	e.InjectKey(3, 5) // ')' = icon J
+	defer func() {
+		if r := recover(); r != nil {
+			t.Logf("PANIC at pc=%08x pr=%08x cycles=%d: %v", e.cpu.pc, e.cpu.pr, e.cpu.cycles, r)
+			save("panic")
+		}
+		t.Logf("unmapped MMIO: %v", e.mmio.unknown)
+	}()
+	p0 := e.Pushes()
+	for i := 1; i <= 30; i++ {
+		e.Step(10_000_000)
+		t.Logf("+%3dM pc=%08x pr=%08x sleeping=%v pushes=%d unknownMMIO=%d", i*10, e.cpu.pc, e.cpu.pr,
+			e.cpu.sleeping, e.Pushes()-p0, len(e.mmio.unknown))
+		if i == 1 || i == 5 || i == 30 {
+			save(fmt.Sprint(i))
+		}
+	}
+}
+
+// How does the OS map an add-in? Logs MMU register writes (PTEH/PTEL/TTB/TEA/MMUCR/PTEA),
+// UTLB/ITLB array accesses (0xF2-0xF7......), and every ldtlb with PTEH/PTEL at that moment.
+func TestAddinMMUProbe(t *testing.T) {
+	flash, _ := os.ReadFile("../os/flash_dump/flash_full.bin")
+	st, _ := os.ReadFile("../os/flash_dump/cg50_state.bin")
+	e := NewEmulator(flash)
+	if err := e.Resume(st); err != nil {
+		t.Fatal(err)
+	}
+	e.SetInstrPerSecond(70_000_000)
+	e.Step(1_000_000)
+	n := 0
+	e.mem.mmioHook = func(va, size, val uint32) {
+		if ((va >= 0xFF000000 && va < 0xFF000040) && va != 0xFF000028) || (va >= 0xF0000000 && va < 0xF8000000) {
+			if n < 120 {
+				t.Logf("  w%d %08x = %08x (pc %08x)", size*8, va, val, e.cpu.pc)
+			}
+			n++
+		}
+	}
+	e.InjectKey(3, 5) // icon J
+	ld := 0
+	defer func() { recover() }()
+	for i := 0; i < 40_000_000; i++ {
+		pc := e.cpu.pc
+		if op := e.mem.R16(pc); op == 0x0038 && ld < 40 {
+			t.Logf("  ldtlb @%08x PTEH=%08x PTEL=%08x PTEA=%08x MMUCR=%08x", pc,
+				e.mem.R32(0xFF000000), e.mem.R32(0xFF000004), e.mem.R32(0xFF000034), e.mem.R32(0xFF000010))
+			ld++
+		}
+		e.Step(1)
+		if pc>>28 == 0 && pc < 0x00400000 && ld >= 0 {
+			t.Logf("  first execution in U0 add-in space at pc=%08x after %d instr (from pr=%08x)", pc, i, e.cpu.pr)
+			ld = -1000
+		}
+	}
+	t.Logf("MMU-range writes: %d, ldtlb seen: %d", n, ld)
+}
+
+func TestExcTableProbe(t *testing.T) {
+	flash, _ := os.ReadFile("../os/flash_dump/flash_full.bin")
+	st, _ := os.ReadFile("../os/flash_dump/cg50_state.bin")
+	e := NewEmulator(flash)
+	if err := e.Resume(st); err != nil {
+		t.Fatal(err)
+	}
+	for _, ev := range []uint32{0x040, 0x060, 0x080, 0x0A0, 0x0C0, 0x0E0, 0x100, 0x160, 0x180, 0x1A0} {
+		t.Logf("EXPEVT %03x -> handler %08x  imask %02x", ev, e.mem.R32(0xFD8010C8+((ev-0x40)>>5)*4), e.mem.R8(0xFD8012C8+((ev-0x40)>>5)))
+	}
+}
+
+// savePNG writes the displayed frame to <os.TempDir()>/cg50_<name>.png (probes only).
+func savePNG(t *testing.T, e *Emulator, name string) {
+	buf := make([]byte, fbBytes)
+	e.FramebufferRGB565(buf)
+	img := image.NewRGBA(image.Rect(0, 0, FbWidth, FbHeight))
+	for p := 0; p < FbWidth*FbHeight; p++ {
+		c := uint16(buf[2*p])<<8 | uint16(buf[2*p+1])
+		img.SetRGBA(p%FbWidth, p/FbWidth, color.RGBA{uint8(c>>11) << 3, uint8(c>>5&0x3F) << 2, uint8(c&0x1F) << 3, 255})
+	}
+	path := fmt.Sprintf("%s/cg50_%s.png", os.TempDir(), name)
+	f, err := os.Create(path)
+	if err != nil {
+		t.Log(err)
+		return
+	}
+	png.Encode(f, img)
+	f.Close()
+	t.Logf("saved %s", path)
+}
+
+// Drives the add-in past its first prompt: a few keys, a frame after each.
+func TestAddinInputProbe(t *testing.T) {
+	flash, _ := os.ReadFile("../os/flash_dump/flash_full.bin")
+	st, _ := os.ReadFile("../os/flash_dump/cg50_state.bin")
+	e := NewEmulator(flash)
+	if err := e.Resume(st); err != nil {
+		t.Fatal(err)
+	}
+	e.SetInstrPerSecond(70_000_000)
+	e.Step(1_000_000)
+	e.InjectKey(3, 5) // icon J
+	e.Step(40_000_000)
+	keys := []struct {
+		name     string
+		row, col uint32
+	}{{"1", 6, 2}, {"2", 5, 2}, {"EXE", 2, 1}, {"MENU", 3, 8}}
+	defer func() {
+		if r := recover(); r != nil {
+			t.Logf("PANIC at pc=%08x: %v", e.cpu.pc, r)
+			savePNG(t, e, "addin_panic")
+		}
+	}()
+	for i, k := range keys {
+		e.InjectKey(k.row, k.col)
+		e.Step(40_000_000)
+		t.Logf("after %s: pc=%08x sleeping=%v pushes=%d", k.name, e.cpu.pc, e.cpu.sleeping, e.Pushes())
+		savePNG(t, e, fmt.Sprintf("addin_key%d", i))
+	}
+}
+
+// MENU inside the add-in -> "TLB ERROR PC=00000001": ring-buffer the instructions before the
+// PC first drops below 0x1000, plus MMU state changes (MMUCR/ldtlb) after the MENU press.
+func TestAddinMenuProbe(t *testing.T) {
+	flash, _ := os.ReadFile("../os/flash_dump/flash_full.bin")
+	st, _ := os.ReadFile("../os/flash_dump/cg50_state.bin")
+	e := NewEmulator(flash)
+	if err := e.Resume(st); err != nil {
+		t.Fatal(err)
+	}
+	e.SetInstrPerSecond(70_000_000)
+	e.Step(1_000_000)
+	e.InjectKey(3, 5)
+	e.Step(40_000_000)
+	e.InjectKey(6, 2)
+	e.Step(40_000_000)
+	nm := 0
+	e.mem.mmioHook = func(va, size, val uint32) {
+		if va == 0xFF000010 && nm < 40 {
+			t.Logf("  MMUCR <- %08x (pc %08x)", val, e.cpu.pc)
+			nm++
+		}
+	}
+	type rec struct{ pc, op, r15, pr, sr uint32 }
+	var ring [48]rec
+	k := 0
+	e.InjectKey(3, 8) // MENU
+	for i := 0; i < 60_000_000; i++ {
+		pc := e.cpu.pc
+		op := uint32(0)
+		if !e.cpu.sleeping {
+			func() { defer func() { recover() }(); op = e.mem.R16(pc) }()
+		}
+		ring[k%len(ring)] = rec{pc, op, e.cpu.r[15], e.cpu.pr, e.cpu.sr}
+		k++
+		tea0 := e.mem.mmu.regs[ccnTEA]
+		e.Step(1)
+		if e.mem.mmu.regs[ccnTEA] != tea0 || e.cpu.pc < 0x1000 {
+			t.Logf("MMU fault (or low PC %08x) after %d instr; EXPEVT=%x TEA=%08x MMUCR=%08x SPC=%08x", e.cpu.pc, i,
+				e.mem.R32(0xFF000024), e.mem.R32(0xFF00000C), e.mem.R32(0xFF000010), e.cpu.spc)
+			for j := k - len(ring); j < k; j++ {
+				r := ring[(j+len(ring))%len(ring)]
+				t.Logf("   pc=%08x op=%04x r15=%08x pr=%08x sr=%08x", r.pc, r.op, r.r15, r.pr, r.sr)
+			}
+			return
+		}
+	}
+	t.Log("no MMU fault after MENU")
+}
+
+// Replays the phone's snapshot (pulled to the scratchpad) and saves frames: as resumed, after
+// idle, after DOWN, after EXE. Reports MMU state and any fault.
+func TestPhoneStateProbe(t *testing.T) {
+	flash, _ := os.ReadFile("../os/flash_dump/flash_full.bin")
+	st, err := os.ReadFile(os.TempDir() + "/claude/F--ru-myprojects-may-cg50/32594427-9e61-44ae-974d-8e739bcc3fb7/scratchpad/phone_state.bin")
+	if err != nil {
+		t.Skip(err)
+	}
+	e := NewEmulator(flash)
+	if err := e.Resume(st); err != nil {
+		t.Fatal(err)
+	}
+	e.SetInstrPerSecond(20_000_000)
+	t.Logf("resumed pc=%08x AT=%v MMUCR=%08x sleeping=%v", e.cpu.pc, e.mmio.ccn.at, e.mmio.ccn.regs[ccnMMUCR], e.cpu.sleeping)
+	savePNG(t, e, "ph_resumed")
+	e.Step(20_000_000)
+	savePNG(t, e, "ph_idle")
+	for _, k := range []struct {
+		n    string
+		r, c uint32
+	}{{"up", 1, 8}, {"down", 2, 7}} {
+		e.InjectKey(k.r, k.c)
+		e.Step(20_000_000)
+		t.Logf("after %s: pc=%08x pushes=%d fault=%q", k.n, e.cpu.pc, e.Pushes(), e.Fault())
+		savePNG(t, e, "ph_"+k.n)
+	}
 }

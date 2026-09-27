@@ -15,6 +15,9 @@ MASK32 = 0xFFFFFFFF
 
 
 def u32(x): return x & MASK32
+
+
+from mmio import MMUFault  # precise MMU exceptions (see CPU._step_mmu)
 def s32(x):
     x &= MASK32
     return x - (1 << 32) if x & 0x80000000 else x
@@ -40,6 +43,7 @@ class CPU:
 
     def __init__(self, mem):
         self.mem = mem
+        mem.cpu = self
         self.r = [0] * 16
         self.rbank1 = [0] * 8          # the *inactive* bank's r0-r7
         self.pc = 0
@@ -120,10 +124,29 @@ class CPU:
                 self.sleeping = False
             return
         self._accept_interrupt()
+        mmu = getattr(self.mem, "mmu", None)
+        if mmu is not None and mmu.at:
+            self._step_mmu(mmu)
+            self.cycles += 1
+            return
         op = self.mem.r16(self.pc)
         self.pc = u32(self.pc + 2)
         self.execute(op)
         self.cycles += 1
+
+    def _step_mmu(self, mmu):
+        """One instruction with translation on; MMU exceptions are precise (registers rolled
+        back, SPC = this instruction / the branch owning a delay slot). Mirror of stepMMU."""
+        pc0, r0, rb0 = self.pc, list(self.r), list(self.rbank1)
+        saved = (self.pr, self._sr, self.gbr, self.mach, self.macl, self.fpul, self.fpscr)
+        try:
+            op = self.mem.r16(self.pc)
+            self.pc = u32(self.pc + 2)
+            self.execute(op)
+        except MMUFault as f:
+            self.r, self.rbank1 = r0, rb0
+            self.pr, self._sr, self.gbr, self.mach, self.macl, self.fpul, self.fpscr = saved
+            mmu.raise_fault(self, f, pc0)
 
     def _branch_delayed(self, target):
         """Execute the delay-slot instruction, then jump to target."""
@@ -157,7 +180,10 @@ class CPU:
         if op == 0x0028: self.mach = self.macl = 0; return       # clrmac
         if op == 0x0048: self._sr &= ~self.S; return   # clrs
         if op == 0x0058: self._sr |= self.S; return    # sets
-        if op in (0x0038,): return                # ldtlb -> nop (TLB modelled elsewhere)
+        if op == 0x0038:                          # ldtlb: PTEH/PTEL/PTEA -> UTLB[MMUCR.URC]
+            if getattr(mem, "mmu", None) is not None:
+                mem.mmu.ldtlb()
+            return
         if op == 0x001B: self.sleeping = True; return   # sleep: halt until an interrupt (see step)
         if op in (0x00AB, 0x0093): return  # synco / (rsv) -> nop
 
