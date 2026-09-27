@@ -63,10 +63,14 @@ The app snapshots back to `cg50_state.bin` on pause, so your session persists ac
   timing; multi-touch works; each press gives a haptic tap. SHIFT/ALPHA are real keys: tap
   one, then the target. `python re/audit_keymap.py` checks the labels against the codes the
   OS produces for each matrix position.
-- **Time base:** an emulated second is always `CalcSurfaceView.MAX_IPS` = 100 M instructions,
-  about the real fx-CG50; `MainActivity` sets it once (`setInstrPerSec`), and the core derives
-  the RTC, the 32.768 kHz counter and the 33 Hz key scan from it. `setClock` sets the calendar
-  from the phone's clock.
+- **Time base / speed setting:** an emulated second is always `CalcSurfaceView.ips`
+  instructions; the core derives the RTC, the 32.768 kHz counter and the 33 Hz key scan from
+  it (`setInstrPerSec`), and `setClock` sets the calendar from the phone's clock. **Long-press
+  the screen** for the settings dialog (no button, no screen space): *Original hardware* =
+  45 M instr/s, which reproduces the real fx-CG50 (its effective throughput on OS code — NOR
+  flash wait states, SDRAM VRAM writes — is about that, measured by a held key: 11-12 menu
+  moves in 1.2 s), or *Fast* = the bare 118 MHz clock, ~2×. Persisted in SharedPreferences;
+  `am start … --es speed fast|original` sets it from adb.
 - **Two threads** (`CalcSurfaceView`): `cg50-emu` runs the core in 5 ms chunks (MAX_IPS/200
   instructions) paced against the wall clock — it steps whenever emulated time is behind real
   time and sleeps only when ahead, so an idle machine (sleeping CPU, fast-forwarded in the
@@ -81,11 +85,20 @@ The app snapshots back to `cg50_state.bin` on pause, so your session persists ac
   fps, frames drawn and LCD pushes; `python re/phone.py` builds, installs and measures
   (`menuhold` = held RIGHT on the MAIN MENU, counting pushes = menu moves, with CPU
   frequency / core sampling).
+- **Native blitter:** the OS draws bitmaps (menu icons, labels) through one generic per-pixel
+  routine (~85 interpreted instructions per pixel, ~75 % of a menu move). The core replaces
+  it with a native implementation when the app runs (`emu_go/hle.go`, `EmuSetHLE`), charging
+  the same emulated cycles the real code would take so timing is unchanged. It only handles
+  the descriptor modes the OS was seen to use and falls back to the real code otherwise;
+  `TestHLEBlitMatchesInterpreter` proves it byte-identical against the interpreter over a
+  session of menu moves, app screens and text.
 - **Add-ins** (`.g3a` in your flash dump) run like on the calculator — select their icon on
   the MAIN MENU.
 
 ## Troubleshooting
 
+- **Keys do nothing after the app sat idle:** the calculator auto-powered-off, like the real
+  one does after ~10 minutes — press **AC/ON**. (Only part of the display-off is rendered yet.)
 - **Wireless adb drops** when the phone's screen sleeps: wake it, then
   `adb kill-server`, `adb mdns services`, and `adb connect <the listed _adb-tls-connect name>`.
 - **A resumed session shows garbage or ignores keys:** the saved `cg50_state.bin` was written
@@ -99,4 +112,5 @@ The app snapshots back to `cg50_state.bin` on pause, so your session persists ac
 ## Not done yet
 
 - Annunciator state on the SHIFT/ALPHA keys (the OS shows it in its status bar already).
+- A native version of the 1-bpp text renderer (0x8017b75e, ~20 % of a menu move).
 - Release signing / a store build.

@@ -21,6 +21,7 @@ void     EmuSetClock(long long unixSec);
 long long EmuExecuted();
 long long EmuPushes();
 long long EmuFrameGen();
+long long EmuCycles();
 int      EmuFramebufferRGBA(uint8_t *dst, int capacity);
 uint8_t *EmuSnapshot(int *outLen);
 void     EmuFree(uint8_t *p);
@@ -69,6 +70,7 @@ extern "C" JNIEXPORT void JNICALL NB(setClock)(JNIEnv *, jobject, jlong unixSec)
 extern "C" JNIEXPORT jlong JNICALL NB(executed)(JNIEnv *, jobject) { return EmuExecuted(); }
 extern "C" JNIEXPORT jlong JNICALL NB(pushes)(JNIEnv *, jobject) { return EmuPushes(); }
 extern "C" JNIEXPORT jlong JNICALL NB(frameGen)(JNIEnv *, jobject) { return EmuFrameGen(); }
+extern "C" JNIEXPORT jlong JNICALL NB(cycles)(JNIEnv *, jobject) { return EmuCycles(); }
 
 // Fills the caller's byte[] (Width*Height*4 RGBA). Returns bytes written, or -1 if too small.
 extern "C" JNIEXPORT jint JNICALL NB(framebufferRGBA)(JNIEnv *env, jobject, jbyteArray dst) {

@@ -9,7 +9,63 @@
   pending, so the next session can continue without being reminded.
 ============================================================================= -->
 
-> ## ⏯ RESUME HERE (last session end: 2026-09-27 cont.18t)
+> ## ⏯ RESUME HERE (last session end: 2026-09-27 cont.18u)
+>
+> ### 🖌 cont.18u — Native (HLE) OS blitter shipped. Phone menu hold now at the OS's 33 Hz cap (22/1.2 s).
+> **What:** `emu_go/hle.go` `CPU.hleBlit` replaces the OS bitmap blitter **0x80056900** (3.60) natively. The
+> CPU loop (`step`/`run`) checks `pc == hlePC` (0 = off); `Emulator.EnableHLE` / bridge `EmuSetHLE`; **on in
+> `EmuInit` (Android), off by default** so conformance/goldens run the real code. Descriptor at r4 (0x2c
+> bytes, BE): +0 x, +4 y (wrappers 0x80055ea0/0x80055eec add the 24-row status bar; 0x80055ee6 = `jmp` tail
+> wrapper with r5=1), +8/+c xo/yo, +0x10/+0x14 w/h, +0x18 format (1 = 4 bpp palette, 2 = RGB565 BE,
+> 3 = 1 bpp), +0x1c data, +0x20/+0x21 fg/bg palette idx (1 bpp), +0x22 transparent idx (0xff none), +0x24
+> rop (2 not, 3 dither), +0x25 mode2 (2/3/4 = or/and/xor VRAM), +0x28 blend (>0 → 0x8004eb54); r5 = writer:
+> 1 = VRAM 0xAC000000+y*768+x*2 (0x8005575c), 2 = direct to panel (0x800557fa) → not handled. Palette = 16
+> RGB565 words at 0x80399d30. Clipping/stride rules in the hle.go header. The OS was seen to use ONLY
+> rop=1/mode2=1/blend=0 with all three formats ± transparent (`blit_probe_test.go`, tag probe).
+> **Proof:** `hle_test.go TestHLEBlitMatchesInterpreter` (normal suite): every blitter call in a session (menu
+> moves, EXE into Run-Matrix, typing, MENU, EXIT) run both ways from the same state → DRAM byte-identical
+> (VRAM; the callee's dead stack frame below sp excluded), r8-r15/pr/macl/return pc identical; 77 native, 1
+> fallback (the r5=2 call on EXIT). Cycle charge (base 90 + 30/row + per-pixel 85/83/94 drawn, 55/53/64
+> transparent) = 1.001× the interpreter's count → timing preserved. Full suite green, goldens untouched.
+> **Speed:** desktop 3-s menu hold 5873 → 1785 ms host (3.3×). **Phone 1.2 s RIGHT hold: 21, 22, 22, 22, 22**
+> (cont.18t: 9-13; before: 6-7), `drops=0`, emu thread ~20 % busy → the phone now runs the menu at full
+> emulated speed = the OS's 33 Hz repeat cap (20-scan initial delay + 0.6 s × 33 Hz).
+> **Finding — the 100M time base is ~2× the real calc:** the real fx-CG50 makes 11+ moves in 1.2 s;
+> `TestRepeatRateProbe` gives 17.8 moves/s @44M ips → 1 + 0.6 × 17.8 ≈ 11.7. So the calc's *effective*
+> throughput on OS code (NOR-flash wait states, SDRAM VRAM writes) is ≈ 45M instr/s, not the 118 MHz clock's
+> 100M. **DECIDED (user): a Speed setting** — *Original hardware* (`CalcSurfaceView.IPS_ORIGINAL` = 45M,
+> default) / *Fast* (`IPS_FAST` = 100M, "the full clock, ~2×"). No button: **long-press the calculator
+> screen** → AlertDialog (MainActivity.showSettings); SharedPreferences "cg50"/"speed"; the status line under
+> the screen reads "hold the screen for settings"; `am start --es speed original|fast` sets it from adb
+> (`re/phone.py start original|fast`). `CalcSurfaceView.ips` is a runtime var (chunk = ips/200).
+> **Bug found & fixed while measuring — emulated time inflated with the HLE:** a native blit charges its
+> cycles in one lump, so `Step(chunk)` overshoots and the next chunk started from the overshoot; the app
+> paced by requested chunks, so time ran fast (25 pushes @45M instead of 13; the "22 @100M" above was
+> inflated too). Fix: `EmuCycles()` export; the emu thread advances `due` by the core's real cycle delta
+> (`ran * 1e9 / ips`; CHUNK_NS if 0 so a halted core can't spin). **Final phone numbers (1.2 s hold):
+> original 11, 12, 11, 12, 11 (= the calc); fast 18, 17, 18 (= desktop exact timing @100M).** At 45M the
+> little cores still drop 2-5 debts/s during a burst (emulated 39-44M/s) — interpreted text rendering.
+> **Gotcha found — the emulated calc AUTO-POWERS-OFF like the real one:** after ~10 min idle the OS enters
+> its power-off wait (stack: 0x800c48c8 writes marker 0xa55a5aa5 → 0x802aec00 loop: sleep + poll
+> 0x8c090c1c/0x8c090c20 + 0x801df0de "AC/ON pressed?"); every key except AC/ON is ignored, on the phone AND
+> in the desktop with that snapshot (`re/phone.py pull` → `stuck_probe_test.go`). Looked like a dead machine
+> ("executed 0.01M/s, 0 pushes"). AC/ON wakes it. The display-off is only partly visible (a black band at the
+> bottom; the OS blanks via the direct-panel path / LCD display-control regs we don't render) → TODO: model the
+> panel's display-off so the screen goes blank like the real one (then AC/ON is obvious).
+> Measuring gotchas: `re/phone.py start` now presses HOME first so onPause snapshots the CURRENT machine
+> (force-stop alone resumes the last saved snapshot); a settings dialog left open swallows `input` taps
+> (`phone.py back`); `go test` caches results — use `-count=1` when only a data file changed.
+> **Tools:** `re/phone.py` (build/start/menuhold/pull/keylog/back/shot), `blit_probe_test.go` (TestBlitProbe
+> descriptors + instr/px; TestHLESpeed; TestSpeedSettingProbe = the phone's chunk flow at several ips),
+> `stuck_probe_test.go`, `hle_test.go`. Ghidra was not running — `re/sh4dis.py --image os/flash_dump/os.bin`
+> was enough for the RE.
+> **NEXT:** (1) LCD display-off (power-off → blank screen; find the OS's panel-off writes with mmioHook in
+> the power-off sequence); (2) optional second HLE: the 1-bpp glyph renderer 0x8017b75e (22.7 % of a menu
+> move; stack args at +0x54.. fg/bg words +0x6a/+0x6e, flags r7: bit2 invert, bit 0x40 clip height, calls
+> 0x8005575c or 0x8004f64a when stack+0x70 != 0) — same probe/differential-test pattern; (3) skin polish
+> (SHIFT/ALPHA annunciators), release signing.
+>
+> ## ⏯ (prev) RESUME HERE (last session end: 2026-09-27 cont.18t)
 >
 > ### 🧵 cont.18t — Phone: emu thread decoupled from rendering. 1.2 s RIGHT hold 6-7 → 9-13 moves (calc 11+).
 > **ADPF is a dead end on this phone:** POCO X3 NFC (sm6150, Android 12 / MIUI 14, schedutil) —

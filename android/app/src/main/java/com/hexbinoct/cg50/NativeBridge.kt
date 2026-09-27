@@ -53,6 +53,9 @@ object NativeBridge {
     /** Changes whenever the panel contents do (any GRAM write) — skip the blit when it hasn't. */
     external fun frameGen(): Long
 
+    /** The machine's cycle counter: emulated time is cycles / instrPerSec (a step may overshoot). */
+    external fun cycles(): Long
+
     /** Fill dst (width*height*4 bytes) with RGBA pixels; returns bytes written or -1. */
     external fun framebufferRGBA(dst: ByteArray): Int
 

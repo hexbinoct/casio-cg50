@@ -33,6 +33,7 @@ var keyTag = C.CString("cg50-key")
 //export EmuInit
 func EmuInit(flash *C.uint8_t, n C.int) {
 	gEmu = NewEmulator(C.GoBytes(unsafe.Pointer(flash), n))
+	gEmu.EnableHLE(true) // native OS blitter (hle.go): ~4x less work per menu move
 	// Route the key state-machine diagnostics to Android logcat (tag cg50-key).
 	gEmu.dbg = func(s string) {
 		cs := C.CString(s)
@@ -129,6 +130,19 @@ func EmuExecuted() C.longlong {
 	return C.longlong(gEmu.Executed())
 }
 
+// EmuCycles returns the machine's cycle counter (emulated time = cycles / instr-per-second).
+// The host paces on this rather than on the chunk sizes it asks for: a Step may overshoot
+// its budget (a native blit charges its cycles in one go; a key injection runs extra
+// instructions), and pacing by request would let emulated time run fast.
+//
+//export EmuCycles
+func EmuCycles() C.longlong {
+	if gEmu == nil {
+		return 0
+	}
+	return C.longlong(gEmu.Cycles())
+}
+
 // EmuPushes returns the number of VRAM->LCD frame pushes so far (one per OS redraw, e.g. per
 // menu cursor move); the app logs it so a held-key burst can be measured from logcat.
 //
@@ -148,6 +162,15 @@ func EmuFrameGen() C.longlong {
 		return 0
 	}
 	return C.longlong(gEmu.FrameGen())
+}
+
+// EmuSetHLE turns the native blitter on (1) or off (0); on after EmuInit.
+//
+//export EmuSetHLE
+func EmuSetHLE(on C.int) {
+	if gEmu != nil {
+		gEmu.EnableHLE(on != 0)
+	}
 }
 
 // EmuSetClock sets the emulated RTC calendar (unix seconds).

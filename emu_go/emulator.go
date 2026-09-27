@@ -294,6 +294,18 @@ func (e *Emulator) nextDue() uint64 {
 	return min(d, tapAt)
 }
 
+// EnableHLE turns the native blitter (hle.go) on or off. Off by default: the conformance and
+// golden tests run the real OS code; hosts that need the speed (the Android app) turn it on.
+func (e *Emulator) EnableHLE(on bool) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if on {
+		e.cpu.hlePC, e.cpu.hle = hleBlitEntry, e.cpu.hleBlit
+	} else {
+		e.cpu.hlePC, e.cpu.hle = 0, nil
+	}
+}
+
 // Executed returns how many instructions the CPU has actually executed (cycles spent asleep
 // excluded). Hosts size their per-frame budget from executed-instructions per host second —
 // the machine's real capacity — rather than from cheap idle frames.

@@ -15,6 +15,7 @@
 emu/*.pkl
 emu/golden_boot.bin
 emu_go/fb_raw.bin
+re/_phone_state.bin
 emu_go/fmt_snapshot.bin
 emu_go/fmt_trace_go.txt
 emu_go/eval_calls.txt

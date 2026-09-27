@@ -50,11 +50,15 @@ class CalcSurfaceView @JvmOverloads constructor(context: Context, attrs: Attribu
     @Volatile var useHints = true
 
     /**
-     * Time base: the emulated machine runs at MAX_IPS — about the real fx-CG50 (SH7305 at
-     * ~118 MHz) — and that never changes (MainActivity sets it once). An emulated second is
-     * always MAX_IPS instructions, so the OS's clocks, key repeat and CPU work stay consistent.
+     * Time base: an emulated second is always `ips` instructions, so the OS's clocks, key
+     * repeat and CPU work stay consistent; the host does not feed a measured rate back in.
+     * IPS_ORIGINAL reproduces the real fx-CG50: measured against a held key on the calculator
+     * (11-12 menu moves in 1.2 s), its effective throughput on OS code is ~45M instr/s — NOR
+     * flash wait states and SDRAM VRAM writes cost the 118 MHz SH7305 more than half its clock.
+     * IPS_FAST is the bare clock, about twice as fast as the real thing. The speed setting
+     * (MainActivity, long-press the screen) switches between them at run time.
      *
-     * Pacing: the emu thread advances CHUNK instructions (= CHUNK_NS of emulated time) each
+     * Pacing: the emu thread advances ips/200 instructions (= CHUNK_NS of emulated time) each
      * time the wall clock reaches the chunk's due time. If the phone can't keep up, the machine
      * falls behind real time; once the debt exceeds MAX_DEBT_NS it is dropped, so the whole
      * machine slows uniformly — like a slower calculator — rather than its timers drifting
@@ -62,13 +66,16 @@ class CalcSurfaceView @JvmOverloads constructor(context: Context, attrs: Attribu
      * raised the rate, then key repeat ran at half speed while busy.)
      */
     companion object {
-        const val MAX_IPS = 100_000_000
-        const val CHUNK = MAX_IPS / 200                 // 5 ms of emulated time
-        const val CHUNK_NS = 1_000_000_000L / 200
+        const val IPS_ORIGINAL = 45_000_000
+        const val IPS_FAST = 100_000_000
+        const val CHUNK_NS = 1_000_000_000L / 200       // 5 ms of emulated time per chunk
         const val MAX_DEBT_NS = 20_000_000L
         const val FRAME_NS = 1_000_000_000L / 60
         const val WARM_NS = 300_000_000L
     }
+
+    /** Instructions per emulated second; MainActivity keeps it equal to the core's setInstrPerSec. */
+    @Volatile var ips = IPS_ORIGINAL
 
     init {
         holder.addCallback(this)
@@ -158,6 +165,7 @@ class CalcSurfaceView @JvmOverloads constructor(context: Context, attrs: Attribu
         // --- perf instrumentation (logcat tag "cg50-perf"): accumulate over ~1s windows ---
         var statWindowStartNs = System.nanoTime()
         var statChunks = 0L         // chunks run this window (emulated time = chunks * CHUNK_NS)
+        var statInstr = 0L          // emulated instructions this window
         var statStepNs = 0L         // wall-time spent inside step()
         var statDrops = 0           // times the debt was dropped (phone couldn't keep up)
         var statExecuted0 = NativeBridge.executed()
@@ -172,16 +180,24 @@ class CalcSurfaceView @JvmOverloads constructor(context: Context, attrs: Attribu
                 sleepNs(due - now)
                 continue
             }
-            NativeBridge.step(CHUNK)
+            val chunk = ips / 200
+            val c0 = NativeBridge.cycles()
+            NativeBridge.step(chunk)
             val t1 = System.nanoTime()
             val stepNs = t1 - now
             hint?.reportActualWorkDuration(stepNs.coerceIn(1L, 200_000_000L))
-            due += CHUNK_NS
+            // Emulated time that actually passed: a step overshoots when a native blit charges
+            // its cycles at once (or a key injection runs extra instructions); pacing on the
+            // requested chunk would let the machine run fast. A halted core (0 cycles) still
+            // advances so this loop can't spin.
+            val ran = NativeBridge.cycles() - c0
+            due += if (ran > 0) ran * 1_000_000_000L / ips else CHUNK_NS
             if (t1 - due > MAX_DEBT_NS) {
                 due = t1
                 statDrops++
             }
             statChunks++
+            statInstr += ran
             statStepNs += stepNs
             // Report once per ~1s: emulated vs executed instr/s, how busy the thread was, drops.
             val winNs = t1 - statWindowStartNs
@@ -189,14 +205,14 @@ class CalcSurfaceView @JvmOverloads constructor(context: Context, attrs: Attribu
                 val executed = NativeBridge.executed()
                 Log.i(
                     "cg50-perf",
-                    "emu: emulated=%.1fM/s (real calc=%dM) executed=%.2fM/s busy=%.0f%% step=%.2fms/chunk drops=%d".format(
-                        statChunks * CHUNK * 1e3 / winNs, MAX_IPS / 1_000_000,
+                    "emu: emulated=%.1fM/s (time base=%dM) executed=%.2fM/s busy=%.0f%% step=%.2fms/chunk drops=%d".format(
+                        statInstr * 1e3 / winNs, ips / 1_000_000,
                         (executed - statExecuted0) * 1e3 / winNs,
                         statStepNs * 100.0 / winNs, statStepNs / 1e6 / statChunks, statDrops
                     )
                 )
                 statWindowStartNs = t1
-                statChunks = 0L; statStepNs = 0L; statDrops = 0; statExecuted0 = executed
+                statChunks = 0L; statInstr = 0L; statStepNs = 0L; statDrops = 0; statExecuted0 = executed
             }
         }
         hint?.close()

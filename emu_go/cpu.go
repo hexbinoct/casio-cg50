@@ -52,6 +52,11 @@ type CPU struct {
 	idle     uint64 // cycles spent asleep (cycles - idle = instructions actually executed)
 	irqCnt   uint64
 	fpuOps   uint64
+
+	// High-level emulation hook (hle.go): when pc == hlePC, hle() may run the OS routine
+	// natively (returning true = done, pc already at the return address). 0 = off.
+	hlePC uint32
+	hle   func() bool
 }
 
 func NewCPU(mem *Memory) *CPU {
@@ -128,6 +133,9 @@ func (c *CPU) step() {
 		return
 	}
 	c.acceptInterrupt()
+	if c.pc == c.hlePC && c.hle != nil && c.hle() {
+		return
+	}
 	if c.mem.mmuAt {
 		c.stepMMU()
 		c.cycles++
@@ -145,6 +153,9 @@ func (c *CPU) run(stop uint64, dirty *bool) {
 	for c.cycles < stop && !*dirty && !c.sleeping {
 		if len(c.pending) != 0 {
 			c.acceptInterrupt()
+		}
+		if c.pc == c.hlePC && c.hle != nil && c.hle() {
+			continue
 		}
 		if c.mem.mmuAt {
 			c.stepMMU()

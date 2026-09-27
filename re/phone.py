@@ -5,7 +5,7 @@ per step, so no ad-hoc shell commands are needed).
   python re/phone.py golib               cross-compile emu_go -> jniLibs (android/build_go_lib.ps1)
   python re/phone.py apk                 gradle :app:installDebug --offline (JAVA_HOME set)
   python re/phone.py build               golib + apk
-  python re/phone.py start [noadpf]      force-stop + start the app (optionally without ADPF hints)
+  python re/phone.py start [noadpf] [original|fast]   force-stop + start (no ADPF hints / set the speed pref)
   python re/phone.py perf [secs]         tail the cg50-perf logcat lines for secs (default 5)
   python re/phone.py shot [out.png]      screenshot -> re/_phone.png (find key coordinates)
   python re/phone.py hold X Y [ms] [n]   touch-hold (x,y) for ms (default 1200) n times (default 3),
@@ -43,10 +43,15 @@ def apk():
                     ":app:installDebug", "--offline", "-q"], env=env, check=True)
 
 
-def start(adpf=True):
+def start(adpf=True, speed=None):
+    # HOME first: onPause snapshots the session, so the restart resumes the CURRENT machine
+    # (a force-stop alone would resume whatever the last real pause saved).
+    adb("shell", "input", "keyevent", "3")
+    time.sleep(1.5)
     adb("shell", "am", "force-stop", PKG)
     adb("logcat", "-c")
-    adb("shell", "am", "start", "-n", f"{PKG}/.MainActivity", "--ez", "adpf", "true" if adpf else "false")
+    extra = ["--es", "speed", speed] if speed else []  # persists in the app's prefs
+    adb("shell", "am", "start", "-n", f"{PKG}/.MainActivity", "--ez", "adpf", "true" if adpf else "false", *extra)
     time.sleep(3)
     out = adb("logcat", "-d", "-s", "cg50", "cg50-perf", "AndroidRuntime", "DEBUG", capture=True)
     print(out[-3000:])
@@ -83,6 +88,7 @@ def pushes_in(lines):
 SAMPLER = r"""
 pid=$(pidof {pkg}); tid=
 for t in /proc/$pid/task/*; do [ "$(cat $t/comm)" = "cg50-emu" ] && tid=${{t##*/}}; done
+[ -z "$tid" ] && {{ echo "NO cg50-emu THREAD (pid=$pid): activity paused or app dead"; exit 0; }}
 i=0; while [ $i -lt {n} ]; do
   f0=$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq)
   f6=$(cat /sys/devices/system/cpu/cpu6/cpufreq/scaling_cur_freq)
@@ -123,6 +129,23 @@ def tap(x, y):
     adb("shell", "input", "tap", str(x), str(y))
 
 
+def keylog():
+    """Key events the keypad delivered to the core (KeypadView logs them under cg50-key)."""
+    out = adb("logcat", "-d", "-s", "cg50-key", "cg50", capture=True)
+    print("\n".join(out.splitlines()[-30:]).encode("ascii", "replace").decode())
+
+
+def back():
+    adb("shell", "input", "keyevent", "4")  # dismisses a dialog left open by `hold` on the screen
+
+
+def pull(dst=None):
+    """Copy the phone's current save-state (written on every pause) to re/_phone_state.bin."""
+    dst = dst or os.path.join(ROOT, "re", "_phone_state.bin")
+    adb("pull", f"/sdcard/Android/data/{PKG}/files/cg50_state.bin", dst)
+    print(f"pulled -> {dst} ({os.path.getsize(dst)} bytes)")
+
+
 if __name__ == "__main__":
     a = sys.argv[1:]
     if not a:
@@ -137,7 +160,7 @@ if __name__ == "__main__":
         golib()
         apk()
     elif cmd == "start":
-        start(adpf=not (rest and rest[0] == "noadpf"))
+        start(adpf="noadpf" not in rest, speed=next((s for s in rest if s in ("original", "fast")), None))
     elif cmd == "perf":
         perf(int(rest[0]) if rest else 5)
     elif cmd == "shot":
@@ -151,6 +174,12 @@ if __name__ == "__main__":
         hold(978, 1074, int(rest[0]) if rest else 1200, int(rest[1]) if len(rest) > 1 else 3)
     elif cmd == "tap":
         tap(int(rest[0]), int(rest[1]))
+    elif cmd == "keylog":
+        keylog()
+    elif cmd == "back":
+        back()
+    elif cmd == "pull":
+        pull(rest[0] if rest else None)
     else:
         print(__doc__)
         sys.exit(1)

@@ -1,3 +1,7 @@
 <resources>
     <string name="app_name">Casio CG50</string>
+    <string name="hint_settings">hold the screen for settings</string>
+    <string name="settings_speed">Speed</string>
+    <string name="speed_original">Original hardware — as fast as a real fx-CG50</string>
+    <string name="speed_fast">Fast — the SH7305\'s full 118 MHz clock, about 2×</string>
 </resources>
