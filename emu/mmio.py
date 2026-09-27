@@ -17,7 +17,7 @@ Register identities reverse-engineered in RECON_NOTES.md:
   0xFEC10000  bus/SDRAM controller (16-reg timing block)
   0xFE008000  DMAC (ch regs; ch2 @ +0x20; DMAOR @ +0x60)
   0xFF000000  CCN/MMU/cache (PTEH/PTEL/TTB/TEA/MMUCR/CCR/INTEVT/EXPEVT...)
-  0xB4000000  R61524 LCD (area5; cmd @ +0, data @ +2)
+  0xB4000000  R61524 LCD (area5; index/data both @ +0, RS = PFC 0xA405013C bit4) — see LCD
 """
 
 
@@ -456,6 +456,41 @@ class BCDALU(Region):
         return self.regs.get((va - self.base) & 0xFFFF, 0)
 
 
+class LCD(Region):
+    """R61524 LCD controller (area 5) — CPU-visible half of emu_go/lcd.go (cont.18o).
+    RS = PFC 0xA405013C bit4: low -> the write selects a register index (a read returns the
+    index); high -> data read/write of the selected register. The OS read-modify-writes R003
+    (entry mode) and tests its ORG bit to pick window addressing, so register read-back must
+    be real. Boot leaves R003=0x00A0 and the window R210-R213 = full 396x224 panel. GRAM,
+    the address counter and DMA streaming are presentation-only (Go side); a GRAM read
+    (R202) returns 0 in both implementations."""
+    def __init__(self, name, base, size, pfc):
+        super().__init__(name, base, size)
+        self.pfc = pfc
+        self.idx = 0
+        self.reg = {}
+        self.boot_defaults()
+
+    def boot_defaults(self):
+        self.reg = {0x003: 0x00A0, 0x210: 0, 0x211: 395, 0x212: 0, 0x213: 223}
+
+    def _rs(self):
+        return bool(self.pfc.regs.get(0x13C, 0) & 0x10)
+
+    def read(self, va, size):
+        if not self._rs():
+            return self.idx
+        if self.idx == 0x202:
+            return 0
+        return self.reg.get(self.idx, 0)
+
+    def write(self, va, size, val):
+        if not self._rs():
+            self.idx = val & 0x7FF
+        elif self.idx != 0x202:
+            self.reg[self.idx] = val & 0xFFFF
+
+
 class MMIOBus:
     # Timer interrupt source. The idle OS polls PERIPH_IRQ 0xA4610088 (bits 14/15) and
     # waits on INTEVT 0x560 -> handler 0x801ded94, which acks those bits. (0x188 from the
@@ -475,9 +510,11 @@ class MMIOBus:
         self.rtc = RTC("RTC", 0xA413FEC0, 0x40)
         self.rtc.bus = self
         self.instr_per_sec = 70_000_000   # host throughput; converts cycles to time (RTC/ETMU/KEYSC)
+        pfc = Region("PFC", 0xA4050000, 0x1000)
+        self.lcd = LCD("LCD_R61524", 0xB4000000, 0x20000, pfc)
         self.regions = [
             CPG("CPG", 0xA4150000, 0x1000),
-            Region("PFC", 0xA4050000, 0x1000),
+            pfc,
             Region("WDT", 0xA4520000, 0x1000),
             INTCStub("INTC", 0xA4080000, 0x1000),       # interrupt controller (NOT keyboard)
             Region("TMU", 0xA4490000, 0x1000),
@@ -492,7 +529,7 @@ class MMIOBus:
             Region("BSC", 0xFEC10000, 0x1000),
             DMAC("DMAC", 0xFE008000, 0x1000),
             CCN("CCN", 0xFF000000, 0x1000),        # MMU/cache/INTEVT/EXPEVT + model strap @+0x24
-            Region("LCD_R61524", 0xB4000000, 0x20000),
+            self.lcd,
         ]
         self.unknown = {}       # va -> count, for unmapped MMIO
         # interrupt-timer state (cycle-based proxy for real time)
@@ -586,3 +623,8 @@ def upgrade_bus(mmio, cpu):
         mmio.etmu2.count_div = 0
     if "BCDALU" not in names:
         mmio.regions.insert(0, BCDALU("BCDALU", 0xA4CB0000, 0x1000))
+    if not isinstance(getattr(mmio, "lcd", None), LCD):
+        pfc = next(r for r in mmio.regions if getattr(r, "name", "") == "PFC")
+        mmio.lcd = LCD("LCD_R61524", 0xB4000000, 0x20000, pfc)
+        mmio.regions = [r for r in mmio.regions if getattr(r, "name", "") != "LCD_R61524"]
+        mmio.regions.append(mmio.lcd)

@@ -64,12 +64,13 @@ func resolveKey(k string) [][2]uint32 {
 	return webKeyMap[k]
 }
 
-// writeFramePNG renders the live framebuffer straight from the DRAM byte slice
-// (RGB565, big-endian). Reading concurrently with the CPU goroutine is benign
-// (worst case a torn pixel) and avoids the memory-routing maps entirely.
-func writeFramePNG(w http.ResponseWriter, mem *Memory) {
+// writeFramePNG renders what the LCD panel shows (the controller's GRAM, lcd.go — not the
+// live VRAM, so no half-drawn redraws, and the blinking cursor is visible). Reading
+// concurrently with the CPU goroutine is benign (worst case a torn pixel).
+func writeFramePNG(w http.ResponseWriter, l *lcd) {
 	img := image.NewRGBA(image.Rect(0, 0, fbW, fbH))
-	d := mem.dram
+	d := make([]byte, fbBytes)
+	l.renderOS(d)
 	for y := 0; y < fbH; y++ {
 		for x := 0; x < fbW; x++ {
 			o := (y*fbW + x) * 2
@@ -144,7 +145,7 @@ func runWeb(cpu *CPU, mem *Memory, mmio *MMIOBus, resumed bool) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		fmt.Fprint(w, webPage)
 	})
-	mux.HandleFunc("/frame", func(w http.ResponseWriter, r *http.Request) { writeFramePNG(w, mem) })
+	mux.HandleFunc("/frame", func(w http.ResponseWriter, r *http.Request) { writeFramePNG(w, mmio.lcd) })
 	mux.HandleFunc("/key", func(w http.ResponseWriter, r *http.Request) {
 		for _, c := range resolveKey(r.URL.Query().Get("k")) {
 			select {

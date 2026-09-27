@@ -267,6 +267,8 @@ func ResumeBytes(raw []byte, cpu *CPU, mem *Memory) error {
 		} else {
 			mem.mmio.applyLegacyResumeDefaults()
 		}
+		// GRAM isn't saved: at snapshot time the panel showed the last VRAM pushed to it.
+		mem.mmio.lcd.seedFromVRAM(mem.dram[:fbBytes])
 	}
 	return nil
 }

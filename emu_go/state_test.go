@@ -32,6 +32,11 @@ func TestSaveStateRoundtrip(t *testing.T) {
 	mem.Write(0xFE008024, 4, 0x14000000)
 	mem.Write(0xA44B0010, 2, 0x400)
 	mem.Write(0xA44B0014, 2, 0x7600)
+	// LCD controller: select R211 (RS low), write it (RS high); PFC ends at 0x1D again
+	mem.Write(0xA405013C, 1, 0x0D)
+	mem.Write(0xB4000000, 2, 0x211)
+	mem.Write(0xA405013C, 1, 0x1D)
+	mem.Write(0xB4000000, 2, 0x123)
 
 	path := filepath.Join(t.TempDir(), "st.bin")
 	if err := SaveState(path, cpu, mem); err != nil {
@@ -73,6 +78,13 @@ func TestSaveStateRoundtrip(t *testing.T) {
 	if k := mem2.mmio.keysc; k.mode != 0x400 || k.ie != 0x76 || k.flags != 0 {
 		t.Errorf("KEYSC state not restored: mode=%#x ie=%#x flags=%#x", k.mode, k.ie, k.flags)
 	}
+	if v := mem2.Read(0xB4000000, 2); v != 0x123 || mem2.mmio.lcd.reg[0x003] != 0xA0 {
+		t.Errorf("LCD state not restored: R211 read %#x, R003 %#x", v, mem2.mmio.lcd.reg[0x003])
+	}
+	// GRAM isn't saved; resume seeds the panel from VRAM (dram[100] = pixel (50,0) high byte)
+	if c := mem2.mmio.lcd.gram[osOriginH-50]; c>>8 != 0xAB {
+		t.Errorf("GRAM not seeded from VRAM on resume: %#04x", c)
+	}
 }
 
 // A snapshot without the MMIO section (every state saved before 2026-09-27, including the
@@ -96,5 +108,9 @@ func TestLegacyStateDefaults(t *testing.T) {
 	}
 	if k := mem2.mmio.keysc; k.ctrl != 0x8000 || k.mode != 0x200 || k.ie != 0x48 {
 		t.Errorf("legacy resume left KEYSC unconfigured: %+v", *k)
+	}
+	if l := mem2.mmio.lcd; l.reg[0x003] != 0xA0 || l.reg[0x211] != panelW-1 || l.reg[0x213] != panelH-1 {
+		t.Errorf("legacy resume left the LCD without its boot registers: R003=%#x R211=%d R213=%d",
+			l.reg[0x003], l.reg[0x211], l.reg[0x213])
 	}
 }

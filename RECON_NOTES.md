@@ -9,7 +9,53 @@
   pending, so the next session can continue without being reminded.
 ============================================================================= -->
 
-> ## ⏯ RESUME HERE (last session end: 2026-09-27 cont.18n)
+> ## ⏯ RESUME HERE (last session end: 2026-09-27 cont.18o)
+>
+> ### ✅ cont.18o — CURSOR BLINKS: real R61524 LCD controller model (GRAM is the screen).
+> **Root cause (two bugs):** (1) the OS draws the text cursor **straight into the LCD controller's
+> GRAM**, pixel by pixel, never into VRAM and without a DMA push — our "present a VRAM copy on each
+> DMA push" model could never show it; (2) **LCD register reads were wrong**: `0xB4000000` returned the
+> last word written (i.e. the index), so the OS's read-modify-write of R003 (entry mode) produced
+> 0x0083 instead of the real 0x00A0 and getORG (bit7) read 0 → the OS took the absolute-address
+> fallback instead of the real **window-addressing path** (R210-R213 window + R200/R201 = 0,0).
+> **Cursor path (all static+dynamic RE this session):** cursor syscalls resolve (3.60 table
+> **0x80687cd0**, new `re/syscall360.py`) to a module at 0x800c3d..: Cursor_SetFlashOn sc 0x8C7 =
+> 0x800c3eb8, Cursor_SetFlashOff 0x8C8 = 0x800c3f36, Keyboard_CursorFlash 0x8CA = 0x800c3f68,
+> SetCursorFlashToggle 0x8D2 = 0x800c434a (getToggle 0x800c4344), toggle+draw 0x800c3fc8 →
+> **draw 0x800c4006** (saves VRAM rect via 0x801f0f58, builds rows, LCD window write) / **erase
+> 0x800c4266** (per-pixel restore from VRAM via 0x800564cc). Flags: 0x8c04fb3a (flash on), 0x8c04fb44.
+> Driven at 2 Hz from the RTC event: sc 0x8CC (0x800c3fa8) called from 0x801e6228. **It was already
+> running before this fix** — only the panel was missing. (0x80150508, the "cursor overlay" in the
+> cont.18n notes, is actually a 16x22 status-bar icon blit into VRAM — not the cursor.)
+> **LCD protocol:** all accesses 16-bit at +0; RS = **PFC 0xA405013C bit4** (0 = index, 1 = data);
+> helper 0x8004e272 (select), setORG 0x8004e3e8, getORG 0x8004e440, window/pixel setup 0x8004e2aa
+> (H = 0x18B − (x+6), V = y). Boot (0x8004dd3a, ~5.27M instr) sets R003=0x00A0 (ORG=1, I/D1=1 V-inc,
+> I/D0=0 H-dec, AM=0) and window 0..395 × 0..223 (panel 396x224; OS 384x216 area at H=389−x, V=y).
+> Full push = R200/R201 + select R202, then DMAC ch2 CHCR 0x00101400 (TS=0100 = 32-byte units,
+> TCR 0x1440 = one frame).
+> **Implemented:** `emu_go/lcd.go` (index/register file with read-back, ORG/window/I-D/AM address
+> counter, GRAM 396x224, DMA streaming); DMAC streams any LCD-bound transfer through it
+> (`dmaUnit`, `Memory.span`); `Emulator.Framebuffer*` + web UI `/frame` render **GRAM** (next-step #3
+> done); save-state MMIO section carries the LCD regs (`lcd.stateMap`), GRAM re-seeded from VRAM on
+> every resume (`ResumeBytes`), legacy/pre-LCD snapshots get the boot registers. Python oracle mirrors
+> the CPU-visible part (`emu/mmio.py LCD`: index, register read-back, GRAM read = 0) + transcript
+> parity `emu/lcd_selftest.py` → `emu/lcd_golden.txt` ↔ `TestLCDOracleTranscript`.
+> **Tests (all green):** 57/57 conformance, 2M golden boot byte-identical (boot never reaches LCD
+> init), new `lcd_test.go` (read-back, window stream, oracle transcript, **TestCursorBlinks**: 4
+> displayed-frame toggles in 2 s, 0 pushes, VRAM untouched, changes confined to x36-38 y168-189 after
+> "12"), save-state round-trip + legacy extended for the LCD. Visually confirmed ("12|" ↔ "12").
+> Probes kept behind a build tag: `go -C emu_go test -tags probe -run TestCursorProbe|TestLCDInitProbe|TestMenuFromAppProbe -v`
+> (shadow call stack, `Memory.wrHook` VRAM write-watch, `Memory.mmioHook`).
+> **Re-tested MENU-from-app after the fix: still broken** (MENU in Run-Matrix → stays in Run-Matrix;
+> only the 44 caret pixels toggle). Not caused by the LCD reads.
+> **NOT done:** Android `.so`/APK rebuild (`build_go_lib.ps1`, `:app:assembleDebug`) so the phone gets
+> the blink; commit.
+>
+> **NEXT (in this order):** 1. MENU-from-app (old #2 below; use `TestMenuFromAppProbe` as the harness,
+> then shadow-stack the MENU decode 0x801952cc → app-switch). 2. Rebuild + install the Android build and
+> confirm the blink on the phone. 3. PERF (old #4). 4. Skin (old #5). 5. Later items (old #6).
+>
+> ## ⏯ (prev) RESUME HERE (last session end: 2026-09-27 cont.18n)
 >
 > ### 🏆 cont.18l — REAL KEYBOARD PATH SHIPPED: KEYSC key-scan unit modelled, injection hack deleted.
 > Keys now reach the OS exactly as on the calculator: the host sets bits in the emulated **KEYSC/KIU

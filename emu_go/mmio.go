@@ -48,7 +48,24 @@ func (c *cpg) read(va, size uint32) uint32 {
 // moment the real screen changes, so onLCDPush (if set) is told the source address then.
 type dmac struct {
 	base
+	bus       *MMIOBus
 	onLCDPush func(sar uint32)
+}
+
+// dmaUnit is the transfer-unit size in bytes for CHCR.TS (TS[1:0]=bits 4:3, TS[3:2]=bits
+// 21:20): the OS's VRAM push uses TS=0100 (32-byte units, TCR 0x1440 = one 384x216 frame).
+func dmaUnit(chcr uint32) uint32 {
+	switch (chcr>>3)&3 | (chcr>>20&3)<<2 {
+	case 0:
+		return 1
+	case 1:
+		return 2
+	case 2:
+		return 4
+	case 3:
+		return 16
+	}
+	return 32
 }
 
 func (d *dmac) read(va, size uint32) uint32 {
@@ -62,8 +79,14 @@ func (d *dmac) read(va, size uint32) uint32 {
 func (d *dmac) write(va, size, val uint32) {
 	off := va - d.bs
 	d.regs[off] = val
-	if (off&0xF) == 0xC && off < 0x40 && val&1 != 0 && d.onLCDPush != nil && d.regs[off-0xC+4] == 0x14000000 {
-		d.onLCDPush(d.regs[off-0xC])
+	if (off&0xF) == 0xC && off < 0x40 && val&1 != 0 && d.regs[off-0xC+4]&0x1FFFFFFF == 0x14000000 {
+		sar := d.regs[off-0xC]
+		if d.bus != nil && d.bus.lcd != nil && d.bus.cpu != nil {
+			d.bus.lcd.dma(d.bus.cpu.mem.span(sar, min(d.regs[off-0xC+8]*dmaUnit(val), 1<<20)))
+		}
+		if d.onLCDPush != nil {
+			d.onLCDPush(sar)
+		}
 	}
 }
 
@@ -295,7 +318,8 @@ type MMIOBus struct {
 
 	timerPeriod uint64
 	keysc       *keyscUnit     // key-scan unit @0xA44B0000 (keysc.go): the real key path
-	dmac        *dmac          // DMA controller; its LCD-push hook drives frame presentation
+	dmac        *dmac          // DMA controller; streams LCD-bound transfers into lcd
+	lcd         *lcd           // R61524 panel controller: GRAM = what the user sees (lcd.go)
 	wcount      map[string]int // if non-nil: MMIO writes per region (diagnostics)
 	rtc         *rtc           // real-time clock: calendar, 64 Hz counter, periodic IRQ (rtc.go)
 	instrPerSec uint64         // host throughput; converts cycles to time for RTC/ETMU/KEYSC
@@ -371,10 +395,12 @@ func NewMMIOBus() *MMIOBus {
 	b.keysc = newKeysc()
 	b.rtc = newRTC(b)
 	b.instrPerSec = 70_000_000
-	b.dmac = &dmac{base: newBase("DMAC", 0xFE008000, 0x1000)}
+	b.dmac = &dmac{base: newBase("DMAC", 0xFE008000, 0x1000), bus: b}
+	pfc := &base{nm: "PFC", bs: 0xA4050000, sz: 0x1000, regs: map[uint32]uint32{}}
+	b.lcd = newLCD(pfc)
 	b.regions = []region{
 		&cpg{base: newBase("CPG", 0xA4150000, 0x1000)},
-		&base{nm: "PFC", bs: 0xA4050000, sz: 0x1000, regs: map[uint32]uint32{}},
+		pfc,
 		&base{nm: "WDT", bs: 0xA4520000, sz: 0x1000, regs: map[uint32]uint32{}},
 		&intcStub{base: newBase("INTC", 0xA4080000, 0x1000)},
 		&base{nm: "TMU", bs: 0xA4490000, sz: 0x1000, regs: map[uint32]uint32{}},
@@ -389,7 +415,7 @@ func NewMMIOBus() *MMIOBus {
 		&base{nm: "BSC", bs: 0xFEC10000, sz: 0x1000, regs: map[uint32]uint32{}},
 		b.dmac,
 		&ccn{base: newBase("CCN", 0xFF000000, 0x1000)},
-		&base{nm: "LCD_R61524", bs: 0xB4000000, sz: 0x20000, regs: map[uint32]uint32{}},
+		b.lcd,
 	}
 	return b
 }
@@ -498,6 +524,8 @@ func (b *MMIOBus) regionRegs() map[string]map[uint32]uint32 {
 			out[x.nm] = x.regs
 		case *rtc:
 			out[x.nm] = map[uint32]uint32{0x1C: x.rcr1, 0x1E: x.rcr2}
+		case *lcd:
+			out[x.nm] = x.stateMap()
 		}
 	}
 	return out
@@ -517,6 +545,10 @@ func (b *MMIOBus) restoreRegionRegs(saved map[string]map[uint32]uint32) {
 		}
 		if x, isR := r.(*rtc); isR {
 			x.rcr1, x.rcr2, x.nextPeriodic = m[0x1C], m[0x1E]&0x7F, 0
+			continue
+		}
+		if x, isL := r.(*lcd); isL {
+			x.restoreState(m)
 			continue
 		}
 		var dst map[uint32]uint32
@@ -559,6 +591,7 @@ func (b *MMIOBus) applyLegacyResumeDefaults() {
 		}
 	}
 	b.keysc.resumeDefaults()
+	b.lcd.restoreState(nil)
 }
 
 // FrameSAR returns the source address of any DMAC channel currently programmed to

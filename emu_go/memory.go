@@ -63,6 +63,12 @@ type Memory struct {
 	rdPC  map[uint32]int
 	rdLog int
 
+	// DRAM write-watch (investigation only; nil = disabled). Called for every DRAM
+	// write with phys in [wrLo,wrHi) — used to catch the PC that draws into VRAM.
+	wrLo, wrHi uint32
+	wrHook     func(phys, size, val uint32)
+	mmioHook   func(va, size, val uint32) // investigation: every MMIO write (nil = off)
+
 	// NOR command state machine
 	fcmd   int
 	bufRem int     // remaining buffered-program data words to collect
@@ -144,6 +150,9 @@ func (m *Memory) Write(va, size, val uint32) {
 			beWrite(m.ocram, va-OcramBase, size, val)
 			return
 		}
+		if m.mmioHook != nil {
+			m.mmioHook(va, size, val)
+		}
 		m.mmio.Write(va, size, val)
 		return
 	}
@@ -152,10 +161,16 @@ func (m *Memory) Write(va, size, val uint32) {
 		if m.wpages != nil {
 			m.wpages[(mphys-DramBase)&^0x7FFF]++
 		}
+		if m.wrHook != nil && mphys >= m.wrLo && mphys < m.wrHi {
+			m.wrHook(mphys, size, val)
+		}
 		beWrite(m.dram, mphys-DramBase, size, val)
 		return
 	}
 	if va >= 0xA4000000 && va < 0xC0000000 {
+		if m.mmioHook != nil {
+			m.mmioHook(va, size, val)
+		}
 		m.mmio.Write(va, size, val)
 		return
 	}
@@ -340,6 +355,19 @@ func (m *Memory) LoadFlashDelta(path string) (int, error) {
 		return 0, err
 	}
 	return m.applyFlashDelta(data)
+}
+
+// span returns n bytes starting at va for a DMA source: a direct view when the range lies in
+// DRAM (the VRAM push), else a copy read through the bus.
+func (m *Memory) span(va, n uint32) []byte {
+	if p := va & 0x1FFFFFFF; p >= DramBase && p+n <= DramBase+DramSize {
+		return m.dram[p-DramBase : p-DramBase+n]
+	}
+	b := make([]byte, n)
+	for i := uint32(0); i < n; i++ {
+		b[i] = byte(m.Read(va+i, 1))
+	}
+	return b
 }
 
 func (m *Memory) R8(va uint32) uint32  { return m.Read(va, 1) }
