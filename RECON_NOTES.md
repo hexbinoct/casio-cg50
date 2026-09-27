@@ -9,7 +9,7 @@
   pending, so the next session can continue without being reminded.
 ============================================================================= -->
 
-> ## ⏯ RESUME HERE (last session end: 2026-09-26 cont.18l)
+> ## ⏯ RESUME HERE (last session end: 2026-09-27 cont.18n)
 >
 > ### 🏆 cont.18l — REAL KEYBOARD PATH SHIPPED: KEYSC key-scan unit modelled, injection hack deleted.
 > Keys now reach the OS exactly as on the calculator: the host sets bits in the emulated **KEYSC/KIU
@@ -130,31 +130,27 @@
 > changed in 3 s — the world switch does not run OS ISRs, so OS timer activity can't be observed that
 > way. Both probes + results: `tools/keyprobe`, `tools/timerprobe`, `os/devic_probes/*2026-09-27*`.
 >
-> **IN FLIGHT at session end (2026-09-26 late, home):** building the fxSDK/gint cross-toolchain as a
-> Docker image on this Windows box so add-ins can be built here (no Mac needed):
-> `docker build -t fxsdk:latest tools/fxsdk-docker` (Dockerfile = GiteaPC route; the 18-min apt layer +
-> udisks2/ncurses layer + GiteaPC + fxsdk are cached; the interrupted stage was sh-elf-binutils/gcc
-> 14.1 download+compile, ~20-40 min). Re-run the same command; it resumes from cache. Then build the
-> probe: `docker run --rm -v "/F/ru/myprojects/may/cg50/tools/keyprobe:/work" fxsdk:latest fxsdk build-cg`
-> → `KEYPROBE.g3a`; copy to the calc over USB mass storage, run it (hold RIGHT when told, release when
-> told), then read `KEYPROBE.TXT` from the calc's drive. What it measures + how to interpret:
-> `re/keyprobe_note.md` (also pushed to noted). Source: `tools/keyprobe/src/main.c` (writes the file via
-> BFile; also pages on screen). Unknowns to expect: `gint_world_switch` name, INTC IMR5/IMCR5 addresses.
+> **STATE at session end (2026-09-27 13:10, home, calc + phone on USB):** everything above is committed
+> and pushed (`2ac318f`); the phone runs that build. Tree clean. fxSDK Docker image `fxsdk:latest` exists;
+> both probes built; calc mounts as `G:` in USB Flash mode (unplug/replug + F1 to re-enter it).
 >
-> **NEXT:**
->   0. **MENU-from-app**: trace after the MENU decode (0x801952cc → app-switch routine) on the June state:
->      PC histogram + unmapped-MMIO reads + flash-write attempts between the screen clear and the redraw.
->   1. On the phone: install `android/app/build/outputs/apk/debug/app-debug.apk` (flash/state files on
->      the device are unchanged), check menu feel + held-arrow repeat + typing in Run-Matrix (SHIFT/ALPHA
->      taps still work as modifier keys). If a screen ignores keys, log `cg50-key` (taps are logged).
->   2. Calibrate the repeat clock against the real calc: hold RIGHT at the MAIN MENU, time the initial
->      delay (= 20 scans) and moves/sec (= 1/scan) → set DefaultKeyScanPeriod / the Android divisor.
->   3. PERF next (from the cont.18l assessment): real `sleep` semantics + wall-clock-anchored timer (OS
->      time currently = instr/30000 per tick → runs at different speeds per host; TMU ch1 at boot was
->      TCOR=0x2d000, TCR=0x23 (Pϕ/256, IRQ on) — steady-state value still unknown), then interpreter
->      fast paths (decode table, direct DRAM fetch, batched IRQ/timer checks), then memcmp/memset HLE.
->   4. Skin: real CG50 keycap layout with SHIFT (yellow)/ALPHA (red) legends, annunciators, haptics.
-> ⚠ Ghidra MCP (port 8080) was NOT running this session; static disasm covered everything.
+> **NEXT (in this order):**
+>   1. **Cursor blink** (user asked; still not blinking). Method: in Run-Matrix after a keypress, watch
+>      DRAM writes inside the caret rectangle (bottom-left input line, VRAM phys 0x0C000000, RGB565
+>      384×216) to catch the cursor-draw routine's PC (add a temporary write-watch in `memory.go`
+>      Write for a phys range, like the existing rdPC read-watch); then find its callers and the
+>      timer/event that toggles it. Everything already ruled out is listed under cont.18n — do not
+>      re-check those. Expect the toggle to be driven by the RTC 2 Hz event 0x80 (now delivered) or
+>      by the 0xA44C0000 timer (still unmapped: `0x801e6d40` arms it with a table value from
+>      0x8068fb48, `0x801e6dc4` polls bit0 of 0xA44C0020 — model it if the blink path uses it).
+>   2. **MENU-from-app**: trace after the MENU decode (0x801952cc → app-switch) on the June state: PC
+>      histogram + unmapped-MMIO reads + flash-write attempts between the screen clear and the redraw.
+>      Now that MMIO regs persist and `sleep`/RTC exist, re-test first — it may already behave differently.
+>   3. Web UI (`webui.go`) still shows live VRAM (uses mem.dram) — switch it to the presented frame.
+>   4. PERF: interpreter fast paths (decode table, direct DRAM fetch, batched IRQ/timer checks), then
+>      memcmp/memset HLE (60% of instructions). Idle is now cheap (real `sleep`).
+>   5. Skin: real CG50 keycap layout with SHIFT (yellow)/ALPHA (red) legends, annunciators, haptics.
+>   6. Later: release APK signing; the synthetic 0x560 tick's real source (0xA4610000 block) and rate.
 >
 > ## ⏯ (prev) RESUME HERE (last session end: 2026-06-10 cont.18k)
 >
