@@ -48,8 +48,10 @@
 > (shadow call stack, `Memory.wrHook` VRAM write-watch, `Memory.mmioHook`).
 > **Re-tested MENU-from-app after the fix: still broken** (MENU in Run-Matrix → stays in Run-Matrix;
 > only the 44 caret pixels toggle). Not caused by the LCD reads.
-> **NOT done:** Android `.so`/APK rebuild (`build_go_lib.ps1`, `:app:assembleDebug`) so the phone gets
-> the blink; commit.
+> **Committed** as `740ad33` (not pushed). Android `.so` rebuilt (`build_go_lib.ps1`) and APK built
+> (`:app:assembleDebug`, `android/app/build/outputs/apk/debug/app-debug.apk`) — **NOT installed**: no
+> adb device (USB or wireless mDNS) was reachable. Install with
+> `adb install -r android/app/build/outputs/apk/debug/app-debug.apk`, then check the blink in Run-Matrix.
 >
 > **NEXT (in this order):** 1. MENU-from-app (old #2 below; use `TestMenuFromAppProbe` as the harness,
 > then shadow-stack the MENU decode 0x801952cc → app-switch). 2. Rebuild + install the Android build and
