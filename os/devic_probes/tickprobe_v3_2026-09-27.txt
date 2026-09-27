@@ -1,0 +1,15 @@
+== TICKPROBE v3 (OS world) ==
+ref: 32k counts per RTC second = 32768 (expect ~32768)
+MSTPCR0..2 (OS world) = 000a3086 00000000 f7fffd8f
+os-state: 80=0000 82=0000 84=8d40 86=0000 88=0042 8a=0000 8c=0000 8e=0000 90=0000 92=0000 94=8d40 96=0000 98=0042 9a=0000 9c=0000 9e=0000
+why: 1=start bit cleared 2=result in 84 4=flags
+conv 0: no completion within 2 s  84=0000 88=0000 8A=01cf 8C=8000
+conv 1: no completion within 2 s  84=0000 88=0000 8A=01cf 8C=8000
+conv 2: no completion within 2 s  84=0000 88=0000 8A=01cf 8C=8000
+conv 3: no completion within 2 s  84=0000 88=0000 8A=01cf 8C=8000
+conv 4: no completion within 2 s  84=0000 88=0000 8A=01cf 8C=8000
+conv 5: no completion within 2 s  84=0000 88=0000 8A=01cf 8C=8000
+conv 6: no completion within 2 s  84=0000 88=0000 8A=01cf 8C=8000
+conv 7: no completion within 2 s  84=0000 88=0000 8A=01cf 8C=8000
+end: 80=0000 82=0000 84=0000 86=0000 88=0000 8a=01cf 8c=8000 8e=0033 90=0000 92=0000 94=0000 96=0000 98=0000 9a=01cf 9c=8000 9e=0033
+

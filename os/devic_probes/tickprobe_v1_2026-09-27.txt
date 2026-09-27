@@ -1,0 +1,18 @@
+== TICKPROBE ==
+ref: 32k-counter counts per RTC second = 0 (expect ~32768)
+os-state: 80=0000 82=0000 84=8d00 86=0000 88=0042 8a=0000 8c=0000 8e=0000 90=0000 92=0000 94=8d00 96=0000 98=0042 9a=0000 9c=0000 9e=0000
+period 0: no flag within 5 s  (88=0000 8A=01cf 8C=8000)
+period 1: no flag within 5 s  (88=0000 8A=01cf 8C=8000)
+period 2: no flag within 5 s  (88=0000 8A=01cf 8C=8000)
+period 3: no flag within 5 s  (88=0000 8A=01cf 8C=8000)
+period 4: no flag within 5 s  (88=0000 8A=01cf 8C=8000)
+period 5: no flag within 5 s  (88=0000 8A=01cf 8C=8000)
+period 6: no flag within 5 s  (88=0000 8A=01cf 8C=8000)
+period 7: no flag within 5 s  (88=0000 8A=01cf 8C=8000)
+after-arm: 80=0000 82=0000 84=0000 86=0000 88=0000 8a=01cf 8c=8000 8e=0033 90=0000 92=0000 94=0000 96=0000 98=0000 9a=01cf 9c=8000 9e=0033
+no-rearm 0: no flag within 3 s  (88=0000 8A=01cf 8C=8000)
+no-rearm 1: no flag within 3 s  (88=0000 8A=01cf 8C=8000)
+no-rearm 2: no flag within 3 s  (88=0000 8A=01cf 8C=8000)
+8C while armed: 8000@0 8000@142
+end: 80=0000 82=0000 84=0000 86=0000 88=0000 8a=01cf 8c=8000 8e=0033 90=0000 92=0000 94=0000 96=0000 98=0000 9a=01cf 9c=8000 9e=0033
+

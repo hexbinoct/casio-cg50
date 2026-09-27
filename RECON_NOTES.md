@@ -37,6 +37,22 @@
 > (b) native (HLE) version of the blitter 0x80056xxx with a differential test vs the interpreter.
 > Windows box: last real boot 9 days ago + hibernations → absolute benchmarks unreliable (ask for reboot).
 >
+> **0x560 on the real calc — `tools/tickprobe` (results `os/devic_probes/tickprobe_v*_2026-09-27.txt`):**
+> v1 invalid (the 32 kHz counter 0xA44D00D8 doesn't run in gint's world). v2 (gint world, 1 ms TMU,
+> 1001 ms/RTC s): armed like the OS the unit never completes within 10 s; +0x84 held 0x8D80 → it's an
+> A/D result: the unit is the **battery ADC** (+0x8C bit15 = start, +0x84 = result, bits 14/15 of
+> +0x88/+0x8A = end flags; block mirrored at +0x10). v3 (OS world via gint_world_switch, 32768 counts/s
+> verified): still **no completion within 2 s of a start while the CPU runs** (8/8), same MSTPCR as gint.
+> Yet +0x84 changes between runs (8D00/8D80/8D40) → the OS does get readings → conversion apparently only
+> progresses while the CPU sleeps (the OS arms it right before `sleep`). v4 tried to test that by replaying
+> the idle routine (RCR2 PES=1/2 s, BL=1, CPG 0xA4150020=0, sleep) → **it RESET the calculator** to first-boot
+> setup (storage fine). The real idle routine first calls 0x801df084 and may use another sleep path
+> (0xa0020926); the sleep test is now compiled out (TICKPROBE_SLEEP_TEST). Do NOT sleep from probes.
+> **Conclusion: 0x560 is not a periodic tick** — it's an occasional battery-ADC completion; our 3.3 kHz
+> synthetic tick is far too frequent. Proposed model: one completion IRQ per OS start (+0x8C ← 0x8000),
+> only after the CPU has been asleep for a while (latency unknown — pick a conservative value, e.g. the
+> RTC period), result = last real reading (0x8D40), flags bits 14/15.
+>
 > ### ✅ cont.18q — ADD-INS RUN: SH-4A MMU (UTLB, ldtlb, translation, precise TLB exceptions).
 > User: their add-in **helomelo2** (menu icon J; cont.18h misread it as "heronics2"/"howdy") runs on the
 > calc but crashed the Android app. **Root cause: no MMU.** `ldtlb` was a nop and nothing translated, so
