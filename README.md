@@ -1,12 +1,18 @@
 # casio-cg50
 
-A from-scratch **hardware emulator and reverse-engineering toolkit for the Casio
-fx-CG50** (Prizm-family graphing calculator, Renesas **SH7305 / SH-4A** core).
+<p align="center">
+  <img src="docs/images/android-app.jpeg" width="320"
+       alt="The emulator running on an Android phone: the fx-CG50 Run-Matrix screen showing 65+96 = 161 and sin 45 = √2/2, above a calculator-style keypad">
+</p>
 
-The emulator boots the **real fx-CG50 OS from reset** — through PLL/clock bring-up,
-interrupt setup, the battery ADC, the NOR-flash (`fls0`) filesystem mount, and the
-LCD render path — to the fully rendered first-boot UI, and can be **driven with
-injected keypresses all the way through first-boot setup to the MAIN MENU**.
+A from-scratch **hardware emulator and reverse-engineering toolkit for the Casio
+fx-CG50** (Prizm-family graphing calculator, Renesas **SH7305 / SH-4A** core), with an
+**Android app** that runs it on a phone.
+
+The emulator boots the **real fx-CG50 OS (3.60) from reset** — PLL/clock bring-up, interrupt
+setup, the battery ADC, the NOR-flash (`fls0`) filesystem mount — to the MAIN MENU, and from
+there runs the calculator as a calculator: every built-in app, real keyboard input, a
+blinking cursor, and **third-party add-ins (`.g3a`)**.
 
 > ⚠️ **No Casio firmware is included in this repository.** The OS is Casio's
 > copyrighted property. To run the emulator you must supply a flash dump of *your
@@ -16,26 +22,45 @@ injected keypresses all the way through first-boot setup to the MAIN MENU**.
 
 | Path | What |
 |------|------|
-| `emu_go/` | **The emulator (Go).** SH-4A integer/system core, MMU/memory map, SH7305 MMIO peripheral models, LCD framebuffer decode. ~64–85 M instr/s. This is the primary implementation. |
-| `emu/` | **The Python reference emulator** — the *oracle*. Slower, but the authoritative model that the Go port is validated against. |
+| `emu_go/` | **The emulator (Go)** — the primary implementation. SH-4A core, the SH7305 memory map + MMU, and models of the peripherals the OS needs (below). ~60–85 M instr/s on a desktop, ~20–30 M on a phone. Also the desktop web UI and the cgo bridge for Android. |
+| `emu/` | **The Python reference emulator** — the *oracle*. Slower, but the authoritative model the Go port is validated against; every CPU-visible behaviour exists in both. |
 | `emu/conformance.json` | Cross-language, curated SH-4 instruction conformance suite (synthetic — not derived from any OS). Both cores replay the same frozen cases. |
-| `re/` | Reverse-engineering scripts: a small SH-4 disassembler (`sh4dis.py`), VBR/IRQ-table finders, framebuffer/stride explorers, the KEYSC key-matrix table dumper, and the empirical keymap sweepers. |
-| `tools/flash_dump/` | A minimal on-calculator flash **dumper** (`dump.c`, gint/fxlink) plus notes — for capturing your own dump. |
-| `RECON_NOTES.md` | The full reverse-engineering log: boot path, gates found and closed (ETMU delay, battery ADC, model-strap, writable NOR flash, VRAM uncached-mirror + stride render gate), the interrupt system, the keyboard input path, and the empirically-derived key matrix. |
+| `android/` | **The Android app** (Kotlin + JNI over the Go core): the screen, a keypad drawn in the real fx-CG50 layout, save-state resume. See [`android/README.md`](android/README.md). |
+| `docs/ANDROID.md` | The host API (C ABI) the Go core exports, and how the app is wired. |
+| `re/` | Reverse-engineering scripts: SH-4 disassembler (`sh4dis.py`, `disasm_static.py`), syscall resolvers (`syscall360.py` for OS 3.60), the keymap generator (`dump_keymap.py` → `KEYMAP.md`) and label audit (`audit_keymap.py`), and many single-purpose probes. |
+| `tools/` | On-calculator helpers: `flash_dump/` (a gint/fxlink flash **dumper**), `fxsdk-docker/` (fxSDK/gint toolchain in Docker), and probe add-ins (`keyprobe/`, `timerprobe/`) used to measure the real hardware. |
+| `RECON_NOTES.md` | The full reverse-engineering log. The **RESUME HERE** block at the top is the current state and next steps. |
+
+### What the emulator models
+
+- **CPU:** SH-4A integer/system ISA with delay slots, register banks, interrupts and `sleep`;
+  validated against real silicon for the tricky arithmetic (202/202 on-device cases).
+- **MMU:** UTLB, `ldtlb`, P0/U0/P3 translation and precise TLB-miss / protection exceptions —
+  which is what lets add-ins run (the OS demand-pages their code in from flash).
+- **Display:** the R61524 LCD controller with its own GRAM. The screen you see is the panel,
+  fed by the OS's DMA frame pushes *and* its direct pixel writes (the blinking text cursor
+  is drawn straight into GRAM).
+- **Keyboard:** the KEYSC key-scan unit (matrix words + key-detect/scan IRQs); the OS's own
+  keyboard ISR does scanning, debouncing and auto-repeat, exactly as on the calculator.
+- **Time:** RTC (calendar + 2 Hz periodic IRQ that drives the cursor blink), the 32.768 kHz
+  counter and the key-scan rate, all derived from the host's real instructions/second.
+- **Other:** NOR flash with a program/erase command state machine (settings persist), the
+  hardware BCD ALU the number formatter needs, DMAC, INTC, CPG and friends.
 
 ## Status
 
-- ✅ Boots OS 3.60 from reset to the rendered **first-boot "Message Language"** screen.
-- ✅ **Keyboard input solved** — keys are injected by calling the OS's own scan-enqueue
-  routine as a subroutine (faithful: the key lands in exactly the queue the UI reads).
-- ✅ Driven through the entire first-boot setup (Language → Display → Power → Battery,
-  the battery confirm dialog, the post-setup note) to the **MAIN MENU** (3×4 app grid).
-- ✅ Go core validated against the Python oracle: a 53-case instruction conformance
-  suite + a 2000-checkpoint golden boot trace.
-- ⏳ Next: launching an app from the menu; `fls0` settings persistence.
-
-The empirically-mapped key matrix and the exact key sequence that reaches the main
-menu are documented in `RECON_NOTES.md` (see the cont.12 RESUME block).
+- ✅ Boots OS 3.60 from reset; provisioned once, resumes instantly at the **MAIN MENU**.
+- ✅ **All 18 built-in apps** launch and run (Run-Matrix computes and displays results, Graph
+  plots, Python lists scripts, …); MENU switches between them.
+- ✅ **Add-ins run** (verified with a user-built `.g3a`: launch, input, output, back to MENU).
+- ✅ Real keyboard path with OS auto-repeat; blinking cursor; frames presented only when the OS
+  pushes them (no half-drawn redraws).
+- ✅ **Android app** on a real phone: calculator-style keypad (F1–F6, D-pad, SHIFT/ALPHA
+  legends), haptics, multi-touch, save-state on pause.
+- ✅ Go core validated against the Python oracle: **68-case** instruction/MMU conformance suite,
+  a 2000-checkpoint golden boot trace, and transcript parity for the KEYSC and LCD models.
+- ⏳ Next: a key-by-key check on the phone, interpreter speed-ups, skin polish (S/A
+  annunciator state on the keys).
 
 ## Getting a flash dump
 
@@ -45,38 +70,48 @@ This repo intentionally ships **no** Casio code. Dump your own fx-CG50:
 - Place the resulting full flash image at **`os/flash_dump/flash_full.bin`** (16 MB).
   The `os/` directory is git-ignored precisely so firmware never gets committed.
 
-The Go golden-boot test (`emu_go/golden_test.go`) self-skips if the flash image or the
-(also un-committed, OS-derived) golden trace is absent. The instruction **conformance**
-test needs neither and runs standalone.
+Tests that need the flash image or a save-state self-skip when they are absent. The
+instruction **conformance** test needs neither and runs standalone.
 
-## Build & run (Go)
+## Build & run (desktop)
 
 ```sh
 # from the repo root, with your own flash_full.bin in os/flash_dump/
-go -C emu_go run . 360000000 30000
 
-# drive first-boot setup to the MAIN MENU via injected keypresses:
-go -C emu_go run . 360000000 30000 seq "1-9,1-9,1-9,1-9,6-9,6-9,1-9,1-9,2-1" 130000000 14000000
-
-# persistence: provision ONCE (drives first-boot to the menu and snapshots a save-state),
-# then every later boot resumes instantly at the MAIN MENU instead of re-running setup:
+# provision ONCE: boot fresh, drive first-boot setup to the MAIN MENU, snapshot a save-state
 go -C emu_go run . 450000000 30000 provision   # writes os/flash_dump/cg50_state.bin
-go -C emu_go run . 60000000 30000              # auto-resumes at the menu (no setup keys)
+
+# interactive: the calculator in your browser (screen + keyboard), resumes from the save-state
+go -C emu_go run . 0 30000 web                 # prints the http://127.0.0.1:<port> URL
 ```
 
-The save-state (CPU + DRAM/ILRAM/OCRAM + flash delta, gzip ~85 KB) is git-ignored under
-`os/`, since it is derived from executing the OS. Delete it to force a fresh first-boot.
+Web UI keys: digits/operators as typed, Enter = EXE, Backspace = DEL, Esc = EXIT,
+Home = MENU, arrows, F1–F6, Tab = SHIFT, `` ` `` = ALPHA (a–z type ALPHA letters),
+F9/F10 = save/reload state.
 
-Run modes are dispatched by the 3rd argument (`drive`, `key`, `seq`, `prof`, `wmap`,
-`flashwr`, …); see `emu_go/main.go`.
+The save-state (CPU + RAM + flash delta + peripheral registers, gzip ~100 KB) is git-ignored
+under `os/`, since it is derived from executing the OS. Delete it to force a fresh first-boot.
+Other run modes (`seq`, `key`, `prof`, `rtbench`, `wmap`, `flashwr`, …) are RE/diagnostic
+harnesses; see `emu_go/main.go`.
+
+## Android
+
+See [`android/README.md`](android/README.md): cross-compile the Go core with
+`android/build_go_lib.ps1`, build the app, then `adb push` your `flash_full.bin` and
+`cg50_state.bin` to the app's files directory.
 
 ## Tests
 
 ```sh
-go -C emu_go test ./...          # conformance (53) + golden boot (2000 checkpoints)
-python emu/conformance_gen.py    # regenerate the frozen conformance cases
-python emu/test_cpu.py           # replay them on the Python core
+go -C emu_go test .                  # conformance (68) + golden boot + device/e2e tests
+python emu/conformance_gen.py        # regenerate the frozen conformance cases (oracle)
+python emu/gen_golden.py             # regenerate the golden boot trace (oracle)
+python emu/test_cpu.py               # replay the conformance cases on the Python core
+python re/audit_keymap.py            # key labels vs the codes the OS produces
 ```
+
+Any change to CPU/MMIO behaviour goes into **both** `emu/` and `emu_go/`, followed by
+regenerating the goldens and running the Go tests.
 
 ## Legal
 

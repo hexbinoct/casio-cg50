@@ -1,11 +1,12 @@
 # fx-CG50 emulator — Android app
 
-A thin Android shell over the Go emulator core (`emu_go/`). Kotlin UI (a `SurfaceView` for
-the 384×216 screen + an on-screen keypad) calls a JNI shim (`app/src/main/cpp/native-lib.cpp`,
-built into `libcg50.so`) which forwards to the Go core's C ABI (`libcg50core.so`).
+A thin Android shell over the Go emulator core (`emu_go/`). Kotlin draws the 384×216 screen
+(`CalcSurfaceView`) and a calculator keypad (`KeypadView`), and talks to the core through a
+JNI shim (`app/src/main/cpp/native-lib.cpp`, built into `libcg50.so`) that forwards to the Go
+core's C ABI (`libcg50core.so`, see [`docs/ANDROID.md`](../docs/ANDROID.md)).
 
 ```
-MainActivity / CalcSurfaceView / KeyMap  (Kotlin)
+MainActivity / CalcSurfaceView / KeypadView + KeyMap   (Kotlin)
         │ JNI  (NativeBridge external funs)
         ▼
  libcg50.so      native-lib.cpp  — JNI shim
@@ -26,13 +27,18 @@ No Casio firmware ships here. You supply your own dump at runtime (see below).
    This writes `app/src/main/jniLibs/{arm64-v8a,x86_64}/libcg50core.so`. Re-run it whenever
    `emu_go/` changes. (The `.so`s are git-ignored — they're build output.)
 
-2. **Open `android/` in Android Studio** and let Gradle sync. Build/run the app (`app`).
+2. **Build the app**, either in Android Studio (open `android/`, run `app`) or from the
+   command line:
+   ```powershell
+   android/gradlew.bat -p android :app:assembleDebug
+   adb install -r android/app/build/outputs/apk/debug/app-debug.apk
+   ```
    CMake links the JNI shim against the prebuilt `libcg50core.so` for the target ABI.
 
 3. **Provide your files** (the app reads them from its external files dir):
    ```sh
    adb push flash_full.bin /sdcard/Android/data/com.hexbinoct.cg50/files/
-   adb push cg50_state.bin /sdcard/Android/data/com.hexbinoct.cg50/files/   # optional, recommended
+   adb push cg50_state.bin /sdcard/Android/data/com.hexbinoct.cg50/files/   # recommended
    ```
    - `flash_full.bin` — your own 16 MB flash dump (required).
    - `cg50_state.bin` — a save-state provisioned to the MAIN MENU, so the app resumes there
@@ -41,16 +47,42 @@ No Casio firmware ships here. You supply your own dump at runtime (see below).
      go -C emu_go run . 450000000 30000 provision   # writes os/flash_dump/cg50_state.bin
      ```
      then push that file. (Without it the app cold-boots; on ARM that takes a while and lands
-     in the language wizard.)
+     in the language wizard.) The app creates the files dir on first launch — start it once
+     if `adb push` says the directory doesn't exist.
 
 The app snapshots back to `cg50_state.bin` on pause, so your session persists across launches.
 
-## Notes / tuning
+## The app
 
-- ABIs are limited to `arm64-v8a` (phones) and `x86_64` (Studio emulator) in
+- **Screen:** the LCD panel's contents (the core models the display controller), kept at the
+  panel's 384:216 aspect inside a bezel.
+- **Keypad** (`KeypadView.kt`, data in `KeyMap.kt`): the fx-CG50's physical layout — F1–F6;
+  SHIFT OPTN VARS MENU and ALPHA x² ^ EXIT beside a round D-pad; the two function rows; the
+  number pad. Yellow SHIFT and red ALPHA legends sit above each key as on the faceplate.
+  Touch down/up are real key press/release, so holding a key auto-repeats with the OS's own
+  timing; multi-touch works; each press gives a haptic tap. SHIFT/ALPHA are real keys: tap
+  one, then the target. `python re/audit_keymap.py` checks the labels against the codes the
+  OS produces for each matrix position.
+- **Time base:** `CalcSurfaceView` runs the core in ~60 fps slices (`instrPerFrame`, default
+  500 000) and reports the measured instructions/second to the core each second
+  (`setInstrPerSec`), which scales the emulated RTC, the 32.768 kHz counter and the key-scan
+  rate to real time; `setClock` sets the calendar from the phone's clock.
+- **Add-ins** (`.g3a` in your flash dump) run like on the calculator — select their icon on
+  the MAIN MENU.
+
+## Troubleshooting
+
+- **Wireless adb drops** when the phone's screen sleeps: wake it, then
+  `adb kill-server`, `adb mdns services`, and `adb connect <the listed _adb-tls-connect name>`.
+- **A resumed session shows garbage or ignores keys:** the saved `cg50_state.bin` was written
+  while the machine was in a bad state (e.g. an add-in run on a build without the MMU).
+  Force-stop the app, push a clean provisioned `cg50_state.bin`, and start it again.
+- **The core hit something it can't execute:** it halts rather than closing the app; the
+  reason is logged to logcat under the core's tag (`adb logcat -s cg50 cg50-key`).
+- ABIs are limited to `arm64-v8a` (phones) and `x86_64` (emulators) in
   `app/build.gradle.kts` — the two the Go script builds. Add `armeabi-v7a` to both if needed.
-- `CalcSurfaceView.instrPerFrame` (default 333 333 ≈ 20 M instr/s at 60 fps) is the pacing
-  knob; measure on your device and adjust.
-- Keypad layout + matrix coordinates live in `KeyMap.kt` (sourced from `re/KEYMAP.md`).
-- This is Phase 1: screen + keypad + resume/snapshot. SHIFT/ALPHA work as real keys (tap then
-  the target). Annunciators, long-press repeat, and a polished layout are follow-ups.
+
+## Not done yet
+
+- Annunciator state on the SHIFT/ALPHA keys (the OS shows it in its status bar already).
+- Release signing / a store build.
