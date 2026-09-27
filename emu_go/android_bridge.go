@@ -118,6 +118,17 @@ func EmuSetInstrPerSec(ips C.longlong) {
 	}
 }
 
+// EmuExecuted returns the instructions actually executed so far (idle cycles excluded); the
+// app sizes its per-frame budget from this.
+//
+//export EmuExecuted
+func EmuExecuted() C.longlong {
+	if gEmu == nil {
+		return 0
+	}
+	return C.longlong(gEmu.Executed())
+}
+
 // EmuSetClock sets the emulated RTC calendar (unix seconds).
 //
 //export EmuSetClock

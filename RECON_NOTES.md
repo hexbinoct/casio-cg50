@@ -9,7 +9,33 @@
   pending, so the next session can continue without being reminded.
 ============================================================================= -->
 
-> ## ⏯ RESUME HERE (last session end: 2026-09-27 cont.18q)
+> ## ⏯ RESUME HERE (last session end: 2026-09-27 cont.18r)
+>
+> ### ⚡ cont.18r — SPEED: menu auto-repeat was ~3.4× slower than the real calc. Partly fixed.
+> User: holding RIGHT on the MAIN MENU is ~3× slower on the phone than on the calc. **Measured (probe
+> TestRepeatRateProbe, desktop):** moves/s with RIGHT held = 8.6 @22M instr/s (old phone speed), 17.4 @44M,
+> 24.5 @66M, 29 @100M, 33 @150M (= the OS's 33 Hz repeat cap). Timing logic is right; it's throughput:
+> one menu move ≈ 1.7-2.5M instr, ~70% in the OS's generic per-pixel bitmap blitter (0x80056a40-0x80056bc0,
+> ~100 instr/pixel, calls setpixel 0x8005575c) and ~20% in 0x8017b920-0x8017ba40. Real calc: FRQCR =
+> 0x0F011112 (keyprobe) = stock ~118 MHz CPU → ~100M instr/s assumed (MAX_IPS).
+> **Done:** (1) `Emulator.Step` event scheduling — devices (KEYSC scan, timer, RTC periodic, key tapper)
+> only run at their next event (`nextDue`), MMIO writes set `MMIOBus.dirty` to force a recompute; a sleeping
+> CPU with nothing pending fast-forwards to the next event. `TestScheduledStepMatchesExact` proves it
+> bit-identical to per-instruction polling (`exactTick`) over a 292M-cycle mixed session. (2) `CPU.run`
+> tight loop + `Memory.fetch16` direct fetch for untranslated flash/DRAM. Desktop menu-hold benchmark
+> (`bench_probe_test.go`): 2.55× faster. (3) `Emulator.Executed()` / `EmuExecuted` (idle excluded).
+> (4) Android: **constant time base = MAX_IPS 100M** (set once) + step-time-adaptive frame budget
+> (±25%/frame, cap MAX_IPS/60). Lesson: feeding a measured 1-s ips back (old setInstrPerSec loop) or
+> sizing from "capacity" both fail — idle seconds inflate the rate so key repeat runs slow while busy, and
+> phone DVFS clocks down under light budgets. Constant time base = the machine just slows uniformly.
+> **Phone result:** 1.2 s RIGHT hold = 9 moves (was ~5; real calc 11+). Phone executes ~28M real instr/s.
+> **Open, biggest first:** (a) the synthetic 0x560 "timer" is really the OS-armed unit at 0xA4610000
+> (idle routine 0x802ae87a: +0x8A&=~0x2000, +0x8C=0, +0x88=0x42, +0x8C=0x8000 start, +0x8A=0x01CF; ISR
+> 0x801ded94 clears flags bits14/15 of +0x88/+0x8A). We fire it every 30k instr = ~3.3 kHz at 100M → ~11M
+> instr/s of ISR work even idle (≈40% of phone work during a hold). Real period unknown → write a probe
+> add-in (arm it like the OS, poll the flags vs the 32 kHz counter 0xA44D00D8) for the user to run.
+> (b) native (HLE) version of the blitter 0x80056xxx with a differential test vs the interpreter.
+> Windows box: last real boot 9 days ago + hibernations → absolute benchmarks unreliable (ask for reboot).
 >
 > ### ✅ cont.18q — ADD-INS RUN: SH-4A MMU (UTLB, ldtlb, translation, precise TLB exceptions).
 > User: their add-in **helomelo2** (menu icon J; cont.18h misread it as "heronics2"/"howdy") runs on the

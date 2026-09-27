@@ -44,6 +44,9 @@ object NativeBridge {
     /** Set the emulated calculator clock (unix seconds). */
     external fun setClock(unix: Long)
 
+    /** Instructions actually executed so far (idle cycles excluded) — sizes the frame budget. */
+    external fun executed(): Long
+
     /** Fill dst (width*height*4 bytes) with RGBA pixels; returns bytes written or -1. */
     external fun framebufferRGBA(dst: ByteArray): Int
 

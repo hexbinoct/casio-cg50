@@ -48,7 +48,8 @@ type CPU struct {
 	sr       uint32
 	cycles   uint64
 	pending  []pend
-	sleeping bool // `sleep` executed: halted until an interrupt is accepted
+	sleeping bool   // `sleep` executed: halted until an interrupt is accepted
+	idle     uint64 // cycles spent asleep (cycles - idle = instructions actually executed)
 	irqCnt   uint64
 	fpuOps   uint64
 }
@@ -120,6 +121,7 @@ func (c *CPU) step() {
 		// even with SR.BL set (SH-4: the request wakes the CPU; the exception itself is only
 		// accepted once BL/IMASK allow it — the OS sleeps with BL=1 and clears it after).
 		c.cycles++
+		c.idle++
 		if len(c.pending) != 0 {
 			c.sleeping = false
 		}
@@ -131,10 +133,28 @@ func (c *CPU) step() {
 		c.cycles++
 		return
 	}
-	op := c.mem.R16(c.pc)
+	op := c.mem.fetch16(c.pc)
 	c.pc += 2
 	c.execute(op)
 	c.cycles++
+}
+
+// run executes instructions until cycles reaches stop, an MMIO write happens (*dirty), or the
+// CPU sleeps — the same work as repeated step() calls on an awake CPU, in one tight loop.
+func (c *CPU) run(stop uint64, dirty *bool) {
+	for c.cycles < stop && !*dirty && !c.sleeping {
+		if len(c.pending) != 0 {
+			c.acceptInterrupt()
+		}
+		if c.mem.mmuAt {
+			c.stepMMU()
+		} else {
+			op := c.mem.fetch16(c.pc)
+			c.pc += 2
+			c.execute(op)
+		}
+		c.cycles++
+	}
 }
 
 // stepMMU executes one instruction with address translation on. MMU exceptions are precise:
@@ -202,7 +222,7 @@ func (c *CPU) callInject(addr uint32, args ...uint32) uint32 {
 }
 
 func (c *CPU) branchDelayed(target uint32) {
-	slot := c.mem.R16(c.pc)
+	slot := c.mem.fetch16(c.pc)
 	c.pc += 2
 	c.execute(slot)
 	c.pc = target

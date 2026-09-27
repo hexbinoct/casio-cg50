@@ -49,10 +49,10 @@ class MainActivity : AppCompatActivity() {
             "no save-state — cold boot (first-boot setup will show)"
         }
         binding.screenView.onEmulatorReady()
-        // Anchor emulated time to wall-clock: the core derives the RTC periodic interrupt (cursor
-        // blink / idle heartbeat), the 32.768 kHz counter and the 33 Hz key scan from our real
-        // throughput. Start from the frame budget; the render loop refines it from measurements.
-        NativeBridge.setInstrPerSec(binding.screenView.instrPerFrame * 60L)
+        // The time base: an emulated second = the real calculator's instructions per second. The
+        // core derives the RTC periodic interrupt (cursor blink / idle heartbeat), the 32.768 kHz
+        // counter and the 33 Hz key scan from it. Constant — see CalcSurfaceView.MAX_IPS.
+        NativeBridge.setInstrPerSec(CalcSurfaceView.MAX_IPS.toLong())
         NativeBridge.setClock(System.currentTimeMillis() / 1000L)
     }
 

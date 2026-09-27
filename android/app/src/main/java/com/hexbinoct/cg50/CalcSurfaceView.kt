@@ -38,6 +38,25 @@ class CalcSurfaceView @JvmOverloads constructor(context: Context, attrs: Attribu
      */
     var instrPerFrame = 500_000
 
+    /**
+     * Time base: the emulated machine runs at MAX_IPS — about the real fx-CG50 (SH7305 at
+     * ~118 MHz) — and that never changes (MainActivity sets it once). An emulated second is
+     * always MAX_IPS instructions, so the OS's clocks, key repeat and CPU work stay consistent.
+     *
+     * Budget: each frame runs up to MAX_IPS/60 instructions (real time), sized so step() takes
+     * about STEP_TARGET_NS of the 16.7 ms frame (the rest is blit + UI), changing by at most
+     * ±25% per frame. Idle frames are cheap (a sleeping CPU fast-forwards in the core), so the
+     * budget sits at real time; when this phone can't keep up with heavy OS work the budget
+     * shrinks and the whole machine slows uniformly — like a slower calculator — instead of the
+     * OS's timers drifting against its CPU work. (A per-second setInstrPerSec feedback did
+     * exactly that: idle seconds raised the rate, then key repeat ran at half speed while busy.)
+     */
+    companion object {
+        const val MAX_IPS = 100_000_000
+        const val MIN_PER_FRAME = 200_000
+        const val STEP_TARGET_NS = 11_000_000L
+    }
+
     init {
         holder.addCallback(this)
     }
@@ -94,12 +113,15 @@ class CalcSurfaceView @JvmOverloads constructor(context: Context, attrs: Attribu
         var statStepNs = 0L         // wall-time spent inside step()
         var statBlitNs = 0L         // wall-time spent pulling+blitting the frame
         var statFrames = 0          // render-loop iterations this window
+        var statExecuted = 0L       // instructions actually executed (idle excluded)
         while (running) {
             val t0 = System.nanoTime()
             if (emulatorReady) {
+                val exec0 = NativeBridge.executed()
                 val tStep = System.nanoTime()
                 NativeBridge.step(instrPerFrame)
                 val tBlit = System.nanoTime()
+                val executed = NativeBridge.executed() - exec0
                 NativeBridge.framebufferRGBA(buf)
                 bmp.copyPixelsFromBuffer(ByteBuffer.wrap(buf))
                 val c = holder.lockCanvas()
@@ -113,6 +135,12 @@ class CalcSurfaceView @JvmOverloads constructor(context: Context, attrs: Attribu
                 }
                 val tEnd = System.nanoTime()
                 statInstr += instrPerFrame
+                statExecuted += executed
+                val stepNs = maxOf(tBlit - tStep, 1L)
+                instrPerFrame = (instrPerFrame * STEP_TARGET_NS / stepNs)
+                    .coerceIn(instrPerFrame * 3L / 4, instrPerFrame * 5L / 4)
+                    .coerceIn(MIN_PER_FRAME.toLong(), (MAX_IPS / 60).toLong())
+                    .toInt()
                 statStepNs += tBlit - tStep
                 statBlitNs += tEnd - tBlit
                 statFrames++
@@ -124,16 +152,14 @@ class CalcSurfaceView @JvmOverloads constructor(context: Context, attrs: Attribu
                 val fps = statFrames * 1_000_000_000.0 / winNs
                 Log.i(
                     "cg50-perf",
-                    "ips=%.2fM fps=%.1f step=%.1fms/f blit=%.1fms/f (budget=%d)".format(
-                        ips / 1e6, fps,
-                        statStepNs / 1e6 / statFrames, statBlitNs / 1e6 / statFrames,
+                    "emulated=%.2fM/s (real calc=%dM) executed=%.2fM/s fps=%.1f step=%.1fms/f blit=%.1fms/f budget=%d".format(
+                        ips / 1e6, MAX_IPS / 1_000_000, statExecuted * 1e3 / winNs,
+                        fps, statStepNs / 1e6 / statFrames, statBlitNs / 1e6 / statFrames,
                         instrPerFrame
                     )
                 )
-                // feed the measured throughput back so emulated time tracks wall-clock
-                if (ips > 1_000_000) NativeBridge.setInstrPerSec(ips.toLong())
                 statWindowStartNs = System.nanoTime()
-                statInstr = 0L; statStepNs = 0L; statBlitNs = 0L; statFrames = 0
+                statInstr = 0L; statStepNs = 0L; statBlitNs = 0L; statFrames = 0; statExecuted = 0L
             }
             val sleep = frameNs - (System.nanoTime() - t0)
             if (sleep > 0) {

@@ -308,6 +308,7 @@ type MMIOBus struct {
 	watchBase uint32         // if nonzero, reads in [watchBase, watchBase+0x1000) are attributed to cpu.pc
 
 	timerPeriod uint64
+	dirty       bool           // set by every MMIO write: device event times may have moved (Emulator.Step)
 	keysc       *keyscUnit     // key-scan unit @0xA44B0000 (keysc.go): the real key path
 	dmac        *dmac          // DMA controller; streams LCD-bound transfers into lcd
 	lcd         *lcd           // R61524 panel controller: GRAM = what the user sees (lcd.go)
@@ -462,6 +463,7 @@ func (b *MMIOBus) Read(va, size uint32) uint32 {
 }
 
 func (b *MMIOBus) Write(va, size, val uint32) {
+	b.dirty = true
 	if b.scanCap {
 		b.captureScan(va, size, val, true)
 	}

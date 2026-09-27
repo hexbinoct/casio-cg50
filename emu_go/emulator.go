@@ -42,6 +42,12 @@ type Emulator struct {
 
 	downAt map[[2]uint32]uint64 // KeyDown cycle per held key (minimum-hold enforcement)
 
+	// due is the first cycle at which a device tick or the key tapper has work (see nextDue);
+	// Step runs the CPU alone until then. exactTick forces the old per-instruction polling
+	// (tests compare the two).
+	due       uint64
+	exactTick bool
+
 	// fault is set when the core hit something it cannot execute (an unmapped access, an
 	// unimplemented instruction): the machine halts there instead of the panic killing the
 	// host process (on Android that closed the app). Resume clears it.
@@ -210,14 +216,75 @@ func (e *Emulator) Step(n int) {
 			}
 		}
 	}()
-	for i := 0; i < n; i++ {
-		e.mmio.tick(e.cpu)
-		e.cpu.step()
-		e.tap.drive(e.mmio.keysc, e.cpu.cycles)
-		if len(e.pendingUp) != 0 {
-			e.flushReleases()
+	// Devices only act at scheduled cycles (KEYSC scan, periodic timer, RTC periodic IRQ, key
+	// tapper press/release), so polling them before every instruction is wasted work. The slow
+	// path below is exactly the old per-instruction loop body; it runs whenever something may
+	// be due: at/after `due`, after any MMIO write (event times may have moved), with deferred
+	// key releases pending, or at the first iteration (host calls happen between Steps). In
+	// between, the CPU runs alone — and while it sleeps with nothing pending, time jumps
+	// straight to the next event (the old loop only incremented cycles there).
+	end := e.cpu.cycles + uint64(n)
+	e.mmio.dirty = true
+	for e.cpu.cycles < end {
+		if e.mmio.dirty || e.cpu.cycles >= e.due || e.exactTick || len(e.pendingUp) != 0 {
+			e.mmio.dirty = false
+			e.mmio.tick(e.cpu)
+			e.cpu.step()
+			e.tap.drive(e.mmio.keysc, e.cpu.cycles)
+			if len(e.pendingUp) != 0 {
+				e.flushReleases()
+			}
+			e.due = e.nextDue()
+			continue
+		}
+		stop := min(e.due, end)
+		if e.cpu.sleeping {
+			if len(e.cpu.pending) == 0 {
+				e.cpu.idle += stop - e.cpu.cycles
+				e.cpu.cycles = stop // nothing can wake it before the next event
+			} else {
+				e.cpu.step() // a pending request wakes it
+			}
+			continue
+		}
+		e.cpu.run(stop, &e.mmio.dirty)
+	}
+}
+
+// nextDue is the earliest cycle at which the slow path in Step has anything to do: a device
+// tick (acts when cycles >= its time) or the key tapper (acts after the step that reaches its
+// time, i.e. from cycles == time-1).
+func (e *Emulator) nextDue() uint64 {
+	m := e.mmio
+	d := m.keysc.scanNext
+	if m.timerPeriod != 0 {
+		d = min(d, m.timerNext)
+		if m.rtc.rcr2&0x70 != 0 {
+			d = min(d, m.rtc.nextPeriodic)
 		}
 	}
+	tapAt := uint64(0)
+	switch {
+	case e.tap.active:
+		tapAt = e.tap.releaseAt
+	case len(e.tap.queue) != 0:
+		tapAt = e.tap.nextAt
+	default:
+		return d
+	}
+	if tapAt > 0 {
+		tapAt--
+	}
+	return min(d, tapAt)
+}
+
+// Executed returns how many instructions the CPU has actually executed (cycles spent asleep
+// excluded). Hosts size their per-frame budget from executed-instructions per host second —
+// the machine's real capacity — rather than from cheap idle frames.
+func (e *Emulator) Executed() uint64 {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.cpu.cycles - e.cpu.idle
 }
 
 // Fault returns why the core halted ("" while running normally).

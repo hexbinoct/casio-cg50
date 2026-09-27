@@ -392,6 +392,22 @@ func (m *Memory) span(va, n uint32) []byte {
 	return b
 }
 
+// fetch16 reads the instruction halfword at pc. Untranslated code in flash or DRAM (nearly all
+// execution) is read straight from the backing slice; anything else (MMU on, MMIO windows,
+// P4) takes the general Read path. Same result either way — this is only the hot path.
+func (m *Memory) fetch16(pc uint32) uint32 {
+	if !m.mmuAt && pc < 0xA4000000 {
+		p := pc & 0x1FFFFFFF
+		if p < FlashMutTop {
+			return uint32(m.flash[p])<<8 | uint32(m.flash[p+1])
+		}
+		if p-DramBase < DramSize {
+			return uint32(m.dram[p-DramBase])<<8 | uint32(m.dram[p-DramBase+1])
+		}
+	}
+	return m.Read(pc, 2)
+}
+
 func (m *Memory) R8(va uint32) uint32  { return m.Read(va, 1) }
 func (m *Memory) R16(va uint32) uint32 { return m.Read(va, 2) }
 func (m *Memory) R32(va uint32) uint32 { return m.Read(va, 4) }

@@ -669,3 +669,175 @@ func TestPhoneStateProbe(t *testing.T) {
 		savePNG(t, e, "ph_"+k.n)
 	}
 }
+
+// Menu auto-repeat throughput: hold RIGHT at the MAIN MENU for 3 emulated seconds at a given
+// host speed (instructions per real second) and count completed cursor moves (LCD pushes).
+func TestRepeatRateProbe(t *testing.T) {
+	flash, _ := os.ReadFile("../os/flash_dump/flash_full.bin")
+	st, _ := os.ReadFile("../os/flash_dump/cg50_state.bin")
+	for _, ips := range []uint64{22_000_000, 44_000_000, 66_000_000, 100_000_000, 150_000_000} {
+		e := NewEmulator(flash)
+		if err := e.Resume(st); err != nil {
+			t.Fatal(err)
+		}
+		e.SetInstrPerSecond(ips)
+		e.Step(1_000_000)
+		p0 := e.Pushes()
+		e.KeyDown(1, 7) // RIGHT
+		// first push = the initial press; repeats start after 20 scans (~0.6 s)
+		var firstRepeat uint64
+		c0 := e.Cycles()
+		for e.Cycles()-c0 < 3*ips {
+			n := e.Pushes()
+			e.Step(100_000)
+			if e.Pushes() > n && n > p0 && firstRepeat == 0 {
+				firstRepeat = e.Cycles() - c0
+			}
+		}
+		e.KeyUp(1, 7)
+		moves := e.Pushes() - p0
+		t.Logf("ips=%3dM: %3d pushes in 3 s (first repeat at %.2f s) -> %.1f moves/s after the initial delay",
+			ips/1_000_000, moves, float64(firstRepeat)/float64(ips),
+			float64(moves-1)/(3-float64(firstRepeat)/float64(ips)))
+	}
+}
+
+// Where does one MAIN MENU cursor move spend its instructions? Exclusive instruction counts per
+// function (function = the call target on top of a shadow call stack), top 30.
+func TestMenuMoveProfile(t *testing.T) {
+	flash, _ := os.ReadFile("../os/flash_dump/flash_full.bin")
+	st, _ := os.ReadFile("../os/flash_dump/cg50_state.bin")
+	e := NewEmulator(flash)
+	if err := e.Resume(st); err != nil {
+		t.Fatal(err)
+	}
+	e.SetInstrPerSecond(100_000_000)
+	e.Step(2_000_000)
+	for !e.cpu.sleeping {
+		e.Step(1)
+	}
+	var targets []uint32 // shadow stack of function entry addresses
+	cur := uint32(0)
+	excl := map[uint32]int{}
+	total := 0
+	e.InjectKey(1, 7) // RIGHT
+	woke := false
+	for i := 0; i < 20_000_000; i++ {
+		if e.cpu.sleeping {
+			if woke && i > 200_000 {
+				break
+			}
+			e.Step(1)
+			continue
+		}
+		woke = true
+		pc0 := e.cpu.pc
+		op := e.mem.R16(pc0)
+		irq0 := e.cpu.irqCnt
+		e.Step(1)
+		excl[cur]++
+		total++
+		switch {
+		case e.cpu.irqCnt != irq0:
+			targets = append(targets, cur)
+			cur = e.cpu.pc
+		case op&0xF0FF == 0x400B || op&0xF000 == 0xB000 || op&0xF0FF == 0x0003:
+			if e.cpu.pr == pc0+4 {
+				targets = append(targets, cur)
+				cur = e.cpu.pc
+			}
+		case op == 0x000B || op == 0x002B: // rts / rte
+			if n := len(targets); n > 0 {
+				cur = targets[n-1]
+				targets = targets[:n-1]
+			}
+		}
+	}
+	type kv struct {
+		f uint32
+		n int
+	}
+	var l []kv
+	for f, n := range excl {
+		l = append(l, kv{f, n})
+	}
+	sort.Slice(l, func(i, j int) bool { return l[i].n > l[j].n })
+	t.Logf("one RIGHT move: %d instructions executed", total)
+	for i, x := range l {
+		if i >= 30 {
+			break
+		}
+		t.Logf("  %08x %9d  %5.1f%%", x.f, x.n, 100*float64(x.n)/float64(total))
+	}
+}
+
+// PC histogram (32-byte buckets) for one MAIN MENU cursor move.
+func TestMenuMoveHotspots(t *testing.T) {
+	flash, _ := os.ReadFile("../os/flash_dump/flash_full.bin")
+	st, _ := os.ReadFile("../os/flash_dump/cg50_state.bin")
+	e := NewEmulator(flash)
+	if err := e.Resume(st); err != nil {
+		t.Fatal(err)
+	}
+	e.SetInstrPerSecond(100_000_000)
+	e.Step(2_000_000)
+	for !e.cpu.sleeping {
+		e.Step(1)
+	}
+	h := map[uint32]int{}
+	total := 0
+	e.InjectKey(1, 7) // RIGHT
+	for i := 0; i < 20_000_000; i++ {
+		if e.cpu.sleeping {
+			if total > 200_000 {
+				break
+			}
+			e.Step(1)
+			continue
+		}
+		h[e.cpu.pc&^31]++
+		total++
+		e.Step(1)
+	}
+	type kv struct {
+		a uint32
+		n int
+	}
+	var l []kv
+	for a, n := range h {
+		l = append(l, kv{a, n})
+	}
+	sort.Slice(l, func(i, j int) bool { return l[i].n > l[j].n })
+	t.Logf("one RIGHT move: %d instructions", total)
+	cum := 0
+	for i, x := range l {
+		if i >= 20 {
+			break
+		}
+		cum += x.n
+		t.Logf("  %08x %9d %5.1f%% (cum %5.1f%%)", x.a, x.n, 100*float64(x.n)/float64(total), 100*float64(cum)/float64(total))
+	}
+}
+
+// What does the OS write to the ADC block (0xA4610000) at idle, and where from? Tells whether
+// the 0x560 interrupt is self-restarting (continuous conversions) or started by something else.
+func TestADCProbe(t *testing.T) {
+	flash, _ := os.ReadFile("../os/flash_dump/flash_full.bin")
+	st, _ := os.ReadFile("../os/flash_dump/cg50_state.bin")
+	e := NewEmulator(flash)
+	if err := e.Resume(st); err != nil {
+		t.Fatal(err)
+	}
+	e.SetInstrPerSecond(100_000_000)
+	e.Step(5_000_000)
+	n := 0
+	e.mem.mmioHook = func(va, size, val uint32) {
+		if va&^0xFF == 0xA4610000 && n < 24 {
+			t.Logf("  @%9d w%d %08x = %04x (pc %08x) irqs=%d", e.cpu.cycles, size*8, va, val, e.cpu.pc, e.mmio.timerTicks)
+			n++
+		}
+	}
+	t0 := e.mmio.timerTicks
+	e.Step(1_000_000)
+	t.Logf("in 1M instr: %d synthetic 0x560 IRQs, %d ADC-block writes logged", e.mmio.timerTicks-t0, n)
+}
