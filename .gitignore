@@ -23,6 +23,8 @@ emu_go/eval_calls.txt
 # Screenshots / framebuffer renders of the copyrighted on-screen UI.
 *.png
 *.bmp
+# ...except our own add-in icons (fxSDK needs them to build the probes).
+!tools/*/assets-cg/*.png
 
 # Personal tooling tied to a private endpoint — not part of the emulator.
 tools/push_note.py
