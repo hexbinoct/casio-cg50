@@ -18,6 +18,7 @@ import (
 	"os"
 	"sort"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 )
@@ -239,6 +240,17 @@ func TestDasmSwap(t *testing.T) {
 	press := func(name string, r, c uint32) {
 		e.InjectKey(r, c)
 		shot(name, 30_000_000)
+	}
+	// DASM_KEYS=row-col,... replaces the scripted session below: one screenshot per key
+	// (cg50_dasm_k01.png, ...), e.g. to try a new DASM build's features.
+	if keys := os.Getenv("DASM_KEYS"); keys != "" {
+		for i, k := range strings.Split(keys, ",") {
+			var r, c uint32
+			if n, _ := fmt.Sscanf(k, "%d-%d", &r, &c); n == 2 {
+				press(fmt.Sprintf("dasm_k%02d", i+1), r, c)
+			}
+		}
+		return
 	}
 	press("dasm_01_F6_rom", 1, 9)
 	t.Logf("INTEVT accepts so far: %v", irqs)
