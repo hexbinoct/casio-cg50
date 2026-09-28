@@ -53,11 +53,13 @@
 > picker lists all 11 add-ins with sizes), BFile_Open returns handle 0x01000000, but BFile_Seek/BFile_Read
 > return 0 and the OS reads **no storage flash page at all** during the call (`Memory.flashRdHook` trace at
 > the end of `TestDasmSwap`; the add-in's cache page ends up 0xFF). Either the FTL/Fugue read path needs
-> RAM/peripheral state the snapshot lacks, or a handle-table quirk. **NEXT (decided with the user): chase
-> this on the emulator** — (1) check whether the OS's own Memory app reads file contents here
-> (`flashRdHook`); (2) pc histogram / syscall-entry hook (0x80020070, r0 = number) inside the add-in's
-> BFile_Open/Read to find where they bail; (3) fix + test, rerun `TestDasmSwap` until the file listing shows
-> real code. Plan detail: `september/cg50_addons/dasm/NOTES.md` RESUME block.
+> RAM/peripheral state the snapshot lacks, or a handle-table quirk. **The ordered task list lives in
+> `september/cg50_addons/dasm/NOTES.md` ("NEXT — do these one by one"):** Task 1 = the user runs DASM on
+> the real calc (title bar `rd4096` means file reads are fine there and this emulator gap is Task 2);
+> Task 2 = fix it here: (2a) does the OS's own Memory app read file contents on the emulator
+> (`flashRdHook`)? (2b) syscall-entry hook (0x80020070, r0 = number) / pc sampling inside the add-in's
+> BFile_Open/Read to find where they bail; (2c) fix + test, rerun `TestDasmSwap` until the file listing
+> shows real code.
 >
 > ## ⏯ (prev) RESUME HERE (last session end: 2026-09-27 cont.18u)
 
