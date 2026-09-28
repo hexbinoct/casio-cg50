@@ -9,7 +9,58 @@
   pending, so the next session can continue without being reminded.
 ============================================================================= -->
 
-> ## ⏯ RESUME HERE (last session end: 2026-09-27 cont.18u)
+> ## ⏯ RESUME HERE (last session end: 2026-09-28 cont.18v)
+>
+> ### 🧩 cont.18v — gint add-ins run on the emulator (for `september/cg50_addons/dasm`). All suites green.
+> **What:** the sibling project's first add-in (DASM, an on-device SH-4A disassembler built on gint 2.11)
+> ran into everything the OS never used. Added, each with unit tests, OS behaviour/goldens unchanged:
+> · **`gtimer.go`** — ETMU0-5 (0xA44D0030+0x20·i: TSTR/TCOR/TCNT/TCR, 32.768 kHz, TCR bit0 = UNIE,
+>   bit1 = UNF; INTEVT 0x9e0 0xc20 0xc40 0x900 0xd00 0xfa0) and TMU0-2 (0xA4490004 TSTR, ch at
+>   +0x08+0xC·i, Pφ/4·4^TPSC with Pφ = 29.4912 MHz, TCR bit5 UNIE bit8 UNF; 0x400/0x420/0x440). Counters
+>   are computed lazily, underflows are scheduled (`Emulator.nextDue`). The legacy free-counter view of
+>   +0xD8/+0xC8 stays until software programs ETMU5 (the golden was frozen with it). gint's driver init
+>   writes every register and spins until it reads back — the old stub never echoed, hence the hang.
+>   gint's `timer_configure(TIMER_ANY)` picks the highest free id → the keyboard scanner (128 Hz) runs on
+>   **ETMU5**.
+> · **`intc.go`** — the INTC (0xA4080000) is a real unit now: IPRA-L (+0x00..+0x2C, 16-bit), IMR0-12
+>   (+0x80.., write-1-sets), MSKCLR (+0xC0.., write-1-clears), reads return what was written (they read 0
+>   before, so the OS's RMWs kept only the last field). Every source goes through `MMIOBus.raise`: requested
+>   only with a nonzero priority field and a clear mask bit. Field positions: gint's table for TMU/ETMU/DMAC/
+>   RTC; the OS's own reprogramming (probe `TestDumpINTC`) for its tick **0x560 = IPRB[15:12] prio 12,
+>   IMR4 bit3** and **KEYSC 0xBE0 = IPRF[15:12] prio 13, IMR5 bit7**; the cold boot sets **RTC IPRK = 0x8000,
+>   MSKCLR10 = 3** at 5.3M instr. OS sources keep their old levels; add-in-only sources use the field. The
+>   unit is seeded with those OS defaults (a cold boot zeroes and reprograms everything itself; the menu
+>   snapshot has no INTC state). gint zeroes/masks all of it at start and restores on the world switch —
+>   without this the OS's tick landed in gint's empty vector gate → "illegal instruction at 0xe5200022".
+> · **DMAC**: real channel map (SH7724): ch0-3 at +0x20/+0x30/+0x40/+0x50, DMAOR +0x60, ch4-5 +0x70/+0x80
+>   (the OS's LCD push is **channel 0 at 0xFE008020**, not "ch2"). Memory-to-memory transfers are performed
+>   (SM/DM fixed/inc/dec, TS units; gint's `dma_memset` clears VRAM from a 32-byte pattern in IL memory);
+>   transfer-end IRQ (0x800+0x20·ch, 0xb80/0xba0) when CHCR.IE; **TE is tracked**: a write starts a
+>   transfer only with DE=1 and TE=0, completion sets TE — gint's world switch restores saved CHCRs with
+>   DE|TE set, which must not re-run the last transfer (it re-cleared VRAM and pushed half-drawn frames
+>   through the OS's 384-wide window → the smeared screens).
+> · **Memory**: X/Y + IL on-chip memories at 0xE5000000-0xE520FFFF (`Memory.xyram`, not in save-states);
+>   gint relocates its interrupt callback to 0xE5200020 and keeps its DMA pattern buffer at 0xE5200000.
+> · **Running a fresh .g3a without a Fugue writer:** `dasm_swap_test.go` (tag probe, `DASM_MODE=late`):
+>   resume the menu snapshot, launch icon J (helomelo2, header 0x00db4000, 9 pages, code 0x00dbb000/
+>   0x00dbc000), then overwrite those two code pages and put the rest at erased 0x007c0000.., extending the
+>   OS's add-in page table 0x8c04cf0c (the miss handler 0x8002c918 only rejects zero entries). Writing the
+>   file into flash *before* launch fails: the OS re-validates add-ins when it rebuilds the menu (checksums
+>   at 0x16 / 0x20 and more) and drops the icon. Screenshots `%TEMP%\cg50_dasm_*.png`; the whole scripted
+>   session (open picker → ROM listing → follow/back → hex → strings → header → open file → MENU back to the
+>   main menu) runs in 3.6 s.
+> **Open:** file content reads from an add-in fail on the emulator: BFile_FindFirst/Open/Size work (DASM's
+> picker lists all 11 add-ins with sizes), BFile_Open returns handle 0x01000000, but BFile_Seek/BFile_Read
+> return 0 and the OS reads **no storage flash page at all** during the call (`Memory.flashRdHook` trace at
+> the end of `TestDasmSwap`; the add-in's cache page ends up 0xFF). Either the FTL/Fugue read path needs
+> RAM/peripheral state the snapshot lacks, or a handle-table quirk. **NEXT (decided with the user): chase
+> this on the emulator** — (1) check whether the OS's own Memory app reads file contents here
+> (`flashRdHook`); (2) pc histogram / syscall-entry hook (0x80020070, r0 = number) inside the add-in's
+> BFile_Open/Read to find where they bail; (3) fix + test, rerun `TestDasmSwap` until the file listing shows
+> real code. Plan detail: `september/cg50_addons/dasm/NOTES.md` RESUME block.
+>
+> ## ⏯ (prev) RESUME HERE (last session end: 2026-09-27 cont.18u)
+
 >
 > **Sibling directory (2026-09-27): `F:\ru\myprojects\september\cg50_addons\`** — new add-in projects
 > (first: `dasm/`, an on-device SH-4A disassembler; then a field/contour plotter; later our own runtime

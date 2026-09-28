@@ -177,6 +177,6 @@ func (r *rtc) tick(cpu *CPU) {
 	if cpu.cycles >= r.nextPeriodic {
 		r.nextPeriodic += r.periodInstr()
 		r.rcr2 |= 0x80 // PEF
-		cpu.raiseIRQ(RTCINTEVT, RTCLevel)
+		r.bus.raise(cpu, RTCINTEVT, RTCLevel)
 	}
 }

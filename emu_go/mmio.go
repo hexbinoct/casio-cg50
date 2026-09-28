@@ -42,10 +42,11 @@ func (c *cpg) read(va, size uint32) uint32 {
 	return c.regs[off]
 }
 
-// DMAC: per channel (spaced 0x10) SAR +0, DAR +4, TCR +8, CHCR +0xC. OS waits on TE
-// (bit1); we complete instantly -> always report TE set. The OS pushes VRAM to the LCD
-// (area 5, DAR 0x14000000) with a DMA transfer; starting such a channel (CHCR.DE=1) is the
-// moment the real screen changes, so onLCDPush (if set) is told the source address then.
+// DMAC (SH7724 layout): channels 0-3 at +0x20,+0x30,+0x40,+0x50, DMAOR at +0x60, channels
+// 4-5 at +0x70,+0x80; per channel SAR +0, DAR +4, TCR +8, CHCR +0xC. The OS pushes VRAM to
+// the LCD (area 5, DAR 0x14000000) on channel 0 (+0x20); starting such a channel (CHCR.DE=1)
+// is the moment the real screen changes, so onLCDPush (if set) is told the source address
+// then. Transfer-end interrupts: DEI0-3 0x800/0x820/0x840/0x860, DEI4-5 0xb80/0xba0.
 type dmac struct {
 	base
 	bus       *MMIOBus
@@ -68,10 +69,18 @@ func dmaUnit(chcr uint32) uint32 {
 	return 32
 }
 
+// CHCR.TE (bit1) is tracked once software has written the channel: a transfer starts on a
+// write with DE=1 and TE=0 and sets TE when it completes (instantly); writing DE=1 with TE
+// still set does nothing, as on the real DMAC — gint's world switch restores every channel
+// register it saved, DE and TE included, and must not re-run the last transfer. A channel
+// never written reads TE=1 (idle), as it always did.
 func (d *dmac) read(va, size uint32) uint32 {
 	off := va - d.bs
 	if (off & 0xF) == 0xC {
-		return d.regs[off] | 0x2
+		if v, ok := d.regs[off]; ok {
+			return v
+		}
+		return 0x2
 	}
 	return d.regs[off]
 }
@@ -79,23 +88,79 @@ func (d *dmac) read(va, size uint32) uint32 {
 func (d *dmac) write(va, size, val uint32) {
 	off := va - d.bs
 	d.regs[off] = val
-	if (off&0xF) == 0xC && off < 0x40 && val&1 != 0 && d.regs[off-0xC+4]&0x1FFFFFFF == 0x14000000 {
-		sar := d.regs[off-0xC]
-		if d.bus != nil && d.bus.lcd != nil && d.bus.cpu != nil {
-			d.bus.lcd.dma(d.bus.cpu.mem.span(sar, min(d.regs[off-0xC+8]*dmaUnit(val), 1<<20)))
+	ch := -1
+	switch chOff := off &^ 0xF; {
+	case chOff >= 0x20 && chOff < 0x60:
+		ch = int(chOff-0x20) >> 4
+	case chOff == 0x70:
+		ch = 4
+	case chOff == 0x80:
+		ch = 5
+	}
+	if (off&0xF) == 0xC && ch >= 0 && val&1 != 0 && val&2 == 0 {
+		d.regs[off] = val | 0x2 // completes instantly
+		if d.regs[off-0xC+4]&0x1FFFFFFF == 0x14000000 {
+			sar := d.regs[off-0xC]
+			if d.bus != nil && d.bus.lcd != nil && d.bus.cpu != nil {
+				d.bus.lcd.dma(d.bus.cpu.mem.span(sar, min(d.regs[off-0xC+8]*dmaUnit(val), 1<<20)))
+			}
+			if d.onLCDPush != nil {
+				d.onLCDPush(sar)
+			}
+		} else if d.bus != nil && d.bus.cpu != nil {
+			// memory-to-memory transfer (gint's dma_memset/dma_memcpy: VRAM clears and
+			// copies from a fixed 32-byte pattern in IL memory); the OS only DMAs to the LCD
+			d.memTransfer(d.regs[off-0xC], d.regs[off-0xC+4], d.regs[off-0xC+8], dmaUnit(val), val)
 		}
-		if d.onLCDPush != nil {
-			d.onLCDPush(sar)
+		// the transfer completes instantly; CHCR.IE (bit2) asks for the transfer-end
+		// interrupt (gint's display driver sleeps on it; the OS never sets IE)
+		if val&4 != 0 && d.bus != nil && d.bus.cpu != nil {
+			d.bus.raise(d.bus.cpu, dmacINTEVT[ch], 0)
 		}
 	}
 }
 
-// INTC (0xA4080000, SH7724-style IPR/IMR/IMCR — NOT the keyboard; cont.18l). The OS
-// programs priorities/masks around its ISRs; masking isn't modelled (CPU-side IMASK/BL
-// gating suffices), and reads return 0 as they always did.
-type intcStub struct{ base }
+// dmaAddr maps a DMA (physical) address to the bus address the memory model serves: the
+// on-chip X/Y/IL memories keep their P4 address, everything else goes through the uncached
+// P2 alias.
+func dmaAddr(a uint32) uint32 {
+	if a-XyramBase < XyramSize {
+		return a
+	}
+	return 0xA0000000 | (a & 0x1FFFFFFF)
+}
 
-func (k *intcStub) read(va, size uint32) uint32 { return 0 }
+// memTransfer performs a whole DMAC transfer instantly: count units of unit bytes, with the
+// CHCR source/destination modes (SM bits 13:12, DM bits 15:14: 0 fixed, 1 increment,
+// 2 decrement). Capped at 4 MB.
+func (d *dmac) memTransfer(sar, dar, count, unit, chcr uint32) {
+	mem := d.bus.cpu.mem
+	if count*unit > 1<<22 {
+		count = (1 << 22) / unit
+	}
+	sm, dm := (chcr>>12)&3, (chcr>>14)&3
+	buf := make([]byte, unit)
+	for i := uint32(0); i < count; i++ {
+		for j := uint32(0); j < unit; j++ {
+			buf[j] = byte(mem.Read(dmaAddr(sar+j), 1))
+		}
+		for j := uint32(0); j < unit; j++ {
+			mem.Write(dmaAddr(dar+j), 1, uint32(buf[j]))
+		}
+		switch sm {
+		case 1:
+			sar += unit
+		case 2:
+			sar -= unit
+		}
+		switch dm {
+		case 1:
+			dar += unit
+		case 2:
+			dar -= unit
+		}
+	}
+}
 
 // ETMU: one-shot delays poll elapsed/underflow (bit15) at +0x60 -> report elapsed.
 type etmu struct{ base }
@@ -215,13 +280,13 @@ func (p *periphIRQ) adcTick(cpu *CPU) {
 	if p.swArmed && cpu.cycles >= p.swDoneAt {
 		p.swArmed = false
 		p.setTimerFlag()
-		cpu.raiseIRQ(TimerINTEVT, TimerLevel)
+		p.bus.raise(cpu, TimerINTEVT, TimerLevel)
 	}
 	if p.armed && cpu.idle >= p.doneAt {
 		p.armed = false
 		p.regs[0x8C] &^= 0x8000
 		p.setTimerFlag()
-		cpu.raiseIRQ(TimerINTEVT, TimerLevel)
+		p.bus.raise(cpu, TimerINTEVT, TimerLevel)
 	}
 }
 func (p *periphIRQ) setTimerFlag() { p.regs[0x88] |= 0xC000 }
@@ -235,33 +300,6 @@ func (x *intx) read(va, size uint32) uint32 {
 		return 0x40
 	}
 	return x.regs[va-x.bs]
-}
-
-// ETMUCounter (0xA44D0000): down-counter at +0xD8 used as a fine delay reference;
-// returns a value that decreases with cpu.cycles so delay loops complete.
-type etmuCounter struct {
-	base
-	bus *MMIOBus
-	// countDiv: instructions per counter tick. The real counter (0xA44D00D8, aliased at
-	// +0xC8) is a 32-bit down-counter at 32.768 kHz (measured on the calc: 65,533 counts in
-	// 2 s, tools/timerprobe 2026-09-27); hosts derive countDiv = instrPerSec/32768. 0 keeps the
-	// pre-2026-09-27 behaviour (every 4 instr, 24-bit) that the boot golden was frozen with.
-	countDiv uint64
-}
-
-func (e *etmuCounter) read(va, size uint32) uint32 {
-	off := (va - e.bs) & 0xFFFF
-	if off == 0xD8 || off == 0xC8 {
-		var cyc uint64
-		if e.bus != nil && e.bus.cpu != nil {
-			cyc = e.bus.cpu.cycles
-		}
-		if e.countDiv == 0 {
-			return uint32(-(cyc >> 2)) & 0xFFFFFF
-		}
-		return uint32(-(cyc / e.countDiv))
-	}
-	return e.regs[off]
 }
 
 // bcdALU: hardware multi-word BCD arithmetic unit @0xA4CB0000 (RE'd cont.18c, command
@@ -370,6 +408,8 @@ type MMIOBus struct {
 	regions   []region
 	periphIRQ *periphIRQ
 	etmu2     *etmuCounter
+	tmu       *tmu // TMU0-2 (gtimer.go); ETMU0-5 live in etmu2
+	intc      *intcUnit // priority/mask gate for every interrupt source (intc.go)
 	cpu       *CPU
 	unknown   map[uint32]int
 	watchPC   map[uint32]int // PC histogram of readers of watchBase region
@@ -457,6 +497,9 @@ func NewMMIOBus() *MMIOBus {
 	b.rtc = newRTC(b)
 	b.instrPerSec = 70_000_000
 	b.dmac = &dmac{base: newBase("DMAC", 0xFE008000, 0x1000), bus: b}
+	b.tmu = newTMU(b)
+	b.intc = newINTC()
+	b.keysc.bus = b
 	pfc := &base{nm: "PFC", bs: 0xA4050000, sz: 0x1000, regs: map[uint32]uint32{}}
 	b.lcd = newLCD(pfc)
 	b.ccn = &ccn{base: newBase("CCN", 0xFF000000, 0x1000)}
@@ -464,8 +507,8 @@ func NewMMIOBus() *MMIOBus {
 		&cpg{base: newBase("CPG", 0xA4150000, 0x1000)},
 		pfc,
 		&base{nm: "WDT", bs: 0xA4520000, sz: 0x1000, regs: map[uint32]uint32{}},
-		&intcStub{base: newBase("INTC", 0xA4080000, 0x1000)},
-		&base{nm: "TMU", bs: 0xA4490000, sz: 0x1000, regs: map[uint32]uint32{}},
+		b.intc,
+		b.tmu,
 		&etmu{base: newBase("ETMU", 0xA44A0000, 0x1000)},
 		b.etmu2,
 		b.periphIRQ,
@@ -582,8 +625,10 @@ func (b *MMIOBus) regionRegs() map[string]map[uint32]uint32 {
 			out[x.nm] = x.regs
 		case *etmuCounter:
 			out[x.nm] = x.regs
-		case *intcStub:
+		case *tmu:
 			out[x.nm] = x.regs
+		case *intcUnit:
+			out[x.nm] = x.stateMap()
 		case *ccn:
 			out[x.nm] = x.stateMap()
 		case *rtc:
@@ -634,6 +679,10 @@ func (b *MMIOBus) restoreRegionRegs(saved map[string]map[uint32]uint32) {
 			x.restoreState(m)
 			continue
 		}
+		if x, isI := r.(*intcUnit); isI {
+			x.restoreState(m)
+			continue
+		}
 		if x, isP := r.(*periphIRQ); isP {
 			for k := range x.regs {
 				delete(x.regs, k)
@@ -662,7 +711,7 @@ func (b *MMIOBus) restoreRegionRegs(saved map[string]map[uint32]uint32) {
 			dst = x.regs
 		case *etmuCounter:
 			dst = x.regs
-		case *intcStub:
+		case *tmu:
 			dst = x.regs
 		}
 		if dst == nil {
@@ -688,6 +737,7 @@ func (b *MMIOBus) applyLegacyResumeDefaults() {
 		}
 	}
 	b.keysc.resumeDefaults()
+	b.intc.seedOSDefaults()
 	b.lcd.restoreState(nil)
 }
 
@@ -714,12 +764,14 @@ func (b *MMIOBus) tick(cpu *CPU) {
 		return // pure-boot mode (goldens): no interrupt sources at all
 	}
 	b.rtc.tick(cpu)
+	b.etmu2.tick(cpu)
+	b.tmu.tick(cpu)
 	if b.periphIRQ.adcMode {
 		b.periphIRQ.adcTick(cpu)
 	} else if cpu.cycles >= b.timerNext {
 		b.timerNext = cpu.cycles + b.timerPeriod
 		b.timerTicks++
 		b.periphIRQ.setTimerFlag()
-		cpu.raiseIRQ(TimerINTEVT, TimerLevel)
+		b.raise(cpu, TimerINTEVT, TimerLevel)
 	}
 }

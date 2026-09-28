@@ -278,6 +278,7 @@ func (e *Emulator) nextDue() uint64 {
 		if m.rtc.rcr2&0x70 != 0 {
 			d = min(d, m.rtc.nextPeriodic)
 		}
+		d = min(d, m.etmu2.next(), m.tmu.next()) // gint's timers (gtimer.go)
 	}
 	tapAt := uint64(0)
 	switch {

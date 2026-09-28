@@ -20,6 +20,10 @@ const (
 	IlramSize   = 0x00010000 // 64 KB
 	OcramBase   = 0xFE200000 // on-chip RAM the OS uses for kernel lists/structs (swept 0xFE380000.. etc)
 	OcramSize   = 0x00200000 // 2 MB: covers 0xFE224000, 0xFE2FFC24, 0xFE380000-8BFFC, 0xFE3C0000, 0xFE3FFD00
+	// X/Y memory (0xE5007000/0xE5017000, gint's .xyram at 0xE500E000) and the IL memory at
+	// 0xE5200000 where gint relocates its interrupt callback; the OS never touches them.
+	XyramBase = 0xE5000000
+	XyramSize = 0x00210000
 )
 
 // NOR-flash command-state-machine states (AMD/Spansion JEDEC command set). The fls0
@@ -45,6 +49,7 @@ type Memory struct {
 	romSize uint32
 	flash   []byte // mutable NOR array [0, FlashMutTop): image copy then 0xFF; program/erase mutate it
 	dram    []byte
+	xyram   []byte // X/Y + IL on-chip memories at 0xE5000000 (not in save-states)
 	ilram   []byte
 	ocram   []byte // on-chip RAM at OcramBase
 	mmio    *MMIOBus
@@ -70,6 +75,7 @@ type Memory struct {
 	wrLo, wrHi uint32
 	wrHook     func(phys, size, val uint32)
 	mmioHook   func(va, size, val uint32) // investigation: every MMIO write (nil = off)
+	flashRdHook func(phys, size uint32)   // investigation: data reads from flash (nil = off)
 
 	// NOR command state machine
 	fcmd   int
@@ -93,6 +99,7 @@ func NewMemory(osImage []byte, mmio *MMIOBus) *Memory {
 		romSize: uint32(len(osImage)),
 		flash:   flash,
 		dram:    make([]byte, DramSize),
+		xyram:   make([]byte, XyramSize),
 		ilram:   make([]byte, IlramSize),
 		ocram:   make([]byte, OcramSize),
 		mmio:    mmio,
@@ -119,6 +126,9 @@ func (m *Memory) Read(va, size uint32) uint32 {
 		if va >= IlramBase && va < IlramBase+IlramSize {
 			return beRead(m.ilram, va-IlramBase, size)
 		}
+		if va-XyramBase < XyramSize {
+			return beRead(m.xyram, va-XyramBase, size)
+		}
 		if va >= OcramBase && va < OcramBase+OcramSize {
 			return beRead(m.ocram, va-OcramBase, size)
 		}
@@ -143,6 +153,9 @@ func (m *Memory) Read(va, size uint32) uint32 {
 	}
 	phys := va & 0x1FFFFFFF
 	if phys < FlashSize {
+		if m.flashRdHook != nil {
+			m.flashRdHook(phys, size)
+		}
 		if phys < FlashMutTop {
 			return beRead(m.flash, phys, size) // array-read mode (mutable NOR)
 		}
@@ -166,6 +179,10 @@ func (m *Memory) Write(va, size, val uint32) {
 	if va >= 0xE0000000 {
 		if va >= IlramBase && va < IlramBase+IlramSize {
 			beWrite(m.ilram, va-IlramBase, size, val)
+			return
+		}
+		if va-XyramBase < XyramSize {
+			beWrite(m.xyram, va-XyramBase, size, val)
 			return
 		}
 		if va >= OcramBase && va < OcramBase+OcramSize {
@@ -384,6 +401,9 @@ func (m *Memory) LoadFlashDelta(path string) (int, error) {
 func (m *Memory) span(va, n uint32) []byte {
 	if p := va & 0x1FFFFFFF; p >= DramBase && p+n <= DramBase+DramSize {
 		return m.dram[p-DramBase : p-DramBase+n]
+	}
+	if va-XyramBase < XyramSize && va-XyramBase+n <= XyramSize {
+		return m.xyram[va-XyramBase : va-XyramBase+n]
 	}
 	b := make([]byte, n) // DMA addresses are physical: read through the uncached P2 alias
 	for i := uint32(0); i < n; i++ {

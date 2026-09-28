@@ -52,6 +52,7 @@ const (
 type keyscUnit struct {
 	base
 	held       [6]uint16 // live matrix: word = col>>1, bit = row + 8*(col&1)
+	bus        *MMIOBus  // interrupt gate (nil in unit tests that build the unit alone)
 	ctrl, mode uint32
 	ie, flags  uint32
 	scanPeriod uint64
@@ -172,7 +173,11 @@ func (k *keyscUnit) tick(cpu *CPU) {
 	}
 	k.wasHeld = held
 	if k.flags&k.ie != 0 {
-		cpu.raiseIRQ(KeyscINTEVT, KeyscLevel)
+		if k.bus != nil {
+			k.bus.raise(cpu, KeyscINTEVT, KeyscLevel)
+		} else {
+			cpu.raiseIRQ(KeyscINTEVT, KeyscLevel)
+		}
 	}
 }
 
