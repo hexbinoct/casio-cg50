@@ -47,3 +47,6 @@ tools/fxsdk-docker/build.log
 
 # fetched on demand by re/audit_keymap.py (third-party libfxcg header)
 re/libfxcg_keyboard.h
+
+# macOS Finder metadata
+.DS_Store

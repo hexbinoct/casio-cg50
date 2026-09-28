@@ -100,7 +100,7 @@ func main() {
 		timerPeriod = parseUint(os.Args[2])
 	}
 
-	img, err := os.ReadFile("../os/flash_dump/flash_full.bin")
+	img, err := os.ReadFile(bootImagePath)
 	if err != nil {
 		fmt.Println("error:", err)
 		return
@@ -114,6 +114,12 @@ func main() {
 	mmio.watchPC = map[uint32]int{}
 	mmio.watchBase = 0xA4080000 // attribute reads of this region to the reader PC (KEYSC scan)
 	cpu.pc = 0x80000000
+	if os.Getenv("CG50_WARM") != "" {
+		// Power on from "off" instead of from a dead battery: the OS's power-off paths set this
+		// IL RAM word to 1, and the boot (FUN_80365238) skips the first-boot setup wizard only
+		// when it is 1. Needs a flash image whose fls0 is already set up (the 32 MB dump).
+		mem.W32(warmFlagAddr, 1)
+	}
 	mmio.timerPeriod = timerPeriod
 	mmio.timerNext = 0
 

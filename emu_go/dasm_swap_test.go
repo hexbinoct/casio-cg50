@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -30,8 +31,18 @@ func TestDasmSwap(t *testing.T) {
 	if err != nil {
 		t.Skip("no menu save-state")
 	}
-	g3a, err := os.ReadFile("../../../september/cg50_addons/dasm/DASM.g3a")
-	if err != nil {
+	// DASM_G3A overrides; otherwise the office layout (may/cg50 + september/cg50_addons)
+	// and the home-Mac layout (casio/casio-cg50 + casio/cg50_addons).
+	var g3a []byte
+	for _, p := range []string{os.Getenv("DASM_G3A"), "../../../september/cg50_addons/dasm/DASM.g3a", "../../cg50_addons/dasm/DASM.g3a"} {
+		if p == "" {
+			continue
+		}
+		if g3a, err = os.ReadFile(p); err == nil {
+			break
+		}
+	}
+	if g3a == nil {
 		t.Skip("no DASM.g3a: ", err)
 	}
 	const hdr = 0x00db4000
@@ -260,6 +271,14 @@ func TestDasmSwap(t *testing.T) {
 	press("dasm_08_F4_str", 3, 9)
 	press("dasm_09_F5_hdr", 2, 9)
 	press("dasm_10_F1_open", 6, 9)
+	// DASM_PICK=n opens the n-th file of the picker (0 = the first) instead of the first one.
+	if n, _ := strconv.Atoi(os.Getenv("DASM_PICK")); n > 0 {
+		for i := 0; i < n; i++ {
+			e.InjectKey(2, 7) // DOWN
+			e.Step(30_000_000)
+		}
+		savePNG(t, e, "dasm_10b_picked")
+	}
 	rdPages := map[uint32]int{}
 	e.mem.flashRdHook = func(phys, size uint32) {
 		if phys >= 0x00c00000 {
@@ -267,6 +286,9 @@ func TestDasmSwap(t *testing.T) {
 		}
 	}
 	press("dasm_11_exe_file", 2, 1)
+	// DASM prints the title bar before the rows fetch their pages, so the rd<rc> shown on the
+	// first frame is the open call's (always 0); one more frame shows the page reads' rc.
+	press("dasm_11b_down", 2, 7)
 	e.mem.flashRdHook = nil
 	t.Logf("storage pages read while opening the file: %d distinct", len(rdPages))
 	type pg struct{ p uint32; n int }

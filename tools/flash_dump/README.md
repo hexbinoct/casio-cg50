@@ -68,17 +68,17 @@ You'll get one file per region (named in `dump.c`). The important ones:
 
 | Name | Virtual addr | Size (start with) | Why |
 |------|--------------|-------------------|-----|
-| **flash_full** | `0x80000000` | full flash (16–32 MB) | OS **+ fls0 storage + system area** = the missing piece. THE key dump. |
+| **flash_full** | `0x80000000` | `0x02000000` (32 MB) | OS **+ fls0 storage + system area** = the missing piece. THE key dump. |
 | os | `0x80000000` | `0x00C00000` (12 MB) | cross-check vs our unpacked image (must match!) |
 | dram | `0x8C000000` | `0x00800000` (8 MB) | live RAM state = boot/runtime oracle |
 | ilram | `0xFD800000` | `0x00010000` (64 KB) | on-chip RAM (IRQ tables @0xFD80xxxx, kernel structs) |
 
 Notes:
-- **Flash size**: fx-CG50 flash is 16–32 MB. Dumping past the real end causes a bus
-  error (add-in crash) — not harmful, but you lose the transfer. `dump.c` walks
-  conservatively; start at 16 MB (`0x01000000`) and bump up if it completes cleanly.
-  gint's MPU/linker definitions document the exact `ROM` extent for SH7305 — check
-  `<gint/mpu/...>` / the `fxcg50.ld` in your gint install for the precise size.
+- **Flash size**: the fx-CG50 flash is **32 MB** (`0x02000000`; a full dump took ~3 min
+  over USB). Dump all of it: the fls0 storage continues past 16 MB (phys `0x01000000+`),
+  so a 16 MB dump boots but most files' contents are missing (the OS's FTL reads them
+  as 0xFF). Dumping past the real end causes a bus error (add-in crash) — not harmful,
+  but you lose the transfer.
 - The **uncached** mirror `0xA0000000` reads the same flash; use it if cached reads
   look odd. Dump RAM **after** the OS has booted normally for the best oracle.
 

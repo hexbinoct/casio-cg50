@@ -53,7 +53,12 @@ blinking cursor, and **third-party add-ins (`.g3a`)**.
 - ✅ Boots OS 3.60 from reset; provisioned once, resumes instantly at the **MAIN MENU**.
 - ✅ **All 18 built-in apps** launch and run (Run-Matrix computes and displays results, Graph
   plots, Python lists scripts, …); MENU switches between them.
-- ✅ **Add-ins run** (verified with a user-built `.g3a`: launch, input, output, back to MENU).
+- ✅ **Add-ins run** (verified with a user-built `.g3a`: launch, input, output, back to MENU),
+  including **gint** add-ins (ETMU/TMU timers, a real INTC, DMAC memory-to-memory transfers,
+  the X/Y/IL on-chip memories).
+- ✅ **Your own calculator, as it is:** from a full 32 MB dump and a *warm* boot the emulator
+  starts at your calculator's own MAIN MENU — every add-in you installed, your settings,
+  your files — and add-ins read and write storage (BFile) exactly as on the device.
 - ✅ Real keyboard path with OS auto-repeat; blinking cursor; frames presented only when the OS
   pushes them (no half-drawn redraws).
 - ✅ **Android app** on a real phone: calculator-style keypad (F1–F6, D-pad, SHIFT/ALPHA
@@ -71,8 +76,10 @@ blinking cursor, and **third-party add-ins (`.g3a`)**.
 This repo intentionally ships **no** Casio code. Dump your own fx-CG50:
 
 - Easiest: a gint/fxlink-based dumper — see `tools/flash_dump/README.md` and `dump.c`.
-- Place the resulting full flash image at **`os/flash_dump/flash_full.bin`** (16 MB).
-  The `os/` directory is git-ignored precisely so firmware never gets committed.
+- Dump the **whole 32 MB** flash and place it at **`os/flash_dump/flash_full.bin`**.
+  The storage memory (fls0) continues past 16 MB, so a 16 MB dump boots but most of your
+  files' contents are missing. The `os/` directory is git-ignored precisely so firmware
+  never gets committed; anything placed elsewhere in the repo is not.
 
 Tests that need the flash image or a save-state self-skip when they are absent. The
 instruction **conformance** test needs neither and runs standalone.
@@ -88,6 +95,20 @@ go -C emu_go run . 450000000 30000 provision   # writes os/flash_dump/cg50_state
 # interactive: the calculator in your browser (screen + keyboard), resumes from the save-state
 go -C emu_go run . 0 30000 web                 # prints the http://127.0.0.1:<port> URL
 ```
+
+**Warm boot — start at *your* calculator's MAIN MENU instead of first-boot setup.** A cold
+boot looks to the OS like a dead battery: when the calculator is switched off, its power-off
+routine sets a word in battery-backed on-chip RAM (`0xFD8017DC` = 1), and at power-on the OS
+skips the setup wizard only if that word is 1. `CG50_WARM=1` seeds it, so with a full 32 MB
+dump the emulator comes up exactly where your calculator was, add-ins and files included:
+
+```sh
+CG50_WARM=1 go -C emu_go run . 600000000 30000 provision none   # no setup keys, just snapshot
+go -C emu_go run . 0 30000 web
+```
+
+`CG50_FLASH=<image>` and `CG50_STATE=<save-state>` point the emulator at another flash image
+and save-state (e.g. to keep a second dump next to the first).
 
 Web UI keys: digits/operators as typed, Enter = EXE, Backspace = DEL, Esc = EXIT,
 Home = MENU, arrows, F1–F6, Tab = SHIFT, `` ` `` = ALPHA (a–z type ALPHA letters),

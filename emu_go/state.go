@@ -24,9 +24,26 @@ const stateMagic = "CG50ST01"
 // the OS think the display is off (PFC 0xA405013C bit4) and stop pushing frames to the LCD.
 const mmioMagic = "MMIO"
 
-// statePath is the default save-state file (git-ignored under os/, since it holds OS-derived
+// statePath is the save-state file (git-ignored under os/, since it holds OS-derived
 // RAM/flash bytes). Shared by the `provision`/auto-resume path in main and the web UI buttons.
-const statePath = "../os/flash_dump/cg50_state.bin"
+// CG50_STATE overrides it (e.g. a separate state for another flash image, see bootImagePath).
+var statePath = envOr("CG50_STATE", "../os/flash_dump/cg50_state.bin")
+
+// bootImagePath is the flash image main boots; CG50_FLASH overrides it (e.g. the 32 MB dump
+// os/flash_dump/flash_full_32mb.bin, which holds the whole fls0 storage).
+var bootImagePath = envOr("CG50_FLASH", "../os/flash_dump/flash_full.bin")
+
+// warmFlagAddr is the IL RAM word the OS's power-off routines (FUN_801dfe4a, FUN_801504e0)
+// set to 1 (2 = setup in progress); FUN_80365238 runs the first-boot wizard FUN_8035e1be
+// unless it is 1 and the model code *0xFD8018D4 is 0xCA02, then clears it. CG50_WARM seeds it.
+const warmFlagAddr = 0xFD8017DC
+
+func envOr(name, def string) string {
+	if v := os.Getenv(name); v != "" {
+		return v
+	}
+	return def
+}
 
 // snapshotRegs / restoreRegs marshal the architectural registers (raw banks: c.r is the
 // active bank, c.rbank1 the inactive one, and c.sr holds the RB bit — so restoring all

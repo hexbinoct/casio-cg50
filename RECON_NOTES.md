@@ -9,7 +9,32 @@
   pending, so the next session can continue without being reminded.
 ============================================================================= -->
 
-> ## ⏯ RESUME HERE (last session end: 2026-09-28 cont.18v)
+> ## ⏯ RESUME HERE (last session end: 2026-09-28 cont.18w, home Mac)
+>
+> ### 🔋 cont.18w — full 32 MB flash + warm boot: the emulator runs the calc's REAL storage
+> **Why add-in file reads failed (cont.18v "Open"):** not the emulator. `flash_full.bin` is a 16 MB dump;
+> fls0 continues at phys 0x01000000+, so most file clusters were missing (the OS's FTL maps them to
+> nothing and fills 0xFF without a flash read; files whose clusters sat below 16 MB — ProbSim, graph3dp,
+> text, helloWorld — read fine). **New dump:** `os/flash_dump/flash_full_32mb.bin` (FlashDump streaming
+> one 0x02000000 region, sha256 95ffe867…e052; 0..0xB80000 == June os.bin). `flash_full.bin` stays the
+> 16 MB image for goldens/suites/`cg50_state.bin`.
+> **Why a cold boot of it still ran first-boot setup:** `fls0_open` returns 0 with the full dump. The
+> wizard FUN_8035e1be runs from the tail of FUN_80365238 unless `*(u32*)0xFD8017DC == 1` and model
+> `*0xFD8018D4 == 0xCA02` (or flash 0xA0000300 is erased). 0xFD8017DC is an IL RAM word the power-off
+> routines FUN_801dfe4a / FUN_801504e0 set to 1 (not when it is 2 = setup running); the boot clears it.
+> Our cold boot zeroes IL RAM = a dead battery. (The cont.18f "-6 gate" was for the 16 MB image.)
+> **Shipped:** `main.go`/`state.go` — env `CG50_FLASH` (image), `CG50_STATE` (save-state), `CG50_WARM=1`
+> (seed `warmFlagAddr` = power-on from "off"); defaults unchanged. State for the 32 MB image:
+> `CG50_FLASH=../os/flash_dump/flash_full_32mb.bin CG50_STATE=../os/flash_dump/cg50_state_32mb.bin
+> CG50_WARM=1 go -C emu_go run . 600000000 30000 provision none` → MAIN MENU with the calc's real icons
+> (FlashDump, probes, DASM = icon Z). Web UI on it: same two paths + `go -C emu_go run . 0 30000 web`.
+> Probes (tag probe): `fls0_trace_test.go` (call tree + returns under any function: FLS0_FN, FLS0_DEPTH,
+> FLS0_IMG), `warm_boot_test.go`, `dasm_real_test.go` (resume the 32 MB state, press DASM_KEYS, one
+> screenshot per key), `dasm_swap_test.go` (+ Mac path, DASM_PICK, second frame). Suite + vet green.
+> Headless Ghidra on the Mac: project `casio/ghidra_cg50` (3.60 os.bin @0x80000000), `decomp.sh <addr>…`,
+> `refs.sh <value>…` (literal-pool refs + the instructions that load them).
+>
+> ## ⏯ (prev) RESUME HERE (last session end: 2026-09-28 cont.18v)
 >
 > ### 🧩 cont.18v — gint add-ins run on the emulator (for `september/cg50_addons/dasm`). All suites green.
 > **What:** the sibling project's first add-in (DASM, an on-device SH-4A disassembler built on gint 2.11)

@@ -23,14 +23,14 @@
 #include <gint/usb-ff-bulk.h>
 #include <stdint.h>
 
-/* Regions to dump. START CONSERVATIVE for flash size, then increase if it
- * completes (reading past real flash end faults). fx-CG50 flash is 16-32 MB. */
+/* Regions to dump. The fx-CG50 flash is 32 MB (verified 2026-09-28 by a full dump: the
+ * upper 16 MB is real fls0 data, not a mirror). */
 struct region { const char *name; uint32_t addr; uint32_t size; };
 
 static const struct region REGIONS[] = {
-    /* THE key dump: whole flash = OS + fls0 storage + system area.
-     * Start at 16 MB; if it finishes cleanly, bump to 0x02000000 (32 MB). */
-    { "flash_full", 0x80000000, 0x01000000 },
+    /* THE key dump: whole flash = OS + fls0 storage + system area. All 32 MB: fls0
+     * continues at phys 0x01000000+, so a 16 MB dump misses most of your files. */
+    { "flash_full", 0x80000000, 0x02000000 },
     /* OS region only (cross-check vs our unpacked image; must match). */
     { "os",         0x80000000, 0x00C00000 },
     /* Live RAM (boot/runtime oracle). */
