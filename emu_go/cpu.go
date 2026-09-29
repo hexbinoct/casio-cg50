@@ -1,7 +1,5 @@
 package main
 
-import "sort"
-
 // SH-4 / SH-4A integer + system core. Faithful port of emu/cpu.py.
 // FPU ops are stubbed (no-ops). Delayed branches modelled correctly.
 
@@ -94,22 +92,55 @@ func (c *CPU) raiseIRQ(intevt, level uint32) {
 	c.pending = append(c.pending, pend{level, intevt})
 }
 
+// The INTC evaluates requests when it accepts them, not only when they are raised: a request
+// whose source has since been disabled (priority field 0) is dropped — e.g. gint's ETMU5
+// key-scan tick left pending when gint hands the INTC back to the OS on a world switch; the
+// OS has no handler for it — and a masked source's request waits, neither accepted nor waking
+// the CPU, until it is unmasked (the peripheral keeps it asserted).
+func (c *CPU) intcGate(intevt uint32) (drop, masked bool) {
+	if c.mem == nil || c.mem.mmio == nil || c.mem.mmio.intc == nil {
+		return false, false
+	}
+	prio, m, known := c.mem.mmio.intc.gate(intevt)
+	return known && prio == 0, known && m
+}
+
+// gatePending drops the requests of disabled sources and returns the index of the request
+// the INTC would present (highest level, then highest INTEVT; masked ones skipped), or -1.
+func (c *CPU) gatePending() int {
+	best := -1
+	k := c.pending[:0]
+	for _, p := range c.pending {
+		drop, masked := c.intcGate(p.intevt)
+		if drop {
+			continue
+		}
+		k = append(k, p)
+		if masked {
+			continue
+		}
+		if i := len(k) - 1; best < 0 || p.level > k[best].level || (p.level == k[best].level && p.intevt > k[best].intevt) {
+			best = i
+		}
+	}
+	c.pending = k
+	return best
+}
+
 func (c *CPU) acceptInterrupt() bool {
 	if len(c.pending) == 0 || (c.sr&srBL) != 0 {
 		return false
 	}
 	imask := (c.sr & srIMASK) >> 4
-	sort.SliceStable(c.pending, func(i, j int) bool {
-		if c.pending[i].level != c.pending[j].level {
-			return c.pending[i].level < c.pending[j].level
-		}
-		return c.pending[i].intevt < c.pending[j].intevt
-	})
-	top := c.pending[len(c.pending)-1]
+	i := c.gatePending()
+	if i < 0 {
+		return false
+	}
+	top := c.pending[i]
 	if top.level <= imask {
 		return false
 	}
-	c.pending = c.pending[:len(c.pending)-1]
+	c.pending = append(c.pending[:i], c.pending[i+1:]...)
 	c.ssr = c.sr
 	c.spc = c.pc
 	c.sgr = c.r[15]
@@ -127,7 +158,7 @@ func (c *CPU) step() {
 		// accepted once BL/IMASK allow it — the OS sleeps with BL=1 and clears it after).
 		c.cycles++
 		c.idle++
-		if len(c.pending) != 0 {
+		if len(c.pending) != 0 && c.gatePending() >= 0 {
 			c.sleeping = false
 		}
 		return

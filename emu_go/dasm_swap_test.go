@@ -15,6 +15,9 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"image"
+	"image/color"
+	"image/png"
 	"os"
 	"sort"
 	"strconv"
@@ -242,12 +245,14 @@ func TestDasmSwap(t *testing.T) {
 		shot(name, 30_000_000)
 	}
 	// DASM_KEYS=row-col,... replaces the scripted session below: one screenshot per key
-	// (cg50_dasm_k01.png, ...), e.g. to try a new DASM build's features.
+	// (cg50_dasm_k01.png, ...), e.g. to try a new DASM build's features, plus the add-in's whole
+	// 396x224 frame (cg50_dasm_k01_full.png; the panel view above is the OS's 384x216 window).
 	if keys := os.Getenv("DASM_KEYS"); keys != "" {
 		for i, k := range strings.Split(keys, ",") {
 			var r, c uint32
 			if n, _ := fmt.Sscanf(k, "%d-%d", &r, &c); n == 2 {
 				press(fmt.Sprintf("dasm_k%02d", i+1), r, c)
+				saveAddinFrame(t, e, fmt.Sprintf("dasm_k%02d_full", i+1))
 			}
 		}
 		return
@@ -321,4 +326,31 @@ func TestDasmSwap(t *testing.T) {
 		t.Fatal(f)
 	}
 	fmt.Println("done")
+}
+
+// saveAddinFrame writes the frame a gint add-in last pushed to the LCD, whole: gint draws
+// 396x224 (the OS only shows the 384x216 window inside it, which is what savePNG renders).
+func saveAddinFrame(t *testing.T, e *Emulator, name string) {
+	const w, h = 396, 224
+	sar, ok := e.mmio.FrameSAR()
+	if !ok {
+		t.Logf("%s: no LCD DMA source", name)
+		return
+	}
+	buf := e.mem.span(sar, w*h*2)
+	img := image.NewRGBA(image.Rect(0, 0, w, h))
+	for p := 0; p < w*h; p++ {
+		c := uint16(buf[2*p])<<8 | uint16(buf[2*p+1])
+		img.SetRGBA(p%w, p/w, color.RGBA{uint8(c>>11) << 3, uint8(c>>5&0x3F) << 2, uint8(c&0x1F) << 3, 255})
+	}
+	path := fmt.Sprintf("%s/cg50_%s.png", os.TempDir(), name)
+	f, err := os.Create(path)
+	if err != nil {
+		t.Log(err)
+		return
+	}
+	defer f.Close()
+	if err := png.Encode(f, img); err != nil {
+		t.Log(err)
+	}
 }

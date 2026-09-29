@@ -86,6 +86,16 @@ func (k *intcUnit) enabled(intevt uint32) (bool, uint32) {
 	return true, prio
 }
 
+// gate reports a source's current INTC state: its priority field and whether its mask bit is
+// set. Sources the INTC model does not know are never gated (known = false).
+func (k *intcUnit) gate(intevt uint32) (prio uint32, masked, known bool) {
+	s, ok := intcSources[intevt]
+	if !ok {
+		return 0, false, false
+	}
+	return uint32(k.ipr[s.ipr]>>s.shift) & 0xF, k.imr[s.imr]&s.bit != 0, true
+}
+
 // seedOSDefaults gives a snapshot without INTC state the fields the OS had programmed for
 // the sources it uses (it re-programs the tick's and KEYSC's on every service, but the first
 // request after a resume needs them set): tick 12, KEYSC 13, RTC 8 (IPRK = 0x8000 and

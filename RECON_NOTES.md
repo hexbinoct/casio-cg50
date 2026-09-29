@@ -9,7 +9,27 @@
   pending, so the next session can continue without being reminded.
 ============================================================================= -->
 
-> ## ⏯ RESUME HERE (last session end: 2026-09-28 cont.18w, home Mac)
+> ## ⏯ RESUME HERE (last session end: 2026-09-29 cont.18x, home Mac)
+>
+> ### ⚡ cont.18x — interrupts are gated again when accepted (not only when raised)
+> **Bug:** DASM (cg50_addons) crashed on the emulator after ~1.3 s of whole-file analysis of a 2 MB
+> add-in, i.e. thousands of BFile reads = gint world switches: pc 0xf0f0f0f0, jumped to by the OS's
+> interrupt entry (0x80021552: handler = *(0xFD8010C8 + (INTEVT-0x40)>>3)) for **INTEVT 0xFA0 = ETMU5**,
+> gint's 128 Hz key-scan timer, whose slot in the OS's table is garbage. `MMIOBus.raise` checked the
+> INTC gate (priority field, mask bit) only when a request was raised; a request pending at the moment
+> gint restored the OS's INTC state (ETMU5 priority 0) was still delivered. Real hardware evaluates at
+> acceptance. **Fix (cpu.go):** `gatePending()` — when the CPU accepts (and when a request would wake it
+> from sleep), requests whose source now has priority 0 are dropped; masked ones wait (not accepted, do
+> not wake) until unmasked. Selection order unchanged (highest level, then INTEVT). `intc.go gate()`.
+> Test `TestINTCGateAtAcceptance` (fails on the old code); full suite + goldens green (21 s).
+> **Probes:** `dasm_real_test.go` DASM_LAUNCH=1 (start DASM from its menu icon Z on the 32 MB state),
+> DASM_SWAP=<g3a> (swap in a fresh build's code pages at launch, UTLB entries for 0x3xxxxx dropped),
+> per-key full 396x224 add-in frame (`saveAddinFrame`, from the LCD DMA source), long keys timed,
+> DASM_TRACE=<n> (single-step key n, dump the last 256 pc/pr/sp on a fault). `dasm_swap_test.go`
+> DASM_KEYS also saves the full frame. The panel screenshots (`savePNG`) show only the OS's 384x216
+> window: a gint add-in's first column and its bottom rows are cut there.
+>
+> ## ⏯ (prev) RESUME HERE (last session end: 2026-09-28 cont.18w, home Mac)
 >
 > ### 🔋 cont.18w — full 32 MB flash + warm boot: the emulator runs the calc's REAL storage
 > **Why add-in file reads failed (cont.18v "Open"):** not the emulator. `flash_full.bin` is a 16 MB dump;

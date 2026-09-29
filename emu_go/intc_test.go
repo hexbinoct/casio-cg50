@@ -70,3 +70,43 @@ func TestINTCGate(t *testing.T) {
 		t.Fatal("RTC should be masked by IMR10 bit1 after the round-trip")
 	}
 }
+
+// Requests are gated again when the CPU accepts them (2026-09-29): gint's ETMU5 key-scan tick
+// (INTEVT 0xfa0: IPRL[15:12], IMR8 bit1) raised just before a world switch must not reach the
+// OS once gint has restored the OS's INTC state (priority 0) — the OS's handler table has no
+// entry for it (DASM crashed in the emulator after thousands of BFile world switches). A
+// masked source's request waits instead, and is taken once unmasked.
+func TestINTCGateAtAcceptance(t *testing.T) {
+	mmio, mem, cpu := newTimerRig(1_000_000)
+	cpu.sr &^= srBL | srIMASK
+	mem.Write(0xA408002C, 2, 0x7000) // IPRL: ETMU5 priority 7
+	mem.Write(0xA40800E0, 1, 0x02)   // MSKCLR8: unmask
+	mmio.raise(cpu, 0xfa0, 0)
+	if !hasIRQ(cpu, 0xfa0) {
+		t.Fatal("ETMU5 not requested")
+	}
+	mem.Write(0xA408002C, 2, 0x0000) // the world switch restores the OS's IPRL
+	if cpu.acceptInterrupt() {
+		t.Fatalf("disabled source accepted (INTEVT %#x)", mem.Read(0xFF000028, 4))
+	}
+	if hasIRQ(cpu, 0xfa0) {
+		t.Fatal("a disabled source's request stays pending")
+	}
+	// masked: waits, then goes through once unmasked
+	mem.Write(0xA408002C, 2, 0x7000)
+	mmio.raise(cpu, 0xfa0, 0)
+	mem.Write(0xA40800A0, 1, 0x02) // IMR8: mask
+	if cpu.acceptInterrupt() || !hasIRQ(cpu, 0xfa0) {
+		t.Fatal("masked request accepted or lost")
+	}
+	cpu.sleeping = true
+	cpu.step()
+	if !cpu.sleeping {
+		t.Fatal("a masked request woke the CPU")
+	}
+	cpu.sleeping = false
+	mem.Write(0xA40800E0, 1, 0x02) // unmask
+	if !cpu.acceptInterrupt() || mem.Read(0xFF000028, 4) != 0xfa0 {
+		t.Fatal("unmasked request not accepted")
+	}
+}
