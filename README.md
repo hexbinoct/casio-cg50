@@ -67,6 +67,9 @@ blinking cursor, and **third-party add-ins (`.g3a`)**.
   a 2000-checkpoint golden boot trace, and transcript parity for the KEYSC and LCD models.
 - ✅ All keys behave like the real calculator (checked by hand on the phone, and every label
   audited against the codes the OS produces).
+- ⏳ Planned: the emulator as the everyday test device — a good-looking desktop app that
+  installs and runs any `.g3a` you drop on it, and the same app in the browser via WebAssembly
+  (the core already compiles to WASM). Plan: [`docs/DESKTOP_AND_WEB.md`](docs/DESKTOP_AND_WEB.md).
 - ⏳ Next: speed — held-key menu scrolling on a phone is still ~⅔ of the real calculator (ask
   Android for CPU clocks via performance hints; run the OS's bitmap blitter natively), then skin
   polish (S/A annunciator state on the keys).

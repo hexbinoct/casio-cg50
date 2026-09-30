@@ -11,6 +11,12 @@
 
 > ## ⏯ RESUME HERE (last session end: 2026-09-29 cont.18x, home Mac)
 >
+> **Direction (2026-09-30):** make the emulator the everyday test device instead of the calculator:
+> a good-looking desktop app (calculator skin, drop a `.g3a` to install + run it) and the same app in
+> the browser via WASM (`GOOS=js GOARCH=wasm` already builds). Plan + order in
+> `docs/DESKTOP_AND_WEB.md`; step 1 = an installer add-in that writes the `.g3a` through the OS's own
+> BFile so the file really exists in fls0.
+>
 > ### ⚡ cont.18x — interrupts are gated again when accepted (not only when raised)
 > **Bug:** DASM (cg50_addons) crashed on the emulator after ~1.3 s of whole-file analysis of a 2 MB
 > add-in, i.e. thousands of BFile reads = gint world switches: pc 0xf0f0f0f0, jumped to by the OS's
