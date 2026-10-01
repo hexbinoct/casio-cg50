@@ -1,6 +1,9 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"maps"
+)
 
 // SH7305 MMIO bus + peripheral stubs. Faithful port of emu/mmio.py.
 // Stubs return values that satisfy the OS poll loops (PLL ready, DMA done,
@@ -101,11 +104,22 @@ func (d *dmac) write(va, size, val uint32) {
 		d.regs[off] = val | 0x2 // completes instantly
 		if d.regs[off-0xC+4]&0x1FFFFFFF == 0x14000000 {
 			sar := d.regs[off-0xC]
+			n := min(d.regs[off-0xC+8]*dmaUnit(val), 1<<20)
+			fixed := (val>>12)&3 == 0 // SM=00: the same source unit every time
 			if d.bus != nil && d.bus.lcd != nil && d.bus.cpu != nil {
-				d.bus.lcd.dma(d.bus.cpu.mem.span(sar, min(d.regs[off-0xC+8]*dmaUnit(val), 1<<20)))
+				if fixed {
+					// a fill: DrawFrame (0x800561EE) paints the frame around the OS's area by
+					// repeating 32 bytes of the frame colour (FUN_800562A2)
+					unit := d.bus.cpu.mem.span(sar, dmaUnit(val))
+					for i := uint32(0); i < n; i += uint32(len(unit)) {
+						d.bus.lcd.dma(unit)
+					}
+				} else {
+					d.bus.lcd.dma(d.bus.cpu.mem.span(sar, n))
+				}
 			}
-			if d.onLCDPush != nil {
-				d.onLCDPush(sar)
+			if d.onLCDPush != nil && !fixed {
+				d.onLCDPush(sar) // a VRAM frame push
 			}
 		} else if d.bus != nil && d.bus.cpu != nil {
 			// memory-to-memory transfer (gint's dma_memset/dma_memcpy: VRAM clears and
@@ -624,9 +638,13 @@ func (b *MMIOBus) regionRegs() map[string]map[uint32]uint32 {
 		case *etmu:
 			out[x.nm] = x.regs
 		case *etmuCounter:
-			out[x.nm] = x.regs
+			m := maps.Clone(x.regs)
+			saveTimerChans(m, x.ch[:], x.cycles(), func(int) uint64 { return x.div() })
+			out[x.nm] = m
 		case *tmu:
-			out[x.nm] = x.regs
+			m := maps.Clone(x.regs)
+			saveTimerChans(m, x.ch[:], x.cycles(), x.div)
+			out[x.nm] = m
 		case *intcUnit:
 			out[x.nm] = x.stateMap()
 		case *ccn:
@@ -711,8 +729,16 @@ func (b *MMIOBus) restoreRegionRegs(saved map[string]map[uint32]uint32) {
 			dst = x.regs
 		case *etmuCounter:
 			dst = x.regs
+			m = restoreTimerChans(m, x.ch[:], x.cycles(), func(int) uint64 { return x.div() })
 		case *tmu:
 			dst = x.regs
+			// the prescaler (TCR) picks a channel's clock: restore the channels, then their timing
+			m = restoreTimerChans(m, x.ch[:], x.cycles(), func(int) uint64 { return 1 })
+			for i := range x.ch {
+				if c := &x.ch[i]; c.running {
+					c.nextUnf = c.startCyc + (uint64(c.tcnt)+1)*x.div(i)
+				}
+			}
 		}
 		if dst == nil {
 			continue

@@ -9,7 +9,78 @@
   pending, so the next session can continue without being reminded.
 ============================================================================= -->
 
-> ## ⏯ RESUME HERE (last session end: 2026-10-01 cont.18x, home Mac)
+> ## ⏯ RESUME HERE (last session end: 2026-10-01 cont.18y, home Mac)
+>
+> **cont.18y — install any `.g3a` (DESKTOP_AND_WEB step 1) + the phone app installs add-ins.**
+> **Done, verified:** `Emulator.InstallAddin(name, g3a)` (`emu_go/install.go`) has the *OS itself*
+> write `\\fls0\NAME.g3a`. No installer add-in was needed: `oscall.go callOS` borrows the OS's main
+> context while it sleeps in GetKey (all registers saved; the call runs with interrupts and devices
+> live, returns to the trap address 0xDEAD0000 caught by the HLE hook, then everything is restored
+> and the OS sleeps on). Sequence: sys_malloc 0x1F44 → Bfile_DeleteEntry 0x1DB4 →
+> Bfile_CreateEntry_OS 0x1DAE → Bfile_OpenFile_OS 0x1DA3 (2=WRITE) → Bfile_WriteFile_OS 0x1DAF in
+> 32 KB chunks → close → syscall **0x0017** = FUN_8002d1a4 (scan `\\fls0\*.g3a`, rebuild the add-in
+> table 0x8C0CB878; ≤ 99 add-ins, ≤ 2 MB, header checksum at 0x20 must equal the file's last 4 bytes).
+> **The MAIN MENU counts its icons only when entered** (FUN_8036427a → FUN_8036421e), so at the menu
+> (flag byte **0x8C0A3043** == 1, OS 3.60; fingerprinted via the literal at 0x80364448) the installer
+> taps `1` (Run-Matrix) *before* writing and MENU after (`tapAndSettle`): the fresh menu shows the
+> icon, and an add-in suspended under the menu (MENU inside an add-in keeps it mapped, MMU on) is
+> ended first, so even its own file can be replaced. Inside a running add-in: refused (errNotIdle).
+> **Emulator bug found + fixed (flash):** sector erase was instant and 64 KB. The OS's erase routine
+> (IL RAM 0xFD800BB6 → 0xFD800CA8) requires a status read with DQ7=0 then DQ3=1 right after the 0x30
+> command, then polls DQ7 (0xFD800D0E); an already-finished erase = -3 → FTL GC fails (-7/-12) →
+> Bfile_WriteFile_OS -31. Now (Go `memory.go` + Python `emu/memory.py`): **128 KB sectors** (the OS
+> masks 0xFFFE0000) and `eraseStatusReads`=4 data reads of the erasing sector return status (DQ7=0,
+> DQ6/DQ2 toggle, DQ3=1). Oracle transcript `emu/flash_selftest.py` → `emu/flash_golden.txt`, replayed
+> by `TestFlashGolden`; `TestFlashSectorEraseStatus`. Earlier "fls0 writes work" (first-boot wizard)
+> only programmed, never erased.
+> **Tests:** `install_test.go` (32 MB image; skips without it): install → read back via Bfile byte-
+> identical, menu icons +1, the add-in starts from its icon; reinstall replaces; over a suspended DASM
+> (icon Z). Fixture: our own `testdata/aluprobe.g3a`. Full suite green (24 s Mac).
+> **Android:** `EmuInstallAddin` (android_bridge.go, returns NULL or an error string) → JNI
+> `installAddin` → `NativeBridge.installAddin` (+ `busy` flag: the keypad skips native calls while the
+> machine is locked). MainActivity: prefers `flash_full_32mb.bin` + `cg50_state_32mb.bin` (EmuInit
+> seeds the warm-boot flag for >16 MB images), long-press → **Install add-in…** (SAF OpenDocument),
+> VIEW/SEND intent filters (application/octet-stream), `--es install NAME` (file in the files dir),
+> saves the state after each install. **Verified on the Mac's Android emulator** (AVD
+> Medium_Phone_API_36.1, arm64) with the real 32 MB dump: adb install (~5 s round trip), picker
+> install over a suspended DASM, icons persist across force-stop. **Then on the POCO X3** (Mac paired
+> for wireless debugging; serial `192.168.100.3:38977`): adb install of DASM in 3.7 s, new icon on
+> the MAIN MENU, launches. The office-signed APK had to be uninstalled first (different debug keys
+> per machine); the phone's old files are backed up in git-ignored `os/phone_backup_2026-10-01/`
+> and were pushed back. "Open with"/Share still untested on a device.
+> **Mac Android build now works:** `python3 android/build_go_lib.py` (new, cross-platform; finds the
+> NDK), `android/local.properties` (`sdk.dir`, git-ignored), Android Studio's JBR as JAVA_HOME;
+> `re/phone.py` runs on both machines (`CG50_SERIAL`, new `install X.g3a` and `firmware` commands).
+> **Same session, phone fixes (user: "the last line in DASM is hiding"):**
+> - **Whole panel on the phone:** gint add-ins draw 396x224; the OS uses panel columns 6..389, rows
+>   0..215 (H = 389 - x, V = y) and paints the rest with **DrawFrame** (syscall 0x02A8 →
+>   0x800561EE: 6 columns left/right + 8 rows at the bottom in the frame colour, IL RAM 0xFD8019E8,
+>   FrameColor 0x02A3, default white). `FramebufferRGBA`/`EmuWidth`/`EmuHeight` are now the whole
+>   panel (`lcd.renderPanel`, `PanelWidth/Height`); the Android view keeps 396:224. Desktop
+>   (`FramebufferRGB565`, webui, savePNG) still shows the OS's 384x216.
+> - **DMA fill bug:** DrawFrame fills via DMAC ch0 with a *fixed* 32-byte source (CHCR 0x00100400,
+>   SM=0, FUN_800562A2); LCD-bound DMA always streamed an incrementing source → junk in the frame.
+>   Fixed in `mmio.go` (fixed source repeats; a fill is not counted as a frame push).
+>   `TestLCDDMAFill`.
+> - **Save-states inside a gint add-in were dead** (the app snapshots on every pause): timers were
+>   restored as registers only (channels stopped, so gint's ETMU5 key scan never ran) and the
+>   X/Y/IL memories weren't saved. Now: timer channel state in the region maps (`timerKey`
+>   0xF0000000|ch<<8|field, gtimer.go), and optional trailing sections **XYRM** (xyram) and **GRAM**
+>   (the panel, so a resume shows exactly the screen) after MMIO; older states still load
+>   (no GRAM → seeded from VRAM inside the OS frame colour). `TestTimerChannelsSaveState`,
+>   `TestResumeInsideGintAddin`, `TestSaveStateRoundtrip` extended. Python oracle untouched
+>   (presentation/save-state only).
+> - Verified on the POCO X3: DASM full screen incl. the F-key bar; HOME → force-stop → restart
+>   resumes inside DASM and keys work. The phone's dead snapshot is kept as
+>   `cg50_state_32mb.dead-in-dasm.bin`. Wireless adb serial: use the mDNS name
+>   `adb-584c917b-jFkRGG._adb-tls-connect._tcp` (the port changes when the phone sleeps).
+> **NEXT:** (1) a shared debug keystore in the repo so office and Mac builds install over each
+> other; (2)
+> DESKTOP_AND_WEB step 2: the desktop app (webui.go upgrade + drag-and-drop calling InstallAddin);
+> (3) WASM. Small: a desktop CLI `install` mode that writes into `cg50_state_32mb.bin`, so probes can
+> use real installs instead of `DASM_SWAP`.
+>
+> ## ⏯ (prev) RESUME HERE (last session end: 2026-10-01 cont.18x, home Mac)
 >
 > **Session 2026-09-28…10-01 in one paragraph:** the repo was cloned to the home Mac (firmware copied
 > into the git-ignored `os/` by hand); the full **32 MB flash** was dumped (cont.18w; the 16 MB dump

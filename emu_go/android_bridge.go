@@ -33,6 +33,11 @@ var keyTag = C.CString("cg50-key")
 //export EmuInit
 func EmuInit(flash *C.uint8_t, n C.int) {
 	gEmu = NewEmulator(C.GoBytes(unsafe.Pointer(flash), n))
+	if n > 16<<20 {
+		// the whole 32 MB flash (real storage memory): a cold boot is a power-on from "off",
+		// not a dead battery, so the OS skips first-boot setup (CG50_WARM, cont.18w)
+		gEmu.mem.W32(warmFlagAddr, 1)
+	}
 	gEmu.EnableHLE(true) // native OS blitter (hle.go): ~4x less work per menu move
 	// Route the key state-machine diagnostics to Android logcat (tag cg50-key).
 	gEmu.dbg = func(s string) {
@@ -43,10 +48,10 @@ func EmuInit(flash *C.uint8_t, n C.int) {
 }
 
 //export EmuWidth
-func EmuWidth() C.int { return C.int(FbWidth) }
+func EmuWidth() C.int { return C.int(PanelWidth) }
 
 //export EmuHeight
-func EmuHeight() C.int { return C.int(FbHeight) }
+func EmuHeight() C.int { return C.int(PanelHeight) }
 
 // EmuResume restores a save-state blob (e.g. one provisioned to the MAIN MENU). 0 = ok.
 //
@@ -198,7 +203,7 @@ func EmuSetKeyScanPeriod(instr C.longlong) {
 //
 //export EmuFramebufferRGBA
 func EmuFramebufferRGBA(dst *C.uint8_t, capacity C.int) C.int {
-	need := FbWidth * FbHeight * 4
+	need := PanelWidth * PanelHeight * 4
 	if gEmu == nil || int(capacity) < need {
 		return -1
 	}
@@ -226,3 +231,19 @@ func EmuSnapshot(outLen *C.int) *C.uint8_t {
 
 //export EmuFree
 func EmuFree(p *C.uint8_t) { C.free(unsafe.Pointer(p)) }
+
+// EmuInstallAddin writes a .g3a into the calculator's storage memory through the OS's own file
+// system calls and refreshes the MAIN MENU (install.go). Returns NULL on success, else a
+// malloc'd error message the host shows and then frees with EmuFree. Runs ~100-150 M emulated
+// instructions: call it off the UI thread (the run loop just waits on the machine meanwhile).
+//
+//export EmuInstallAddin
+func EmuInstallAddin(name *C.char, data *C.uint8_t, n C.int) *C.char {
+	if gEmu == nil {
+		return C.CString("the emulator is not running")
+	}
+	if err := gEmu.InstallAddin(C.GoString(name), C.GoBytes(unsafe.Pointer(data), n)); err != nil {
+		return C.CString(err.Error())
+	}
+	return nil
+}

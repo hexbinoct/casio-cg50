@@ -11,6 +11,11 @@ per step, so no ad-hoc shell commands are needed).
   python re/phone.py hold X Y [ms] [n]   touch-hold (x,y) for ms (default 1200) n times (default 3),
                                          report LCD pushes (= menu moves) per hold from cg50-perf
   python re/phone.py tap X Y             single tap
+  python re/phone.py install X.g3a       push an add-in and install it into the running emulator
+                                         (the OS writes it to fls0; the MAIN MENU gets its icon)
+  python re/phone.py firmware            push the 32 MB dump + its save-state (os/flash_dump/)
+Works on the office PC and the Mac. CG50_SERIAL picks the device (default: the POCO X3 over
+Wi-Fi on Windows, the only connected device elsewhere), e.g. CG50_SERIAL=emulator-5554.
 """
 import os
 import re
@@ -19,14 +24,21 @@ import sys
 import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-ADB = r"D:\files\Android_SDK\platform-tools\adb.exe"
-JAVA_HOME = r"D:\Installations\Java\jdk-26.0.1"
-SERIAL = "adb-584c917b-jFkRGG._adb-tls-connect._tcp"
+WINDOWS = os.name == "nt"
+if WINDOWS:
+    ADB = r"D:\files\Android_SDK\platform-tools\adb.exe"
+    JAVA_HOME = r"D:\Installations\Java\jdk-26.0.1"
+    SERIAL = os.environ.get("CG50_SERIAL", "adb-584c917b-jFkRGG._adb-tls-connect._tcp")
+else:  # the Mac: Android Studio's SDK and bundled JDK
+    ADB = os.path.expanduser("~/Library/Android/sdk/platform-tools/adb")
+    JAVA_HOME = "/Applications/Android Studio.app/Contents/jbr/Contents/Home"
+    SERIAL = os.environ.get("CG50_SERIAL", "")
 PKG = "com.hexbinoct.cg50"
+FILES = f"/sdcard/Android/data/{PKG}/files"
 
 
 def adb(*args, capture=False, check=True):
-    cmd = [ADB, "-s", SERIAL, *args]
+    cmd = [ADB, *(["-s", SERIAL] if SERIAL else []), *args]
     if capture:
         return subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8",
                               errors="replace", check=check).stdout
@@ -34,13 +46,17 @@ def adb(*args, capture=False, check=True):
 
 
 def golib():
-    subprocess.run(["pwsh", "-File", os.path.join(ROOT, "android", "build_go_lib.ps1")], check=True)
+    subprocess.run([sys.executable, os.path.join(ROOT, "android", "build_go_lib.py")], check=True)
 
 
 def apk():
     env = dict(os.environ, JAVA_HOME=JAVA_HOME)
-    subprocess.run([os.path.join(ROOT, "android", "gradlew.bat"), "-p", os.path.join(ROOT, "android"),
-                    ":app:installDebug", "--offline", "-q"], env=env, check=True)
+    if SERIAL:
+        env["ANDROID_SERIAL"] = SERIAL
+    gradlew = ["gradlew.bat"] if WINDOWS else ["sh", "gradlew"]
+    gradlew[-1] = os.path.join(ROOT, "android", gradlew[-1])
+    subprocess.run([*gradlew, "-p", os.path.join(ROOT, "android"), ":app:installDebug", "-q"],
+                   env=env, check=True)
 
 
 def start(adpf=True, speed=None):
@@ -71,8 +87,8 @@ def perf(secs=5):
 
 def shot(out=None):
     out = out or os.path.join(ROOT, "re", "_phone.png")
-    png = subprocess.run([ADB, "-s", SERIAL, "exec-out", "screencap", "-p"], capture_output=True,
-                         check=True).stdout
+    png = subprocess.run([ADB, *(["-s", SERIAL] if SERIAL else []), "exec-out", "screencap", "-p"],
+                         capture_output=True, check=True).stdout
     with open(out, "wb") as f:
         f.write(png)
     size = adb("shell", "wm", "size", capture=True).strip()
@@ -142,8 +158,31 @@ def back():
 def pull(dst=None):
     """Copy the phone's current save-state (written on every pause) to re/_phone_state.bin."""
     dst = dst or os.path.join(ROOT, "re", "_phone_state.bin")
-    adb("pull", f"/sdcard/Android/data/{PKG}/files/cg50_state.bin", dst)
+    adb("pull", f"{FILES}/cg50_state.bin", dst)
     print(f"pulled -> {dst} ({os.path.getsize(dst)} bytes)")
+
+
+def install(path):
+    """Push a .g3a to the app's files dir and have the running app install it (MainActivity
+    `--es install`): the emulated OS writes it to its storage memory, the MAIN MENU shows it."""
+    name = os.path.basename(path)
+    adb("push", path, f"{FILES}/{name}")
+    adb("logcat", "-c")
+    adb("shell", "am", "start", "-n", f"{PKG}/.MainActivity", "--es", "install", name)
+    for _ in range(60):  # the install takes a few seconds of emulated work
+        time.sleep(1)
+        out = adb("logcat", "-d", "-s", "cg50", capture=True)
+        done = [l for l in out.splitlines() if f"install {name}" in l]
+        if done:
+            print(done[-1])
+            return
+    print("no result in the log after 60 s (is the app running with a flash dump?)")
+
+
+def firmware():
+    """Push the user's own 32 MB dump + its MAIN MENU save-state (never part of the APK)."""
+    for f in ("flash_full_32mb.bin", "cg50_state_32mb.bin"):
+        adb("push", os.path.join(ROOT, "os", "flash_dump", f), f"{FILES}/{f}")
 
 
 if __name__ == "__main__":
@@ -180,6 +219,10 @@ if __name__ == "__main__":
         back()
     elif cmd == "pull":
         pull(rest[0] if rest else None)
+    elif cmd == "install":
+        install(rest[0])
+    elif cmd == "firmware":
+        firmware()
     else:
         print(__doc__)
         sys.exit(1)

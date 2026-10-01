@@ -186,9 +186,28 @@ func (l *lcd) renderOS(dst []byte) {
 	}
 }
 
-// seedFromVRAM fills the OS area of GRAM from a 384x216 big-endian RGB565 buffer (Resume:
-// GRAM is not in the save-state; at a snapshot the panel shows the last pushed VRAM).
-func (l *lcd) seedFromVRAM(src []byte) {
+// renderPanel writes the whole 396x224 panel into dst as big-endian RGB565: the OS's area
+// (panel columns 6..389, rows 0..215) plus the frame around it (6 columns left and right, 8
+// rows below), which the OS paints in its frame colour (DrawFrame) and gint add-ins use as
+// part of their 396x224 screen.
+func (l *lcd) renderPanel(dst []byte) {
+	for y := 0; y < panelH; y++ {
+		row := l.gram[y*panelW:]
+		for x := 0; x < panelW; x++ {
+			c := row[panelW-1-x]
+			dst[(y*panelW+x)*2] = byte(c >> 8)
+			dst[(y*panelW+x)*2+1] = byte(c)
+		}
+	}
+}
+
+// seedFromVRAM fills GRAM from a 384x216 big-endian RGB565 VRAM buffer and the frame around it
+// with the OS's frame colour (Resume: GRAM is not in the save-state; at a snapshot the panel
+// showed the last pushed VRAM inside the frame the OS last drew).
+func (l *lcd) seedFromVRAM(src []byte, frame uint16) {
+	for i := range l.gram {
+		l.gram[i] = frame
+	}
 	for y := 0; y < FbHeight; y++ {
 		for x := 0; x < FbWidth; x++ {
 			i := (y*FbWidth + x) * 2

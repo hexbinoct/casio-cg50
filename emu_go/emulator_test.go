@@ -22,14 +22,21 @@ func TestEmulatorFacade(t *testing.T) {
 	e.mem.dram[0], e.mem.dram[1] = 0xF8, 0x00
 	// 0x07E0 = full green at pixel 1.
 	e.mem.dram[2], e.mem.dram[3] = 0x07, 0xE0
-	rgba := make([]byte, FbWidth*FbHeight*4)
-	e.mmio.lcd.seedFromVRAM(e.mem.dram[:fbBytes]) // present the poked VRAM (no OS push in this test)
+	// FramebufferRGBA is the whole panel: OS pixel (0,0) is panel (6,0), the frame (colour
+	// 0x001F here) is around it.
+	rgba := make([]byte, PanelWidth*PanelHeight*4)
+	e.mmio.lcd.seedFromVRAM(e.mem.dram[:fbBytes], 0x001F) // present the poked VRAM (no OS push in this test)
 	e.FramebufferRGBA(rgba)
-	if rgba[0] != 0xF8 || rgba[1] != 0 || rgba[2] != 0 || rgba[3] != 0xFF {
-		t.Errorf("pixel0 RGBA = %v, want red", rgba[0:4])
+	if p := rgba[6*4:]; p[0] != 0xF8 || p[1] != 0 || p[2] != 0 || p[3] != 0xFF {
+		t.Errorf("OS pixel 0 RGBA = %v, want red", p[0:4])
 	}
-	if rgba[4] != 0 || rgba[5] != 0xFC || rgba[6] != 0 || rgba[7] != 0xFF {
-		t.Errorf("pixel1 RGBA = %v, want green", rgba[4:8])
+	if p := rgba[7*4:]; p[0] != 0 || p[1] != 0xFC || p[2] != 0 || p[3] != 0xFF {
+		t.Errorf("OS pixel 1 RGBA = %v, want green", p[0:4])
+	}
+	for _, xy := range [][2]int{{0, 0}, {5, 100}, {390, 0}, {395, 215}, {200, 216}, {395, 223}} {
+		if p := rgba[(xy[1]*PanelWidth+xy[0])*4:]; p[0] != 0 || p[1] != 0 || p[2] != 0xF8 {
+			t.Errorf("frame pixel %v RGBA = %v, want the frame colour (blue)", xy, p[0:4])
+		}
 	}
 	rgb565 := make([]byte, fbBytes)
 	e.FramebufferRGB565(rgb565)

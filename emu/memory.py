@@ -28,6 +28,8 @@ import struct
 OS_IMAGE_BASE = 0x00000000
 FLASH_SIZE = 0x08000000         # NOR flash address window (image is a prefix of it;
                                 # rest reads as 0xFF erased). Writes = flash commands.
+FLASH_SECTOR = 0x20000          # the OS erases 128 KB sectors (IL RAM erase routine masks 0xFFFE0000)
+ERASE_STATUS_READS = 4          # status reads a sector erase lasts (see emu_go/memory.go)
 FLASH_MUT_TOP = 0x02000000      # mutable/writable NOR extent (32MB): OS image + fls0 storage tail
 DRAM_BASE = 0x0C000000
 DRAM_SIZE = 0x00800000          # 8 MB (fx-CG50 has 8MB? adjust when confirmed)
@@ -62,6 +64,11 @@ class Memory:
         self.trace = False
         # NOR command state
         self._fcmd = _F_IDLE
+        # sector erase in progress: the next _erase_busy data reads of the erasing sector
+        # return the embedded-algorithm status (mirror of emu_go/memory.go flashStatus)
+        self._erase_busy = 0
+        self._erase_sect = 0
+        self._erase_tog = 0
         self._buf_rem = 0
         self._buf_w = []
 
@@ -109,6 +116,8 @@ class Memory:
             return self.mmio.read(va, size)
         if kind == "flash":
             if off < FLASH_MUT_TOP:
+                if self._erase_busy > 0 and off & ~(FLASH_SECTOR - 1) == self._erase_sect:
+                    return self._flash_status(size)
                 return int.from_bytes(self.flash[off:off + size], "big")  # array-read (mutable NOR)
             return (1 << (size * 8)) - 1                 # beyond mutable extent: erased 0xFF
         if kind == "unmapped":
@@ -131,6 +140,13 @@ class Memory:
         if kind == "unmapped":
             raise MemFault(f"write{size*8} 0x{val:x} to unmapped 0x{va:08x}")
         buf[off:off + size] = val.to_bytes(size, "big")
+
+    def _flash_status(self, size):
+        """Status read during a sector erase: DQ7=0 busy, DQ6/DQ2 toggle, DQ3=1 started."""
+        self._erase_busy -= 1
+        self._erase_tog ^= 0x44
+        st = 0x08 | self._erase_tog
+        return int.from_bytes(bytes([st]) * size, "big")
 
     # ---- NOR flash command state machine (mirror of emu_go/memory.go flashCmd) ----
     def _flash_cmd(self, phys, size, val):
@@ -164,10 +180,11 @@ class Memory:
             if c == 0x10:                          # chip erase
                 for i in range(FLASH_MUT_TOP):
                     self.flash[i] = 0xFF
-            elif c == 0x30:                        # sector erase (64KB) containing phys
-                s = phys & ~0xFFFF
-                for i in range(s, min(s + 0x10000, FLASH_MUT_TOP)):
+            elif c == 0x30:                        # sector erase (128 KB) containing phys
+                s = phys & ~(FLASH_SECTOR - 1)
+                for i in range(s, min(s + FLASH_SECTOR, FLASH_MUT_TOP)):
                     self.flash[i] = 0xFF
+                self._erase_busy, self._erase_sect = ERASE_STATUS_READS, s
             self._fcmd = _F_IDLE
         elif st == _F_BUFCOUNT:
             self._buf_rem = (val & 0xFFFF) + 1     # word count - 1 was written

@@ -1,6 +1,9 @@
 package main
 
 import (
+	"bytes"
+	"compress/gzip"
+	"io"
 	"path/filepath"
 	"testing"
 )
@@ -43,6 +46,8 @@ func TestSaveStateRoundtrip(t *testing.T) {
 	mem.Write(0xFF000010, 4, 7<<10|0x100)
 	mem.mmu.ldtlb()
 	mem.Write(0xFF000010, 4, 7<<10|0x101)
+	mem.xyram[0xE000] = 0x77         // gint's .xyram
+	mem.mmio.lcd.gram[216*panelW+10] = 0xBEEF // the panel (here a pixel of the frame)
 
 	path := filepath.Join(t.TempDir(), "st.bin")
 	if err := SaveState(path, cpu, mem); err != nil {
@@ -90,9 +95,36 @@ func TestSaveStateRoundtrip(t *testing.T) {
 	if c := mem2.mmio.ccn; !c.at || c.utlb[7].vpn != 0x00300000 || c.utlb[7].data != 0x0C01017C {
 		t.Errorf("MMU not restored: at=%v utlb[7]=%+v", c.at, c.utlb[7])
 	}
-	// GRAM isn't saved; resume seeds the panel from VRAM (dram[100] = pixel (50,0) high byte)
-	if c := mem2.mmio.lcd.gram[osOriginH-50]; c>>8 != 0xAB {
+	if mem2.xyram[0xE000] != 0x77 {
+		t.Error("X/Y/IL memories not restored")
+	}
+	if c := mem2.mmio.lcd.gram[216*panelW+10]; c != 0xBEEF {
+		t.Errorf("GRAM not restored: %#04x", c)
+	}
+
+	// a snapshot from before the GRAM section: resume seeds the panel from VRAM (dram[100] =
+	// pixel (50,0) high byte) inside a frame in the OS's frame colour
+	mem.W16(osFrameColor, 0x001F) // IL RAM: the OS's frame colour
+	raw, err := SnapshotBytes(cpu, mem)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gz, _ := gzip.NewReader(bytes.NewReader(raw))
+	data, _ := io.ReadAll(gz)
+	i := bytes.LastIndex(data, []byte(gramMagic))
+	var old bytes.Buffer
+	w := gzip.NewWriter(&old)
+	w.Write(data[:i])
+	w.Close()
+	mem3 := NewMemory(img, NewMMIOBus())
+	if err := ResumeBytes(old.Bytes(), NewCPU(mem3), mem3); err != nil {
+		t.Fatal(err)
+	}
+	if c := mem3.mmio.lcd.gram[osOriginH-50]; c>>8 != 0xAB {
 		t.Errorf("GRAM not seeded from VRAM on resume: %#04x", c)
+	}
+	if c := mem3.mmio.lcd.gram[216*panelW+10]; c != 0x001F {
+		t.Errorf("frame pixel %#04x, want the frame colour 0x001f", c)
 	}
 }
 

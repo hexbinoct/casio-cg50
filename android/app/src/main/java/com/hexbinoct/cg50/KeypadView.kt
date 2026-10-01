@@ -258,7 +258,7 @@ class KeypadView @JvmOverloads constructor(context: Context, attrs: AttributeSet
                 val i = ev.actionIndex
                 val slot = slotAt(ev.getX(i), ev.getY(i)) ?: return true
                 byPointer[ev.getPointerId(i)] = slot
-                if (slot.down++ == 0) {
+                if (slot.down++ == 0 && !NativeBridge.busy) { // installing: the machine is locked
                     val t = System.nanoTime()
                     NativeBridge.keyDown(slot.key.row, slot.key.col)
                     Log.i("cg50-key", "ui down ${slot.key.label} jni=${(System.nanoTime() - t) / 1000}us")
@@ -277,7 +277,7 @@ class KeypadView @JvmOverloads constructor(context: Context, attrs: AttributeSet
 
     private fun release(pointer: Int) {
         val slot = byPointer.remove(pointer) ?: return
-        if (--slot.down == 0) {
+        if (--slot.down == 0 && !NativeBridge.busy) { // the install releases all keys after
             val t = System.nanoTime()
             NativeBridge.keyUp(slot.key.row, slot.key.col)
             Log.i("cg50-key", "ui up   ${slot.key.label} jni=${(System.nanoTime() - t) / 1000}us")

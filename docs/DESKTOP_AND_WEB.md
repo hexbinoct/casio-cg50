@@ -37,6 +37,12 @@ Target experience:
 
 ### 1. Install any `.g3a` properly (the key piece)
 
+> **Done (2026-10-01, cont.18y):** `Emulator.InstallAddin` (`emu_go/install.go`). A variant of
+> (b) without an installer add-in: the emulator calls the OS's own Bfile syscalls in the OS's
+> idle main context (`oscall.go`), then the OS rebuilds its add-in table and the MAIN MENU is
+> re-entered so the icon appears. Used by the Android app (file picker, Open with, adb). Needs
+> the 32 MB dump.
+
 Today a new add-in can only run by hot-swapping its code into one already in the dump. The file
 has to really exist in storage, so the OS lists it in the menu and its BFile calls see it. The
 options:

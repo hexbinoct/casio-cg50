@@ -51,6 +51,43 @@ func TestLCDWindowStream(t *testing.T) {
 	}
 }
 
+// DrawFrame (0x800561EE) paints the frame around the OS's area with a DMA fill: a fixed
+// source (CHCR.SM=0) of 32 bytes of the frame colour, repeated into the LCD data port
+// (FUN_800562A2). The source must not advance into the memory after it, and a fill is not a
+// VRAM frame push.
+func TestLCDDMAFill(t *testing.T) {
+	e := NewEmulator(make([]byte, 0x1000))
+	w := func(a, v uint32) { e.mem.Write(a, 2, v) }
+	sel := func(i uint32) { e.mem.Write(0xA405013C, 1, 0); w(0xB4000000, i); e.mem.Write(0xA405013C, 1, 0x10) }
+	put := func(i, v uint32) { sel(i); w(0xB4000000, v) }
+	for i := uint32(0); i < 16; i++ {
+		w(0xAC028800+2*i, 0xF800) // the colour block the OS fills
+		w(0xAC028820+2*i, 0x1234) // what follows it in memory
+	}
+	put(0x003, 0x00A0)
+	put(0x210, 0) // the left frame strip: H 390..395 is panel x 0..5
+	put(0x211, 5)
+	put(0x212, 0)
+	put(0x213, 215)
+	put(0x200, 0)
+	put(0x201, 0)
+	sel(0x202)
+	e.mem.Write(0xFE008020, 4, 0x0C028800)   // SAR0
+	e.mem.Write(0xFE008024, 4, 0x14000000)   // DAR0: the LCD data port
+	e.mem.Write(0xFE008028, 4, 6*216*2>>5)   // TCR0: 32-byte units
+	e.mem.Write(0xFE00802C, 4, 0x00100400|1) // CHCR0: 32-byte units, SM=DM=0, auto, DE
+	for v := 0; v < 216; v++ {
+		for h := 0; h < 6; h++ {
+			if c := e.mmio.lcd.gram[v*panelW+h]; c != 0xF800 {
+				t.Fatalf("GRAM(H=%d,V=%d) = %#x, want the fill colour 0xf800", h, v, c)
+			}
+		}
+	}
+	if e.pushes != 0 {
+		t.Errorf("a fill counted as %d frame pushes", e.pushes)
+	}
+}
+
 // End to end: in Run-Matrix the text cursor blinks. The OS draws it straight into GRAM
 // (0x800c4006 / 0x800c4266 via the 2 Hz RTC event), never into VRAM and without a DMA push,
 // so only a real panel model shows it (cont.18o).

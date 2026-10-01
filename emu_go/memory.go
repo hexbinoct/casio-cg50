@@ -49,7 +49,7 @@ type Memory struct {
 	romSize uint32
 	flash   []byte // mutable NOR array [0, FlashMutTop): image copy then 0xFF; program/erase mutate it
 	dram    []byte
-	xyram   []byte // X/Y + IL on-chip memories at 0xE5000000 (not in save-states)
+	xyram   []byte // X/Y + IL on-chip memories at 0xE5000000
 	ilram   []byte
 	ocram   []byte // on-chip RAM at OcramBase
 	mmio    *MMIOBus
@@ -81,6 +81,32 @@ type Memory struct {
 	fcmd   int
 	bufRem int     // remaining buffered-program data words to collect
 	bufW   []fword // buffered-program collected words
+
+	// Sector erase in progress: the next eraseBusy data reads of the erasing sector return the
+	// embedded-algorithm status instead of array data (see flashStatus).
+	eraseBusy int
+	eraseSect uint32
+	eraseTog  uint32
+}
+
+// Flash geometry: the OS erases 128 KB sectors (its erase routine in IL RAM masks the address
+// with 0xFFFE0000; S29GL-S style uniform sectors).
+const (
+	flashSector = 0x20000
+	// eraseStatusReads is how many status reads a sector erase lasts. The OS's erase routine
+	// (IL RAM 0xFD800BB6) checks right after the command that the erase has started (a read with
+	// DQ7=0, then one with DQ3=1, 0xFD800CA8) and then polls until DQ7 reads 1 (0xFD800D0E); an
+	// erase that is already over at the first read is reported as failed (-3).
+	eraseStatusReads = 4
+)
+
+// flashStatus is a status read during a sector erase: DQ7=0 (busy), DQ6 and DQ2 toggling on
+// every read, DQ3=1 (erase timer expired: the erase has started), DQ5=0 (no timeout).
+func (m *Memory) flashStatus(size uint32) uint32 {
+	m.eraseBusy--
+	m.eraseTog ^= 0x44
+	st := 0x08 | m.eraseTog
+	return st * (0x01010101 >> ((4 - size) * 8))
 }
 
 func NewMemory(osImage []byte, mmio *MMIOBus) *Memory {
@@ -157,6 +183,9 @@ func (m *Memory) Read(va, size uint32) uint32 {
 			m.flashRdHook(phys, size)
 		}
 		if phys < FlashMutTop {
+			if m.eraseBusy > 0 && phys&^(flashSector-1) == m.eraseSect {
+				return m.flashStatus(size)
+			}
 			return beRead(m.flash, phys, size) // array-read mode (mutable NOR)
 		}
 		return (uint32(1) << (size * 8)) - 1 // beyond mutable extent: erased 0xFF
@@ -284,11 +313,12 @@ func (m *Memory) flashCmd(phys, size, val uint32) {
 			for i := range m.flash {
 				m.flash[i] = 0xFF
 			}
-		} else if c == 0x30 { // sector erase (64KB) containing phys
-			s := phys &^ 0xFFFF
-			for i := s; i < s+0x10000 && i < FlashMutTop; i++ {
+		} else if c == 0x30 { // sector erase (128 KB) containing phys
+			s := phys &^ (flashSector - 1)
+			for i := s; i < s+flashSector && i < FlashMutTop; i++ {
 				m.flash[i] = 0xFF
 			}
+			m.eraseBusy, m.eraseSect = eraseStatusReads, s
 		}
 		m.fcmd = fIdle
 	case fBufCount:

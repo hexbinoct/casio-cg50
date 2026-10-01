@@ -15,7 +15,7 @@ object NativeBridge {
     /** Create the machine from a flash-dump image (the user's own flash_full.bin). */
     external fun init(flash: ByteArray)
 
-    /** Framebuffer dimensions (384 x 216). */
+    /** Framebuffer dimensions: the whole LCD panel, 396 x 224. */
     external fun width(): Int
     external fun height(): Int
 
@@ -61,4 +61,15 @@ object NativeBridge {
 
     /** Capture a gzip save-state blob (or null on error). */
     external fun snapshot(): ByteArray?
+
+    /**
+     * Write a .g3a into the calculator's storage memory through the OS's own file system calls
+     * and refresh the MAIN MENU (emu_go/install.go). Takes a few seconds: call it off the UI
+     * thread, with [busy] set. Returns null when installed, else the reason.
+     */
+    external fun installAddin(name: String, data: ByteArray): String?
+
+    /** True while an install holds the machine: the UI thread must not call in meanwhile. */
+    @Volatile
+    var busy = false
 }

@@ -1,7 +1,13 @@
 package com.hexbinoct.cg50
 
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.provider.OpenableColumns
 import android.util.Log
+import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import com.hexbinoct.cg50.databinding.ActivityMainBinding
@@ -13,19 +19,32 @@ import java.io.File
  * snapshots on pause so the next launch resumes exactly where it left off.
  *
  * Put your own files here (the app ships NO Casio firmware):
- *   adb push flash_full.bin  /sdcard/Android/data/com.hexbinoct.cg50/files/
- *   adb push cg50_state.bin  /sdcard/Android/data/com.hexbinoct.cg50/files/   (optional, recommended)
- * cg50_state.bin is a save-state provisioned to the MAIN MENU (see android/README + the
- * desktop `provision` mode); without it the app cold-boots into first-boot setup.
+ *   adb push flash_full_32mb.bin  /sdcard/Android/data/com.hexbinoct.cg50/files/
+ *   adb push cg50_state_32mb.bin  /sdcard/Android/data/com.hexbinoct.cg50/files/   (recommended)
+ * The whole 32 MB flash holds the calculator's storage memory, so installed add-ins and their
+ * files work; the older 16 MB pair (flash_full.bin + cg50_state.bin) is used when the 32 MB
+ * dump is absent. The state is a save-state at the MAIN MENU (see android/README); without it
+ * the app cold-boots.
+ *
+ * Add-ins (.g3a) are installed into the emulated storage memory by the OS itself
+ * (NativeBridge.installAddin): from the settings dialog (long-press the screen), by opening or
+ * sharing a .g3a file with the app, or over adb:
+ *   adb push X.g3a /sdcard/Android/data/com.hexbinoct.cg50/files/
+ *   adb shell am start -n com.hexbinoct.cg50/.MainActivity --es install X.g3a
  */
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
-    private val stateFile get() = File(getExternalFilesDir(null), "cg50_state.bin")
+    private lateinit var stateFile: File
+    private var running = false
 
     companion object {
         private const val TAG = "cg50"
         private const val PREF_SPEED = "speed"
+    }
+
+    private val pickAddin = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let { installFrom(it) }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -33,20 +52,22 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-
         val dir = getExternalFilesDir(null)
-        val flash = File(dir, "flash_full.bin")
+        val big = File(dir, "flash_full_32mb.bin")
+        val flash = if (big.exists()) big else File(dir, "flash_full.bin")
+        stateFile = File(dir, if (big.exists()) "cg50_state_32mb.bin" else "cg50_state.bin")
         if (!flash.exists()) {
             binding.statusText.text =
-                "Missing flash_full.bin.\nadb push your dump to:\n${dir?.absolutePath}"
+                "Missing flash_full_32mb.bin (or flash_full.bin).\nadb push your dump to:\n${dir?.absolutePath}"
             return
         }
 
         NativeBridge.init(flash.readBytes())
-        Log.i(TAG, "init ok; core ${NativeBridge.width()}x${NativeBridge.height()}")
+        running = true
+        Log.i(TAG, "init ok (${flash.name}); core ${NativeBridge.width()}x${NativeBridge.height()}")
         binding.statusText.text = if (stateFile.exists()) {
             val r = NativeBridge.resume(stateFile.readBytes())
-            Log.i(TAG, "resume returned $r")
+            Log.i(TAG, "resume ${stateFile.name} returned $r")
             if (r == 0) "resumed" else "resume failed ($r) — booting"
         } else {
             Log.i(TAG, "no save-state; cold boot")
@@ -65,6 +86,13 @@ class MainActivity : AppCompatActivity() {
         // Settings take no screen space: long-press the calculator screen.
         binding.screenView.setOnLongClickListener { showSettings(); true }
         binding.statusText.text = getString(R.string.hint_settings)
+        if (savedInstanceState == null) handleInstallIntent(intent) // not again on rotation
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleInstallIntent(intent)
     }
 
     private val prefs get() = getSharedPreferences("cg50", MODE_PRIVATE)
@@ -77,7 +105,7 @@ class MainActivity : AppCompatActivity() {
         Log.i(TAG, "speed: ${if (fast) "fast" else "original"} ($ips instr/s)")
     }
 
-    /** Speed: original hardware (authentic) vs fast (the SH7305's full clock, about 2x). */
+    /** Speed: original hardware (authentic) vs fast (the SH7305's full clock, about 2x); install. */
     private fun showSettings() {
         val labels = arrayOf(getString(R.string.speed_original), getString(R.string.speed_fast))
         AlertDialog.Builder(this)
@@ -87,20 +115,99 @@ class MainActivity : AppCompatActivity() {
                 applySpeed()
                 dialog.dismiss()
             }
+            .setNeutralButton(R.string.install_addin) { _, _ -> pickAddin.launch(arrayOf("*/*")) }
             .setNegativeButton(android.R.string.cancel, null)
             .show()
+    }
+
+    /** A .g3a opened with / shared to the app, or `--es install NAME` (a file in our files dir). */
+    private fun handleInstallIntent(intent: Intent) {
+        intent.getStringExtra("install")?.let { name ->
+            val f = File(getExternalFilesDir(null), name)
+            if (f.exists()) install(f.name, f.readBytes()) else toast(getString(R.string.install_missing, f.path))
+            return
+        }
+        val uri: Uri? = when (intent.action) {
+            Intent.ACTION_VIEW -> intent.data
+            Intent.ACTION_SEND -> if (Build.VERSION.SDK_INT >= 33) {
+                intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
+            } else {
+                @Suppress("DEPRECATION") intent.getParcelableExtra(Intent.EXTRA_STREAM)
+            }
+            else -> null
+        }
+        uri?.let { installFrom(it) }
+    }
+
+    private fun installFrom(uri: Uri) {
+        var name = displayName(uri) ?: uri.lastPathSegment?.substringAfterLast('/') ?: "addin.g3a"
+        if (!name.endsWith(".g3a", ignoreCase = true)) name += ".g3a" // the core checks the header
+        val data = try {
+            contentResolver.openInputStream(uri)?.use { it.readBytes() }
+        } catch (e: Exception) {
+            Log.w(TAG, "read $uri: $e")
+            null
+        }
+        if (data == null) toast(getString(R.string.install_unreadable, name)) else install(name, data)
+    }
+
+    private fun displayName(uri: Uri): String? = try {
+        contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+            if (c.moveToFirst()) c.getString(0) else null
+        }
+    } catch (_: Exception) {
+        null
+    }
+
+    /**
+     * The OS writes the file into the storage memory and the MAIN MENU is rebuilt with the new
+     * icon (a few seconds of emulated work, on a worker thread; the screen just pauses). The
+     * session is saved right after, so the add-in survives the app being killed.
+     */
+    private fun install(name: String, data: ByteArray) {
+        if (!running) {
+            toast(getString(R.string.install_no_emulator))
+            return
+        }
+        if (NativeBridge.busy) {
+            toast(getString(R.string.install_busy))
+            return
+        }
+        toast(getString(R.string.install_started, name))
+        NativeBridge.busy = true
+        Thread {
+            val err = try {
+                NativeBridge.installAddin(name, data)
+            } finally {
+                NativeBridge.busy = false
+            }
+            NativeBridge.releaseAllKeys() // keys touched meanwhile were not passed on
+            if (err == null) saveState()
+            Log.i(TAG, "install $name (${data.size} bytes): ${err ?: "ok"}")
+            runOnUiThread {
+                toast(if (err == null) getString(R.string.install_done, name) else getString(R.string.install_failed, err))
+            }
+        }.start()
+    }
+
+    private fun toast(msg: String) = Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
+
+    private fun saveState() {
+        try {
+            NativeBridge.snapshot()?.let { stateFile.writeBytes(it) }
+        } catch (e: Exception) {
+            Log.w(TAG, "snapshot: $e")
+        }
     }
 
     override fun onPause() {
         super.onPause()
         binding.screenView.pauseRendering()
+        if (!running) return
         NativeBridge.releaseAllKeys()
         // Persist the session so the next launch resumes here (the OS's backup-battery RAM
         // is captured in the save-state; flash-only persistence isn't enough).
-        try {
-            NativeBridge.snapshot()?.let { stateFile.writeBytes(it) }
-        } catch (_: Exception) {
-        }
+        saveState()
     }
 
     override fun onResume() {

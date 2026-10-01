@@ -6,7 +6,7 @@
     android:fitsSystemWindows="true"
     android:background="@drawable/body_bg">
 
-    <!-- screen in its bezel; CalcSurfaceView keeps the panel's 384:216 aspect -->
+    <!-- screen in its bezel; CalcSurfaceView keeps the panel's 396:224 aspect -->
     <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"

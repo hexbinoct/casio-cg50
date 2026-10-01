@@ -41,17 +41,18 @@ The same facade drives the desktop web UI (`go -C emu_go run . 0 30000 web`) and
 | `EmuExecuted() -> long long` | instructions actually executed so far (idle cycles, which the core fast-forwards, excluded) — for perf reporting |
 | `EmuSetClock(long long unixSec)` | set the calendar clock |
 | `EmuSetKeyScanPeriod(long long instr)` | override the key-scan period (normally derived from `EmuSetInstrPerSec`) |
-| `EmuFramebufferRGBA(uint8* dst, int cap) -> int` | fill `Width*Height*4` RGBA bytes of the **displayed** frame (the LCD panel, not live VRAM) |
+| `EmuFramebufferRGBA(uint8* dst, int cap) -> int` | fill `Width*Height*4` RGBA bytes of the **displayed** frame (the whole LCD panel, not live VRAM) |
 | `EmuSnapshot(int* outLen) -> uint8*` | malloc a gzip save-state blob (free with `EmuFree`) |
-| `EmuFree(uint8*)` | free an `EmuSnapshot` pointer |
-| `EmuWidth() / EmuHeight()` | framebuffer dimensions (384 × 216) |
+| `EmuFree(uint8*)` | free an `EmuSnapshot` pointer (or an `EmuInstallAddin` error string) |
+| `EmuInstallAddin(char* name, uint8* g3a, int n) -> char*` | have the emulated OS write a `.g3a` into its storage memory and refresh the MAIN MENU (`install.go`); NULL = ok, else a malloc'd reason. A few seconds of emulated work: call it off the UI thread |
+| `EmuWidth() / EmuHeight()` | framebuffer dimensions: the whole panel, 396 × 224 (the OS's 384 × 216 area plus its frame) |
 
 If the core ever hits something it cannot execute it halts (the reason goes to logcat) instead
 of crashing the process; `EmuResume` clears the halt.
 
 ## Building
 
-`android/build_go_lib.ps1` cross-compiles the core per ABI with the NDK's clang (arm64-v8a and
+`android/build_go_lib.py` (Mac or PC; the older `build_go_lib.ps1` is Windows-only) cross-compiles the core per ABI with the NDK's clang (arm64-v8a and
 x86_64) into `android/app/src/main/jniLibs/<abi>/libcg50core.so`, setting the SONAME so the JNI
 shim's dependency resolves on-device. Then build the app with Gradle / Android Studio. Details
 and the file-push steps are in [`android/README.md`](../android/README.md).

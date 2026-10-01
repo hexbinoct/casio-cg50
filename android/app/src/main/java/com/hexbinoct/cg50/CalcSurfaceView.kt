@@ -81,10 +81,13 @@ class CalcSurfaceView @JvmOverloads constructor(context: Context, attrs: Attribu
         holder.addCallback(this)
     }
 
-    /** Height follows width at the panel's 384:216 aspect, so pixels stay square. */
+    /**
+     * Height follows width at the whole panel's 396:224 aspect, so pixels stay square. (The OS
+     * draws in 384x216 inside a frame; gint add-ins use all of it, their status bars included.)
+     */
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         val width = MeasureSpec.getSize(widthMeasureSpec)
-        setMeasuredDimension(width, width * 216 / 384)
+        setMeasuredDimension(width, width * 224 / 396)
     }
 
     /** Call after NativeBridge.init()/resume() so the loop can allocate the frame buffers. */
@@ -96,7 +99,7 @@ class CalcSurfaceView @JvmOverloads constructor(context: Context, attrs: Attribu
         src.set(0, 0, w, h)
         dst.set(0, 0, w, h)
         // Render at native resolution and let the display compositor (GPU) scale the surface up to
-        // the view bounds — far cheaper than scaling 384x216 -> full screen in software each frame.
+        // the view bounds — far cheaper than scaling 396x224 -> full screen in software each frame.
         holder.setFixedSize(w, h)
         emulatorReady = true
     }

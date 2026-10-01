@@ -25,6 +25,7 @@ long long EmuCycles();
 int      EmuFramebufferRGBA(uint8_t *dst, int capacity);
 uint8_t *EmuSnapshot(int *outLen);
 void     EmuFree(uint8_t *p);
+char    *EmuInstallAddin(const char *name, const uint8_t *data, int n);
 }
 
 #define NB(name) Java_com_hexbinoct_cg50_NativeBridge_##name
@@ -93,4 +94,18 @@ extern "C" JNIEXPORT jbyteArray JNICALL NB(snapshot)(JNIEnv *env, jobject) {
     }
     EmuFree(b);
     return arr;
+}
+
+// Install a .g3a through the OS (see emu_go/install.go). Returns null on success, else the reason.
+extern "C" JNIEXPORT jstring JNICALL NB(installAddin)(JNIEnv *env, jobject, jstring name, jbyteArray data) {
+    const char *cname = env->GetStringUTFChars(name, nullptr);
+    jsize n = env->GetArrayLength(data);
+    jbyte *p = env->GetByteArrayElements(data, nullptr);
+    char *err = EmuInstallAddin(cname, reinterpret_cast<uint8_t *>(p), static_cast<int>(n));
+    env->ReleaseByteArrayElements(data, p, JNI_ABORT);
+    env->ReleaseStringUTFChars(name, cname);
+    if (err == nullptr) return nullptr;
+    jstring r = env->NewStringUTF(err);
+    EmuFree(reinterpret_cast<uint8_t *>(err));
+    return r;
 }

@@ -19,10 +19,11 @@ No Casio firmware ships here. You supply your own dump at runtime (see below).
 
 ## Build & run
 
-1. **Cross-compile the Go core** (needs Go + the NDK; edit the NDK path in the script if your
-   version differs). From the repo root:
-   ```powershell
-   pwsh -File android/build_go_lib.ps1
+1. **Cross-compile the Go core** (needs Go + the NDK). From the repo root, on the Mac or the
+   PC (`build_go_lib.py` finds the newest NDK under the SDK; `build_go_lib.ps1` is the older
+   Windows-only script with a fixed NDK path):
+   ```sh
+   python3 android/build_go_lib.py
    ```
    This writes `app/src/main/jniLibs/{arm64-v8a,x86_64}/libcg50core.so`. Re-run it whenever
    `emu_go/` changes. (The `.so`s are git-ignored — they're build output.)
@@ -35,12 +36,24 @@ No Casio firmware ships here. You supply your own dump at runtime (see below).
    ```
    CMake links the JNI shim against the prebuilt `libcg50core.so` for the target ABI.
 
-3. **Provide your files** (the app reads them from its external files dir):
+   On the Mac: `android/local.properties` with `sdk.dir=/Users/<you>/Library/Android/sdk`
+   (git-ignored) and Android Studio's JDK (`JAVA_HOME=/Applications/Android Studio.app/
+   Contents/jbr/Contents/Home`); `python3 re/phone.py build` does both steps and installs.
+
+3. **Provide your files** (the app reads them from its external files dir). Preferred: the
+   whole **32 MB** flash, which holds all of the storage memory, so add-ins can be installed
+   and read their files (`python3 re/phone.py firmware` pushes both):
+   ```sh
+   adb push flash_full_32mb.bin /sdcard/Android/data/com.hexbinoct.cg50/files/
+   adb push cg50_state_32mb.bin /sdcard/Android/data/com.hexbinoct.cg50/files/  # recommended
+   ```
+   Without the 32 MB dump the app uses the older 16 MB pair below (most of the storage memory
+   is missing from it, so installs into it are not supported):
    ```sh
    adb push flash_full.bin /sdcard/Android/data/com.hexbinoct.cg50/files/
    adb push cg50_state.bin /sdcard/Android/data/com.hexbinoct.cg50/files/   # recommended
    ```
-   - `flash_full.bin` — your own 16 MB flash dump (required).
+   - `flash_full.bin` — your own 16 MB flash dump.
    - `cg50_state.bin` — a save-state provisioned to the MAIN MENU, so the app resumes there
      instantly instead of cold-booting into first-boot setup. Generate it on the desktop:
      ```sh
@@ -54,8 +67,9 @@ The app snapshots back to `cg50_state.bin` on pause, so your session persists ac
 
 ## The app
 
-- **Screen:** the LCD panel's contents (the core models the display controller), kept at the
-  panel's 384:216 aspect inside a bezel.
+- **Screen:** the whole LCD panel (the core models the display controller): 396x224, the OS's
+  384x216 area plus the frame the OS paints around it, which gint add-ins use as part of their
+  screen (status bars, function-key labels). Kept at 396:224 inside a bezel.
 - **Keypad** (`KeypadView.kt`, data in `KeyMap.kt`): the fx-CG50's physical layout — F1–F6;
   SHIFT OPTN VARS MENU and ALPHA x² ^ EXIT beside a round D-pad; the two function rows; the
   number pad. Yellow SHIFT and red ALPHA legends sit above each key as on the faceplate.
@@ -94,6 +108,19 @@ The app snapshots back to `cg50_state.bin` on pause, so your session persists ac
   session of menu moves, app screens and text.
 - **Add-ins** (`.g3a` in your flash dump) run like on the calculator — select their icon on
   the MAIN MENU.
+- **Installing add-ins** (32 MB dump): the emulated OS writes the `.g3a` into its storage
+  memory with its own file system calls, as when you copy one to the calculator over USB, and
+  the MAIN MENU comes back with the new icon (last place; LEFT from the first icon wraps to
+  it). A file of the same name is replaced. Three ways in:
+  - **Long-press the screen → Install add-in…** and pick the file (Android's file picker: no
+    storage permission needed).
+  - **Open with / Share** a `.g3a` from a file manager, Drive or a chat app.
+  - From the PC: `python3 re/phone.py install path/to/X.g3a` (pushes it to the files dir and
+    starts the app with `--es install X.g3a`; prints the result from logcat).
+  It takes a few seconds (the screen pauses meanwhile) and the session is saved right after.
+  At the MAIN MENU the app briefly opens Run-Matrix and returns, which is how the menu rebuilds
+  its icon list; an add-in suspended under the menu is closed that way too. While an add-in is
+  running the install is refused: press MENU first. Core: `emu_go/install.go`.
 
 ## Troubleshooting
 

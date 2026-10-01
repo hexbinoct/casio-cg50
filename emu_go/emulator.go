@@ -30,6 +30,15 @@ const (
 	FbWidth  = 384
 	FbHeight = 216
 	fbBytes  = FbWidth * FbHeight * 2
+
+	// The whole LCD panel: the OS's 384x216 area plus the frame around it (lcd.go). This is
+	// what the calculator's glass shows and what gint add-ins draw on.
+	PanelWidth  = panelW
+	PanelHeight = panelH
+
+	// osFrameColor (OS 3.60 IL RAM) holds the colour the OS paints the frame with (FrameColor
+	// syscall 0x02A3, DrawFrame 0x02A8; default white).
+	osFrameColor = 0xFD8019E8
 )
 
 type Emulator struct {
@@ -79,7 +88,7 @@ func NewEmulator(flash []byte) *Emulator {
 		mmio.timerPeriod = 30000 // proven boot timer cadence
 	}
 	mmio.timerNext = 0
-	e := &Emulator{cpu: cpu, mem: mem, mmio: mmio, downAt: map[[2]uint32]uint64{}, rgb565: make([]byte, fbBytes)}
+	e := &Emulator{cpu: cpu, mem: mem, mmio: mmio, downAt: map[[2]uint32]uint64{}, rgb565: make([]byte, PanelWidth*PanelHeight*2)}
 	mmio.dmac.onLCDPush = e.presentFrame
 	return e
 }
@@ -209,6 +218,11 @@ func (e *Emulator) ReleaseAllKeys() {
 func (e *Emulator) Step(n int) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	e.stepLocked(n)
+}
+
+// stepLocked is Step with e.mu already held (oscall.go runs OS functions through it).
+func (e *Emulator) stepLocked(n int) {
 	if e.fault != "" {
 		return
 	}
@@ -335,13 +349,14 @@ func (e *Emulator) VRAMRGB565(dst []byte) {
 	e.mu.Unlock()
 }
 
-// FramebufferRGBA decodes the presented frame into dst as 8-bit RGBA (FbWidth*FbHeight*4
-// bytes), the layout Android's Bitmap.copyPixelsFromBuffer / a host canvas expects.
+// FramebufferRGBA decodes the whole panel (PanelWidth*PanelHeight*4 bytes: the OS's area and
+// the frame around it, where gint add-ins draw too) into dst as 8-bit RGBA, the layout
+// Android's Bitmap.copyPixelsFromBuffer / a host canvas expects.
 func (e *Emulator) FramebufferRGBA(dst []byte) {
 	e.mu.Lock()
 	d := e.rgb565
-	e.mmio.lcd.renderOS(d)
-	for i := 0; i < FbWidth*FbHeight; i++ {
+	e.mmio.lcd.renderPanel(d)
+	for i := 0; i < PanelWidth*PanelHeight; i++ {
 		p := uint16(d[i*2])<<8 | uint16(d[i*2+1])
 		dst[i*4+0] = uint8((p>>11)&0x1F) << 3
 		dst[i*4+1] = uint8((p>>5)&0x3F) << 2

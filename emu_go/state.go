@@ -24,6 +24,17 @@ const stateMagic = "CG50ST01"
 // the OS think the display is off (PFC 0xA405013C bit4) and stop pushing frames to the LCD.
 const mmioMagic = "MMIO"
 
+// Optional trailing sections (2026-10-01), each a magic + one block; older builds stop reading
+// before them and older snapshots simply lack them:
+//   - xyramMagic: the X/Y + IL on-chip memories at 0xE5000000, where gint add-ins keep code
+//     and data (without it a snapshot taken inside an add-in resumes into a dead machine);
+//   - gramMagic: the LCD panel's contents, so a resume shows exactly what was on the glass
+//     (an add-in's whole 396x224 screen included) instead of the OS's VRAM in a plain frame.
+const (
+	xyramMagic = "XYRM"
+	gramMagic  = "GRAM"
+)
+
 // statePath is the save-state file (git-ignored under os/, since it holds OS-derived
 // RAM/flash bytes). Shared by the `provision`/auto-resume path in main and the web UI buttons.
 // CG50_STATE overrides it (e.g. a separate state for another flash image, see bootImagePath).
@@ -138,6 +149,25 @@ func SnapshotBytes(cpu *CPU, mem *Memory) ([]byte, error) {
 					return nil, err
 				}
 			}
+		}
+	}
+	if _, err := gz.Write([]byte(xyramMagic)); err != nil {
+		return nil, err
+	}
+	if err := wBlock(mem.xyram); err != nil {
+		return nil, err
+	}
+	if mem.mmio != nil {
+		g := mem.mmio.lcd.gram
+		b := make([]byte, 2*len(g))
+		for i, c := range g {
+			binary.BigEndian.PutUint16(b[2*i:], c)
+		}
+		if _, err := gz.Write([]byte(gramMagic)); err != nil {
+			return nil, err
+		}
+		if err := wBlock(b); err != nil {
+			return nil, err
 		}
 	}
 	if err := gz.Close(); err != nil {
@@ -284,8 +314,38 @@ func ResumeBytes(raw []byte, cpu *CPU, mem *Memory) error {
 		} else {
 			mem.mmio.applyLegacyResumeDefaults()
 		}
-		// GRAM isn't saved: at snapshot time the panel showed the last VRAM pushed to it.
-		mem.mmio.lcd.seedFromVRAM(mem.dram[:fbBytes])
+	}
+	gram := false
+	for p+4 <= len(data) {
+		magic := string(data[p : p+4])
+		p += 4
+		switch magic {
+		case xyramMagic:
+			if err := rBlock(mem.xyram, "xyram"); err != nil {
+				return err
+			}
+		case gramMagic:
+			if mem.mmio == nil {
+				return nil
+			}
+			g := mem.mmio.lcd.gram
+			b := make([]byte, 2*len(g))
+			if err := rBlock(b, "gram"); err != nil {
+				return err
+			}
+			for i := range g {
+				g[i] = binary.BigEndian.Uint16(b[2*i:])
+			}
+			mem.mmio.lcd.gen++
+			gram = true
+		default:
+			return fmt.Errorf("save-state: unknown section %q", magic)
+		}
+	}
+	if mem.mmio != nil && !gram {
+		// an older snapshot without the panel: at snapshot time it showed the last VRAM
+		// pushed to it, inside the frame in the OS's frame colour
+		mem.mmio.lcd.seedFromVRAM(mem.dram[:fbBytes], uint16(mem.R16(osFrameColor)))
 	}
 	return nil
 }

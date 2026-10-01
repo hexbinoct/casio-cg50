@@ -107,6 +107,52 @@ func (c *timerChan) writeTCR(val, unf uint32) {
 	c.tcr = (val &^ unf) | (c.tcr & val & unf)
 }
 
+// Save-state keys for the channels' live state, kept in the region's register map above any
+// register offset: timerKey | channel<<8 | field. Without them a resumed gint add-in has every
+// timer stopped (its keyboard scan runs on ETMU5) and sleeps forever.
+const (
+	timerKey      = 0xF0000000
+	timerKeyTCOR  = 0
+	timerKeyTCNT  = 1
+	timerKeyTCR   = 2
+	timerKeyFlags = 3 // bit0 running, bit1 owned
+)
+
+func saveTimerChans(m map[uint32]uint32, ch []timerChan, cyc uint64, div func(int) uint64) {
+	for i := range ch {
+		c := &ch[i]
+		if !c.owned && !c.running {
+			continue
+		}
+		k := uint32(timerKey | i<<8)
+		m[k|timerKeyTCOR], m[k|timerKeyTCNT], m[k|timerKeyTCR] = c.tcor, c.cur(cyc, div(i)), c.tcr
+		m[k|timerKeyFlags] = b2u(c.running) | b2u(c.owned)<<1
+	}
+}
+
+// restoreTimerChans rebuilds the channels from saveTimerChans keys: a running channel
+// counts down from its saved value starting now. Returns m without the channel keys.
+func restoreTimerChans(m map[uint32]uint32, ch []timerChan, cyc uint64, div func(int) uint64) map[uint32]uint32 {
+	regs := make(map[uint32]uint32, len(m))
+	for k, v := range m {
+		if k < timerKey {
+			regs[k] = v
+		}
+	}
+	for i := range ch {
+		c := &ch[i]
+		k := uint32(timerKey | i<<8)
+		flags := m[k|timerKeyFlags]
+		*c = timerChan{tcor: m[k|timerKeyTCOR], tcnt: m[k|timerKeyTCNT], tcr: m[k|timerKeyTCR],
+			running: flags&1 != 0, owned: flags&2 != 0}
+		if c.running {
+			c.startCyc, c.startCnt = cyc, c.tcnt
+			c.nextUnf = cyc + (uint64(c.tcnt)+1)*div(i)
+		}
+	}
+	return regs
+}
+
 // ---- ETMU (keeps the type name the bus, save-states and SetInstrPerSecond use) ----
 
 type etmuCounter struct {
