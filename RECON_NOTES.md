@@ -9,7 +9,19 @@
   pending, so the next session can continue without being reminded.
 ============================================================================= -->
 
-> ## ⏯ RESUME HERE (last session end: 2026-09-29 cont.18x, home Mac)
+> ## ⏯ RESUME HERE (last session end: 2026-10-01 cont.18x, home Mac)
+>
+> **Session 2026-09-28…10-01 in one paragraph:** the repo was cloned to the home Mac (firmware copied
+> into the git-ignored `os/` by hand); the full **32 MB flash** was dumped (cont.18w; the 16 MB dump
+> missed most of fls0) and boots to the calculator's own MAIN MENU with a **warm boot** (`CG50_WARM=1`);
+> the emulator **INTC now gates requests at acceptance** (cont.18x); probes run a fresh add-in build
+> from its real menu icon (`dasm_real_test.go`). The sibling DASM add-in gained function detection +
+> cross-references (verified on the real calculator). `CLAUDE.md` now covers both machines.
+> **NEXT for this repo:** `docs/DESKTOP_AND_WEB.md` step 1 — an *installer* add-in that writes a `.g3a`
+> into fls0 through the OS's own BFile (so any build really exists in storage), then the desktop app
+> (upgraded `webui.go` front-end with the Android skin/keypad, drag-and-drop install), then the WASM
+> build (`GOOS=js GOARCH=wasm` already compiles; firmware stays local in the browser). The held-key
+> scrolling speed on the phone (cont.18u) is still open but no longer the main line.
 >
 > **Direction (2026-09-30):** make the emulator the everyday test device instead of the calculator:
 > a good-looking desktop app (calculator skin, drop a `.g3a` to install + run it) and the same app in
