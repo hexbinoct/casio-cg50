@@ -74,8 +74,17 @@
 >   resumes inside DASM and keys work. The phone's dead snapshot is kept as
 >   `cg50_state_32mb.dead-in-dasm.bin`. Wireless adb serial: use the mDNS name
 >   `adb-584c917b-jFkRGG._adb-tls-connect._tcp` (the port changes when the phone sleeps).
+> **OPEN BUG (user, 2026-10-02): launching Upsilon crashes the emulator.** Selecting Upsilon
+> (icon S in the 32 MB dump, `Upsilon.g3a`, 1.8 MB) blanks the screen and ~2 s later the
+> first-boot **language screen** appears, as if the calculator had cold-started. On the real
+> calculator Upsilon runs fine, so it's an emulator gap. Start: a probe like `dasm_real_test.go`
+> launching icon S with `DASM_TRACE`-style single-stepping to catch the reset (watch for a jump
+> to 0xA0000000/0x80000000, a write to the reset/WDT registers, or an exception the OS turns
+> into a reboot); Upsilon is a large add-in (Epsilon/NumWorks port) and may use hardware the
+> OS never touches.
 > **NEXT:** (1) a shared debug keystore in the repo so office and Mac builds install over each
-> other; (2)
+> other (explained to the user 2026-10-01: commit the Mac's `~/.android/debug.keystore`, point
+> `signingConfigs.debug` at it); (2)
 > DESKTOP_AND_WEB step 2: the desktop app (webui.go upgrade + drag-and-drop calling InstallAddin);
 > (3) WASM. Small: a desktop CLI `install` mode that writes into `cg50_state_32mb.bin`, so probes can
 > use real installs instead of `DASM_SWAP`.
