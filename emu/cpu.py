@@ -109,7 +109,12 @@ class CPU:
         self.spc = self.pc
         self.sgr = self.r[15]
         self.mem.write(0xFF000028, 4, intevt)        # INTEVT <- code
-        self.set_sr(self._sr | self.MD | self.RB | self.BL)   # privileged, bank1, blocked
+        sr = self._sr | self.MD | self.RB | self.BL   # privileged, bank1, blocked
+        cpuopm = getattr(self.mem.mmio, "cpuopm", None)
+        if cpuopm is not None and cpuopm.regs.get(0, 0) & 0x8:
+            # CPUOPM.INTMU: IMASK takes the accepted level (mirror of emu_go cpu.go)
+            sr = (sr & ~self.IMASK) | (level << 4)
+        self.set_sr(sr)
         self.pc = u32(self.vbr + 0x600)
         self.irq_count += 1
         return True

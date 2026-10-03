@@ -420,6 +420,10 @@ const (
 
 type MMIOBus struct {
 	regions   []region
+	// CPUOPM (0xFF2F0000), the SH-4A CPU operation mode register. Only INTMU (bit 3) is
+	// modelled: when set, accepting an interrupt also sets SR.IMASK to its level (cpu.go).
+	// gint sets it at startup and relies on it; the OS never touches the register.
+	cpuopm *base
 	periphIRQ *periphIRQ
 	etmu2     *etmuCounter
 	tmu       *tmu // TMU0-2 (gtimer.go); ETMU0-5 live in etmu2
@@ -517,7 +521,9 @@ func NewMMIOBus() *MMIOBus {
 	pfc := &base{nm: "PFC", bs: 0xA4050000, sz: 0x1000, regs: map[uint32]uint32{}}
 	b.lcd = newLCD(pfc)
 	b.ccn = &ccn{base: newBase("CCN", 0xFF000000, 0x1000)}
+	b.cpuopm = &base{nm: "CPUOPM", bs: 0xFF2F0000, sz: 4, regs: map[uint32]uint32{}}
 	b.regions = []region{
+		b.cpuopm,
 		&cpg{base: newBase("CPG", 0xA4150000, 0x1000)},
 		pfc,
 		&base{nm: "WDT", bs: 0xA4520000, sz: 0x1000, regs: map[uint32]uint32{}},

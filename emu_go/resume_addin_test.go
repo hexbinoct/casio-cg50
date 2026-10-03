@@ -89,3 +89,29 @@ func TestResumeInsideGintAddin(t *testing.T) {
 		t.Error("after DOWN the resumed machine shows something else than the original")
 	}
 }
+
+// Upsilon (icon S in the 32 MB dump) sleeps 0 ms early on: gint arms TMU2 with TCOR=0, so it
+// fires continuously until the callback stops it. gint's callback dispatcher re-enables
+// interrupts and relies on CPUOPM.INTMU (IMASK = the accepted level) to block the same timer;
+// without INTMU the interrupt nested until the stack overran gint's data and the add-in died
+// (it used to show the first-boot language screen on the phone).
+func TestUpsilonStarts(t *testing.T) {
+	e := installState(t)
+	for _, k := range [][2]uint32{{2, 7}, {2, 7}, {2, 7}, {2, 7}, {2, 7}, {2, 7}, {1, 7}, {1, 7}, {1, 7}, {2, 1}} {
+		e.InjectKey(k[0], k[1])
+		e.Step(30_000_000)
+	}
+	e.Step(400_000_000)
+	if f := e.Fault(); f != "" || !e.mem.mmuAt {
+		t.Fatalf("Upsilon did not keep running: fault %q, mmu %v, pc %#x", f, e.mem.mmuAt, e.cpu.pc)
+	}
+	if e.mem.R32(0xFF2F0000)&cpuopmINTMU == 0 {
+		t.Fatal("gint did not set CPUOPM.INTMU")
+	}
+	g := e.FrameGen()
+	e.InjectKey(2, 7) // DOWN moves Upsilon's home-screen selection
+	e.Step(100_000_000)
+	if e.Fault() != "" || e.FrameGen() == g {
+		t.Fatalf("no reaction to a key: fault %q", e.Fault())
+	}
+}

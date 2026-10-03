@@ -16,6 +16,8 @@ const (
 	srRB    = 0x20000000
 	srMD    = 0x40000000
 	srIMASK = 0x000000F0
+
+	cpuopmINTMU = 0x8 // CPUOPM bit 3
 )
 
 func s8(x uint32) int32  { return int32(int8(uint8(x))) }
@@ -145,7 +147,14 @@ func (c *CPU) acceptInterrupt() bool {
 	c.spc = c.pc
 	c.sgr = c.r[15]
 	c.mem.Write(0xFF000028, 4, top.intevt)
-	c.setSR(c.sr | srMD | srRB | srBL)
+	sr := c.sr | srMD | srRB | srBL
+	if m := c.mem.mmio; m != nil && m.cpuopm != nil && m.cpuopm.regs[0]&cpuopmINTMU != 0 {
+		// CPUOPM.INTMU: IMASK takes the accepted interrupt's level, so the handler can only
+		// be interrupted by a higher priority once it unblocks (gint's callbacks do: without
+		// this a timer firing faster than its callback nests until the stack runs over)
+		sr = sr&^srIMASK | top.level<<4
+	}
+	c.setSR(sr)
 	c.pc = c.vbr + 0x600
 	c.irqCnt++
 	return true

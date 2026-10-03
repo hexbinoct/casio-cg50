@@ -74,14 +74,20 @@
 >   resumes inside DASM and keys work. The phone's dead snapshot is kept as
 >   `cg50_state_32mb.dead-in-dasm.bin`. Wireless adb serial: use the mDNS name
 >   `adb-584c917b-jFkRGG._adb-tls-connect._tcp` (the port changes when the phone sleeps).
-> **OPEN BUG (user, 2026-10-02): launching Upsilon crashes the emulator.** Selecting Upsilon
-> (icon S in the 32 MB dump, `Upsilon.g3a`, 1.8 MB) blanks the screen and ~2 s later the
-> first-boot **language screen** appears, as if the calculator had cold-started. On the real
-> calculator Upsilon runs fine, so it's an emulator gap. Start: a probe like `dasm_real_test.go`
-> launching icon S with `DASM_TRACE`-style single-stepping to catch the reset (watch for a jump
-> to 0xA0000000/0x80000000, a write to the reset/WDT registers, or an exception the OS turns
-> into a reboot); Upsilon is a large add-in (Epsilon/NumWorks port) and may use hardware the
-> OS never touches.
+> **FIXED (2026-10-02): Upsilon crashed** (user: blank screen, then the first-boot language
+> screen). Cause: **CPUOPM.INTMU** (0xFF2F0000 bit 3) was not modelled. gint sets it at start
+> (`cpu.c`: "On the fx-CG 50 emulator it is available but ignored", i.e. Casio's fx-CG Manager
+> has the same gap) and its callback dispatcher `gint_inth_callback` (IL memory 0xE5200000)
+> clears SR.BL relying on IMASK = the accepted interrupt's level. Upsilon sleeps 0 ms early on
+> (0x37C1FC: ms*1000 → gint sleep_us → `timer_configure(TIMER_ANY, 0, ...)`), so TMU2 runs with
+> TCOR=0 and fires continuously; with IMASK left at 0 the interrupt nested in its own callback
+> until the stack (r15 0x8C1A3Exx) overwrote gint's `gint_inth_callback` pointer at 0x08143EC8
+> (phys 0x0C1A3EC8) → jsr to 0x40001101 (a saved SR) → TLB miss → gint's panic screen →
+> illegal instruction at 0xC6 → core halt. **Fix:** CPUOPM region (Go `MMIOBus.cpuopm`, Python
+> `MMIOBus.cpuopm`); `acceptInterrupt` sets IMASK to the accepted level when INTMU is set (Go
+> cpu.go + Python cpu.py). The OS never touches CPUOPM, so OS runs/goldens are unchanged.
+> Tests: `TestCPUOPMIntmuSetsIMASK`, `TestUpsilonStarts` (32 MB dump, icon S: home screen up,
+> keys work, Probability opens). Not yet tried on the phone (it was offline).
 > **NEXT:** (1) a shared debug keystore in the repo so office and Mac builds install over each
 > other (explained to the user 2026-10-01: commit the Mac's `~/.android/debug.keystore`, point
 > `signingConfigs.debug` at it); (2)

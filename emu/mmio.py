@@ -670,7 +670,11 @@ class MMIOBus:
         pfc = Region("PFC", 0xA4050000, 0x1000)
         self.lcd = LCD("LCD_R61524", 0xB4000000, 0x20000, pfc)
         self.ccn = CCN("CCN", 0xFF000000, 0x1000)
+        # CPUOPM: only INTMU (bit 3) matters; when set, an accepted interrupt's level goes to
+        # SR.IMASK (cpu.py). gint sets it; the OS never touches it. Mirror of emu_go MMIOBus.
+        self.cpuopm = Region("CPUOPM", 0xFF2F0000, 4)
         self.regions = [
+            self.cpuopm,
             CPG("CPG", 0xA4150000, 0x1000),
             pfc,
             Region("WDT", 0xA4520000, 0x1000),

@@ -110,3 +110,33 @@ func TestINTCGateAtAcceptance(t *testing.T) {
 		t.Fatal("unmasked request not accepted")
 	}
 }
+
+// CPUOPM.INTMU (bit 3): when set, accepting an interrupt also sets SR.IMASK to its level, so
+// the handler can only be preempted by a higher priority once it clears BL (gint relies on
+// it). Without INTMU, IMASK is left alone, as the OS expects.
+func TestCPUOPMIntmuSetsIMASK(t *testing.T) {
+	for _, intmu := range []bool{false, true} {
+		e := NewEmulator(make([]byte, 0x1000))
+		c := e.cpu
+		if intmu {
+			e.mem.Write(0xFF2F0000, 4, e.mem.Read(0xFF2F0000, 4)|cpuopmINTMU)
+		}
+		e.mmio.intc.ipr[0] |= 9 << 4 // TMU2 (INTEVT 0x440) at priority 9, unmasked
+		c.vbr, c.pc = 0x8c000000, 0x8c001000
+		c.setSR(srMD)
+		c.pending = append(c.pending, pend{level: 9, intevt: 0x440})
+		if !c.acceptInterrupt() {
+			t.Fatal("interrupt not accepted")
+		}
+		want := uint32(0)
+		if intmu {
+			want = 9
+		}
+		if got := (c.sr & srIMASK) >> 4; got != want {
+			t.Errorf("INTMU=%v: IMASK %d after acceptance, want %d", intmu, got, want)
+		}
+		if c.ssr&srIMASK != 0 {
+			t.Errorf("SSR must keep the interrupted IMASK: %#x", c.ssr)
+		}
+	}
+}
