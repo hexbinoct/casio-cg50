@@ -53,6 +53,7 @@ class CPU:
         self.ssr = 0
         self.spc = 0
         self.sgr = 0
+        self.dbr = 0                   # debug base register: user-break handler (UBC, Go only)
         self.mach = 0
         self.macl = 0
         self.fpul = 0
@@ -204,6 +205,8 @@ class CPU:
             if d8 == 0x0A: r[n] = self.mach; return
             if d8 == 0x1A: r[n] = self.macl; return
             if d8 == 0x2A: r[n] = self.pr; return
+            if d8 == 0x3A: r[n] = self.sgr; return              # stc SGR,Rn
+            if d8 == 0xFA: r[n] = self.dbr; return              # stc DBR,Rn
             if (op & 0x8F) == 0x82:               # stc Rm_bank,Rn
                 r[n] = self.rbank1[(op >> 4) & 7]; return
             if d8 == 0x03:                        # bsrf Rn
@@ -413,6 +416,8 @@ class CPU:
         if d8 == 0x2E: self.vbr = r[n]; return                                  # ldc Rn,VBR
         if d8 == 0x3E: self.ssr = r[n]; return                                  # ldc Rn,SSR
         if d8 == 0x4E: self.spc = r[n]; return                                  # ldc Rn,SPC
+        if d8 == 0x3A: self.sgr = r[n]; return                                  # ldc Rn,SGR
+        if d8 == 0xFA: self.dbr = r[n]; return                                  # ldc Rn,DBR
         if d8 == 0x0A: self.mach = r[n]; return                                 # lds Rn,MACH
         if d8 == 0x1A: self.macl = r[n]; return                                 # lds Rn,MACL
         if d8 == 0x2A: self.pr = r[n]; return                                   # lds Rn,PR
@@ -426,6 +431,8 @@ class CPU:
         if d8 == 0x27: self.vbr = mem.r32(r[n]); r[n] = u32(r[n] + 4); return    # @Rn+,VBR
         if d8 == 0x37: self.ssr = mem.r32(r[n]); r[n] = u32(r[n] + 4); return    # @Rn+,SSR
         if d8 == 0x47: self.spc = mem.r32(r[n]); r[n] = u32(r[n] + 4); return    # @Rn+,SPC
+        if d8 == 0x36: self.sgr = mem.r32(r[n]); r[n] = u32(r[n] + 4); return    # @Rn+,SGR
+        if d8 == 0xF6: self.dbr = mem.r32(r[n]); r[n] = u32(r[n] + 4); return    # @Rn+,DBR
         if d8 == 0x06: self.mach = mem.r32(r[n]); r[n] = u32(r[n] + 4); return   # @Rn+,MACH
         if d8 == 0x16: self.macl = mem.r32(r[n]); r[n] = u32(r[n] + 4); return   # @Rn+,MACL
         if d8 == 0x26: self.pr = mem.r32(r[n]); r[n] = u32(r[n] + 4); return     # @Rn+,PR
@@ -438,6 +445,8 @@ class CPU:
         if d8 == 0x23: r[n] = u32(r[n] - 4); mem.w32(r[n], self.vbr); return     # VBR
         if d8 == 0x33: r[n] = u32(r[n] - 4); mem.w32(r[n], self.ssr); return     # SSR
         if d8 == 0x43: r[n] = u32(r[n] - 4); mem.w32(r[n], self.spc); return     # SPC
+        if d8 == 0x32: r[n] = u32(r[n] - 4); mem.w32(r[n], self.sgr); return     # SGR
+        if d8 == 0xF2: r[n] = u32(r[n] - 4); mem.w32(r[n], self.dbr); return     # DBR
         if d8 == 0x02: r[n] = u32(r[n] - 4); mem.w32(r[n], self.mach); return    # MACH
         if d8 == 0x12: r[n] = u32(r[n] - 4); mem.w32(r[n], self.macl); return    # MACL
         if d8 == 0x22: r[n] = u32(r[n] - 4); mem.w32(r[n], self.pr); return      # PR

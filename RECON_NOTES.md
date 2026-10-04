@@ -9,7 +9,161 @@
   pending, so the next session can continue without being reminded.
 ============================================================================= -->
 
-> ## ⏯ RESUME HERE (last session end: 2026-10-01 cont.18y, home Mac)
+> ## ⏯ RESUME HERE (last session end: 2026-10-04, cont.18z = on-device debugger stage 0, home Mac)
+>
+> **Session in one paragraph:** the user chose approach A for the on-device debugger
+> (`cg50_addons/notes/debugger.md`: a resident monitor + the UBC, in stages). **Stage 0 is done
+> here:** the **UBC + DBR are modelled** (below) and a **free-RAM survey** found **DRAM
+> 0x0C4E0000–0x0C7FFFFF (3200 KB) never written or read** by the OS, any app, add-in launch or the
+> boot (power-up noise in the real June dump too): the monitor's home. Stage 1 (DASM breaks in its
+> own code and shows the registers) then ran in the emulator **and on the real calculator** (user,
+> 2026-10-04: "it worked great"); a crash the user hit there (stepping into gint's
+> `ubc_disable_channel` → the break handler re-broke on itself → stack ran through all OS RAM →
+> reset to the language screen) **reproduces exactly in the emulator** (the model behaves like the
+> hardware) and is fixed on the DASM side. Not committed yet.
+>
+> **cont.18z — UBC (User Break Controller) + DBR.** `emu_go/ubc.go` (header = the full model),
+> 0xFF200000, the SH7724 layout of gint's `<gint/mpu/ubc.h>`: 2 channels (CBR/CRR/CAR/CAMR, ch1
+> CDR1/CDMR1/CETR1), CCMFR, CBCR. Break before/after an instruction fetch (delay-slot rules: before
+> a slot = before its branch; after a branch or slot = at the target; a not-taken `bt/s`/`bf/s` runs
+> its slot inside the same UBC step), operand watchpoints (logical address, size, R/W, ch1 data
+> value; the break is taken after the instruction; DMA not seen), CAMR masks, ASID (AIE),
+> sequential flags (MFE/MFI), ch1 execution count; break = SSR/SPC/SGR, MD/RB/BL=1, EXPEVT 0x1E0,
+> PC = **DBR** if CBCR.UBDE else VBR+0x100. No match while SR.BL=1 or MSTPCR0.UDB (bit 17) stops
+> the module. **Matches are decided at the instruction's fetch:** a break-after fires even when
+> that instruction disables its own channel (real calculator, 2026-10-04: DASM single-stepped 79
+> times through its own `CBR1 = 0` and on into `dbg_done`; the emulator, deciding after execution,
+> stopped at step 19 — now 79 too). A before-break re-fires after the handler's rte (debuggers step over it first, like
+> gint's GDB stub). **Cost: zero while no channel is enabled** (`CPU.ubcOn` selects `stepUBC`;
+> the operand watch is a bool test at the top of `Memory.Read/Write`; MenuHold benchmark = HEAD
+> within noise). New instructions `ldc/stc(.l)` **DBR** and **SGR** in Go + the Python oracle
+> (conformance 70/70: `ldc_stc_sgr_dbr`, `ldcl_stcl_sgr_dbr`; boot golden byte-identical). DBR is
+> saved as a 37th word of the counted register block (older states → 0, older builds ignore it);
+> the UBC registers are a region map in the MMIO section. The OS never touches the UBC (its one
+> pool hit for 0xFF200000 is an unrelated constant) and never executes DBR instructions.
+> Tests `ubc_test.go`: before/after, delay slots, not-taken bt/s, vector without UBDE, BL/UDB/BIE
+> gating, operand watch (data value, read vs write, size), execution count, save-state.
+> **Hardware facts confirmed by the real calculator:** the OS leaves the UBC stopped
+> (MSTPCR0.UDB=1) at add-in start, so gint's driver powers it on and sets DBR = its `ubc_dbh`
+> (DASM showed "DBR 0x0030d77c UBDE 1", same as the emulator). **SR bit 12 is set (0x40001101)
+> on the real CPU: the SH7305 is SH4AL-DSP-like and bit 12 is the DSP bit** — don't treat SR's
+> "reserved" SH-4A bits as reserved (a mask I tried this session was wrong and was reverted).
+> **Free-RAM survey:** `emu_go/ramfree_probe_test.go` (tag probe) + a nil-checked
+> `Memory.accHook` (memory.go); full findings in the next paragraph.
+>
+> **Debugger stage 0 — which physical RAM stays free while the OS and gint add-ins run (2026-10-04).**
+> Probe `emu_go/ramfree_probe_test.go` (tag `probe`) + a nil-checked `Memory.accHook` (memory.go:
+> every DRAM read/write by physical address, every access at 0xE0000000.. (IL/XY/OC RAM, P4
+> address), DRAM instruction fetches and DMA source reads; off = one nil test on those paths).
+> One 3.5 G-instruction session on the 32 MB dump from `cg50_state_32mb.bin`, 64-byte blocks, a bit
+> per phase + first reader/writer PC: MAIN MENU idle (2 G) → Run-Matrix (2^100, sin, ln, a big
+> product, OPTN) → Graph (Y=X², DRAW) → Statistics (list + 1-VAR) → Python (MicroPython shell,
+> 2**1000, 1/7) → Casio's Geometry and 3D Graph add-ins → `InstallAddin` of the current DASM build
+> (the OS writes the file) → DASM (Conv.g3a: listing, VARS, X,θ,T, hex; OS ROM: VARS = the whole-ROM
+> analysis, references; khicas50.g3a 2 MB: VARS via BFile) → MAIN MENU idle with DASM suspended →
+> Upsilon (Calculation: 1+2, 2^64, sin 1) → Upsilon idle. Plus `RAMFREE_SESSION=warm`: a warm
+> power-on from reset to the MAIN MENU. Add-in launches are their own phases (`X-launch` = the OS
+> until pc = 0x00300000). Run: `TMPDIR=<dir> go -C emu_go test -tags probe -run 'TestRamFree$'
+> -count=1 -v .` (~90 s; maps + meta.json in `<dir>/ramfree`). Cross-checked against the **real
+> calculator's** June dumps `os/flash_dump/dram.bin` / `ilram.bin` (taken while FlashDump, a gint
+> add-in, ran).
+>
+> **DRAM (0x0C000000, 8 MB) — the answer: 0x0C4E0000–0x0C7FFFFF (3200 KB) is never written and
+> never read** — not by any app, add-in launch, Python, file install, DASM, Upsilon, nor the boot.
+> On the **real calculator** that range holds DRAM power-up noise (every 64 KB: ~6.6 bits/byte
+> entropy, no 0x00 bytes at all, ~11% 0xFF, bits biased to 1), i.e. nothing ever wrote it there
+> either, and the boundary is exactly 0x0C4E0000 in both (the dump goes from all-zero to noise at
+> that address). It holds a monitor (KBs) *and* a 512 KB copy of DASM's RAM several times over.
+> Everything below it is the OS's:
+> - **Every app launch, built-in or add-in, rewrites ~4.4 MB**: 0x0C0E0000–0x0C4DFFFF fully, plus
+>   much of 0x0C000000–0x0C0DFFFF. 0x0C1E0000–0x0C4DFFFF (3 MB) is zero-filled by the OS at each
+>   launch (first writer pc 0x80362FF2; all 0x00 in the real dump too) and then left alone while a
+>   gint add-in runs: scratch space *after* the target is launched, never across a launch.
+> - 0x0C160000–0x0C1DFFFF (512 KB) = the add-in RAM (below); 0x0C0F0000–0x0C147800 = gint's `_ostk`.
+> - The other never-written DRAM ranges in the session are OS data the **boot** initialises
+>   (0x0C028840–0x0C04CEBF 145 KB, 0x0C06D940–0x0C08B6FF 119 KB, 0x0C0D8980–0x0C0E2FFF 41 KB,
+>   0x0C0CEE00–0x0C0D1DFF 12 KB, + ~70 ranges ≤ 7 KB; mostly 0x00) — unusable (other apps may use
+>   them). Untouched by session *and* boot, besides the 3200 KB: only 0x0C048BC0–0x0C04A57F (6.4 KB),
+>   0x0C0D2000–0x0C0D35BF (5.4 KB), 0x0C04CA40–0x0C04CE7F (1 KB), all zero — not worth the risk.
+> - While gint add-ins run (after launch), never written: 0x0C1E0000–0x0C7FFFFF (6272 KB, never read),
+>   the free tail of `_uram` 0x0C1A8AC0–0x0C1DBFBF (205 KB) and of `_ostk` 0x0C11B600–0x0C1477BF
+>   (176 KB) (DASM's usage; a heavier target can allocate them), 0x0C147800–0x0C1600FF (98 KB).
+>
+> **On-chip memories.**
+> - **OS "IL RAM" 0xFD800000: really 16 KB, mirrored every 16 KB** (ilram.bin repeats with a 16 KB
+>   period; the emulator models 64 KB). The OS writes ~5 KB in 0xFD800000–0xFD8024BF (its flash
+>   routines, 4 KB at 0xFD800000, recopied at every app launch by pc 0x801DF4B4; variables); the
+>   boot uses 0xFD803FC0–0xFD803FFF as a stack. Never touched in the session: **0xFD8024C0–0xFD803FBF
+>   (6.8 KB)**, all 0x00. In the real dump that range is zero except 0xFD8026A0–0xFD8026BF (32 B) and
+>   0xFD803F40–0xFD803FFF (192 B, a deeper boot/standby stack than the emulator's): **usable ~6 KB at
+>   0xFD8026C0–0xFD803F3F**. gint never touches 0xFD80xxxx, it is P4 (no MMU, survives every world
+>   switch): the natural home of a DBR entry stub that jumps to the monitor in DRAM.
+> - **X/Y memory 0xE500E000–0xE5011FFF (16 KB) and IL memory 0xE5200000–0xE5200FFF (4 KB)** (gint's
+>   `xyram`/`ilram` linker regions): the OS never touches them (no access in any OS phase or the
+>   boot); gint takes them: DASM's build memsets all 20 KB at start (`memset_align`, pc 0x30DC2E),
+>   reads the DMA fill pattern at 0xE5200000 (`dma_transfer_async`) and runs its interrupt-callback
+>   trampoline there; Upsilon writes 0xE5200000–0xE520007F. **Not usable** by a monitor that must
+>   survive a gint target. (The rest of the emulator's flat 0xE5000000–0xE520FFFF model is not real
+>   memory.)
+> - **0xFE200000 "OC RAM"** (emulator: 2 MB): the OS writes 0xFE200000–0xFE227FFF (160 KB) at every
+>   app launch + 0xFE240000–0xFE24007F, 0xFE241000–0xFE2411BF; the boot writes ~590 KB more
+>   (0xFE24xxxx–0xFE3Cxxxx); never touched by either: e.g. 0xFE28C000–0xFE2FFBFF (463 KB),
+>   0xFE228000–0xFE23FFFF (96 KB) and the same offsets +1 MB (0xFE328000, 0xFE36A000: the boot's
+>   pattern repeats per MB — a mirror?). **The real size/existence of this memory is unknown** (no
+>   real dump): not a candidate until dumped on the calculator.
+>
+> **Add-in mappings (UTLB) while DASM / Upsilon / Casio's add-ins run:** RAM 0x08100000–0x0817FFFF =
+> 8 × 64 KB entries (slots 55–62, ASID 0, not shared) → phys **0x0C160000–0x0C1DFFFF, the same 512 KB
+> for every add-in**; slot 63 = VPN 0 → phys 0 (64 KB); code 0x00300000.. = 4 KB pages demand-mapped
+> from the OS table 0x8C04CF0C straight onto the .g3a file in flash (fragmented by the FTL: DASM
+> 0x00300000 → 0x00FE2000 … 0x0031A000 → 0x0132F000; Upsilon 0x00300000 → 0x019D1000; Geometry
+> 0x00300000 → 0x01D70000), read-only. So a debugger cannot keep DASM's RAM in place while the target
+> runs: copy it out (0x0C4E0000+ has room) and back.
+>
+> **gint 2.11 placement (DASM, symbols from its ELF):** VBR = 0x8C160000 (start of the add-in RAM;
+> handlers at VBR+0x100/0x400/0x600 in the 5 KB before .data/.bss at 0x08101400); `.bss/.data` up to
+> `_euram` (0x0C1686E0 in this build); **`_uram` arena 0x8C1686E0–0x8C1DC000 (462 KB, phys
+> 0x0C1686E0)** — DASM: 7 live blocks, peak 10, 405 KB allocated in total (744 KB in another
+> session); **`_ostk` arena 0x8C0F0000–0x8C147800 (350 KB, phys 0x0C0F0000, "the OS stack")** holds
+> the **only VRAM: 0xAC0F00A0, 396×224×2 = 177 KB (vram_1 = vram_2: no triple buffering)** — Upsilon's
+> LCD DMA source is the same 0x0C0F00A0; world buffers `gint_world_os/addin` at 0x0C168744 /
+> 0x0C1688D0 (in `_uram`); stack: the top 16 KB of the add-in RAM 0x0C1DC000–0x0C1DFFFF
+> (`gint_stack_top` = 0x8C1DC000 = end of `_uram`; r15 at 0x8C1DFEB8 in DASM, 0x8C1DFE10 in Upsilon).
+>
+> **Recommendation:** monitor code + data at **0x8C4E0000+** (P1; or 0xAC4E0000 uncached), a 512 KB
+> save area for DASM's RAM right after it, a small DBR entry stub in IL RAM **0xFD8026C0–0xFD803F3F**
+> if it helps. Before relying on it on hardware: a probe add-in that checks 0x8C4E0000–0x8C7FFFFF is
+> still "noise"/unchanged across a real session (or a canary + CRC kept by the monitor), and a
+> FlashDump-style read of 0xFE200000–0xFE3FFFFF to settle the OC RAM question.
+> **Caveats:** the emulator run is not exhaustive (no eActivity, Spreadsheet, Picture Plot, Physium,
+> E-CON, Memory manager, USB link / mass storage, big Python programs or a full Run-Matrix memory,
+> OS update); other OS versions may differ (3.60 only); other add-ins may use the upper RAM on purpose
+> (non-gint add-ins can reach physical memory through P1/P2; KhiCAS could not be measured: it stops
+> with "unable to load ram part khicas50.882", a file this calculator lacks); the real-dump evidence
+> is one snapshot (power-up noise proves nothing wrote there since the DRAM last lost power, not that
+> nothing ever could); the emulator's zero-initialised DRAM says nothing about real initial contents.
+>
+> **NEXT:** (1) debugger stage 2 (cg50_addons `notes/debugger.md`): start a target add-in under a
+> resident monitor at 0x8C4E0000+ (DBR stub optionally in OS IL RAM 0xFD8026C0–0xFD803F3F), stop at
+> its entry 0x00300000; first verify on the calculator that 0x8C4E0000–0x8C7FFFFF stays untouched
+> across a real session (probe add-in / canary) and dump 0xFE200000–0xFE3FFFFF (OC RAM size
+> unknown); (2) commit this session (emulator: UBC/DBR/SGR, ramfree probe; then cg50_addons);
+> (3)-(5) as before: shared Android debug keystore, desktop app, WASM.
+> Emulator gaps noticed: a not-taken bt/s/bf/s outside the UBC path still runs its slot as a
+> separate step (an interrupt can land in between; only timing, the golden boot depends on the
+> current counting); Upsilon can't return to the MAIN MENU in the emulator (MENU/EXIT/AC do
+> nothing) — unverified whether that's real.
+>
+> ## ⏯ (prev) RESUME HERE (last session end: 2026-10-04, cont.18y + the Upsilon fix, home Mac)
+>
+> **Session 2026-10-01…04 in one paragraph:** any `.g3a` can be installed into the emulated
+> storage by the OS itself (`InstallAddin`), which needed a flash-erase fix; the Android app
+> installs add-ins (file picker / Open with / adb), shows the whole 396x224 panel, and its
+> save-states survive inside gint add-ins; Upsilon runs (CPUOPM.INTMU). All verified on the
+> POCO X3 and committed + pushed (`98a70f2`, `75734dd`, `a6df938`). Details per item below.
+> The add-in side (DASM, a planned on-device debugger, "Explain") is in the sibling repo
+> `cg50_addons` (`notes/dasm.md`, `notes/debugger.md`): the debugger's stage 0 is emulator
+> work in this repo (see NEXT).
 >
 > **cont.18y — install any `.g3a` (DESKTOP_AND_WEB step 1) + the phone app installs add-ins.**
 > **Done, verified:** `Emulator.InstallAddin(name, g3a)` (`emu_go/install.go`) has the *OS itself*
@@ -87,13 +241,28 @@
 > `MMIOBus.cpuopm`); `acceptInterrupt` sets IMASK to the accepted level when INTMU is set (Go
 > cpu.go + Python cpu.py). The OS never touches CPUOPM, so OS runs/goldens are unchanged.
 > Tests: `TestCPUOPMIntmuSetsIMASK`, `TestUpsilonStarts` (32 MB dump, icon S: home screen up,
-> keys work, Probability opens). Not yet tried on the phone (it was offline).
-> **NEXT:** (1) a shared debug keystore in the repo so office and Mac builds install over each
-> other (explained to the user 2026-10-01: commit the Mac's `~/.android/debug.keystore`, point
-> `signingConfigs.debug` at it); (2)
-> DESKTOP_AND_WEB step 2: the desktop app (webui.go upgrade + drag-and-drop calling InstallAddin);
-> (3) WASM. Small: a desktop CLI `install` mode that writes into `cg50_state_32mb.bin`, so probes can
-> use real installs instead of `DASM_SWAP`.
+> keys work, Probability opens). **Verified on the POCO X3** (2026-10-02): Upsilon starts, its
+> Calculation app computes 1+1.
+> **Practical state (2026-10-04):**
+> - Phone: wireless adb paired with this Mac; find it with `adb mdns services` (the port changes
+>   whenever the phone sleeps; a stuck adb needs `adb kill-server`) and use the mDNS name
+>   `adb-584c917b-jFkRGG._adb-tls-connect._tcp` as `CG50_SERIAL`. The phone's app is signed
+>   with the **Mac's** debug key now (an office build won't install over it without uninstalling,
+>   which wipes its files: back them up first, as in `os/phone_backup_2026-10-01/`). It holds
+>   the 32 MB dump + state, Upsilon and DASM (DASMNEW) installed.
+> - Mac Android emulator (AVD `Medium_Phone_API_36.1`, headless: `emulator -avd ... -no-window`)
+>   is out of storage (~270 MB free): wipe it (`-wipe-data`) or enlarge it before reuse.
+> - Side fact: 0xFF2F0004 is **EXPMASK** (next to CPUOPM), referenced by the OS (0x8002041C).
+> **NEXT:** (1) if the user picks approach A for the on-device debugger (`cg50_addons/notes/
+> debugger.md`; awaiting their choice): stage 0 here = model the **UBC** (User Break Controller:
+> 2 channels, break before/after an instruction or on an operand access) + **DBR** (debug
+> handler base), and measure which physical RAM stays free while the OS and a gint add-in run
+> (DRAM write-watch over a long session); (2) a shared debug keystore in the repo so office and
+> Mac builds install over each other (explained to the user 2026-10-01: commit the Mac's
+> `~/.android/debug.keystore`, point `signingConfigs.debug` at it; not asked for yet);
+> (3) DESKTOP_AND_WEB step 2: the desktop app (webui.go upgrade + drag-and-drop calling
+> InstallAddin); (4) WASM. Small: a desktop CLI `install` mode that writes into
+> `cg50_state_32mb.bin`, so probes can use real installs instead of `DASM_SWAP`.
 >
 > ## ⏯ (prev) RESUME HERE (last session end: 2026-10-01 cont.18x, home Mac)
 >

@@ -41,6 +41,7 @@ type CPU struct {
 	ssr      uint32
 	spc      uint32
 	sgr      uint32
+	dbr      uint32 // debug base register: the user-break handler when CBCR.UBDE=1 (ubc.go)
 	mach     uint32
 	macl     uint32
 	fpul     uint32
@@ -57,11 +58,20 @@ type CPU struct {
 	// natively (returning true = done, pc already at the return address). 0 = off.
 	hlePC uint32
 	hle   func() bool
+
+	ubc     *ubcUnit // the User Break Controller (ubc.go); nil without an MMIO bus
+	ubcOn   bool     // a UBC channel is enabled: every instruction goes through stepUBC
+	faulted bool     // stepMMU took an MMU exception (cleared by stepUBC)
 }
 
 func NewCPU(mem *Memory) *CPU {
 	c := &CPU{mem: mem}
 	mem.cpu = c
+	if mem.mmio != nil && mem.mmio.ubc != nil {
+		c.ubc = mem.mmio.ubc
+		c.ubc.cpu = c
+		c.ubc.update()
+	}
 	c.setSR(srMD | srRB | srBL | 0xF0)
 	return c
 }
@@ -176,6 +186,11 @@ func (c *CPU) step() {
 	if c.pc == c.hlePC && c.hle != nil && c.hle() {
 		return
 	}
+	if c.ubcOn {
+		c.stepUBC()
+		c.cycles++
+		return
+	}
 	if c.mem.mmuAt {
 		c.stepMMU()
 		c.cycles++
@@ -197,7 +212,9 @@ func (c *CPU) run(stop uint64, dirty *bool) {
 		if c.pc == c.hlePC && c.hle != nil && c.hle() {
 			continue
 		}
-		if c.mem.mmuAt {
+		if c.ubcOn {
+			c.stepUBC()
+		} else if c.mem.mmuAt {
 			c.stepMMU()
 		} else {
 			op := c.mem.fetch16(c.pc)
@@ -224,9 +241,10 @@ func (c *CPU) stepMMU() {
 			c.r, c.rbank1 = r0, rb0
 			c.pr, c.sr, c.gbr, c.mach, c.macl, c.fpul, c.fpscr = pr0, sr0, gbr0, mach0, macl0, fpul0, fpscr0
 			c.mem.mmu.raise(c, f, pc0)
+			c.faulted = true
 		}
 	}()
-	op := c.mem.R16(c.pc)
+	op := c.mem.fetch16(c.pc) // (with the MMU on: the same as R16, but not seen as an operand access)
 	c.pc += 2
 	c.execute(op)
 }
@@ -356,6 +374,12 @@ func (c *CPU) execute(op uint32) {
 			return
 		case 0x2A:
 			r[n] = c.pr
+			return
+		case 0x3A: // stc SGR,Rn
+			r[n] = c.sgr
+			return
+		case 0xFA: // stc DBR,Rn
+			r[n] = c.dbr
 			return
 		case 0x29:
 			r[n] = c.sr & srT
@@ -834,6 +858,12 @@ func (c *CPU) exec4(op, n, m, d8 uint32) {
 	case 0x4E:
 		c.spc = r[n]
 		return
+	case 0x3A: // ldc Rn,SGR
+		c.sgr = r[n]
+		return
+	case 0xFA: // ldc Rn,DBR
+		c.dbr = r[n]
+		return
 	case 0x0A:
 		c.mach = r[n]
 		return
@@ -867,6 +897,14 @@ func (c *CPU) exec4(op, n, m, d8 uint32) {
 		return
 	case 0x47:
 		c.spc = mem.R32(r[n])
+		r[n] += 4
+		return
+	case 0x36: // ldc.l @Rn+,SGR
+		c.sgr = mem.R32(r[n])
+		r[n] += 4
+		return
+	case 0xF6: // ldc.l @Rn+,DBR
+		c.dbr = mem.R32(r[n])
 		r[n] += 4
 		return
 	case 0x06:
@@ -908,6 +946,14 @@ func (c *CPU) exec4(op, n, m, d8 uint32) {
 	case 0x43:
 		r[n] -= 4
 		mem.W32(r[n], c.spc)
+		return
+	case 0x32: // stc.l SGR,@-Rn
+		r[n] -= 4
+		mem.W32(r[n], c.sgr)
+		return
+	case 0xF2: // stc.l DBR,@-Rn
+		r[n] -= 4
+		mem.W32(r[n], c.dbr)
 		return
 	case 0x02:
 		r[n] -= 4

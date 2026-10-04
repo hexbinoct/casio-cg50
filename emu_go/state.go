@@ -60,12 +60,13 @@ func envOr(name, def string) string {
 // active bank, c.rbank1 the inactive one, and c.sr holds the RB bit — so restoring all
 // three verbatim is consistent without re-banking).
 func (c *CPU) snapshotRegs() []uint32 {
-	b := make([]uint32, 0, 36)
+	b := make([]uint32, 0, 37)
 	b = append(b, c.r[:]...)
 	b = append(b, c.rbank1[:]...)
 	b = append(b, c.pc, c.pr, c.gbr, c.vbr, c.ssr, c.spc, c.sgr,
 		c.mach, c.macl, c.fpul, c.fpscr, c.sr)
-	return b // 16 + 8 + 12 = 36
+	b = append(b, c.dbr) // since 2026-10-04 (UBC); the block is counted, older readers stop at 36
+	return b             // 16 + 8 + 12 + 1 = 37
 }
 
 func (c *CPU) restoreRegs(b []uint32) {
@@ -75,6 +76,10 @@ func (c *CPU) restoreRegs(b []uint32) {
 	c.pc, c.pr, c.gbr, c.vbr = b[i], b[i+1], b[i+2], b[i+3]
 	c.ssr, c.spc, c.sgr = b[i+4], b[i+5], b[i+6]
 	c.mach, c.macl, c.fpul, c.fpscr, c.sr = b[i+7], b[i+8], b[i+9], b[i+10], b[i+11]
+	c.dbr = 0
+	if len(b) > 36 {
+		c.dbr = b[36]
+	}
 }
 
 // SnapshotBytes returns a gzip-compressed save-state in memory (for hosts that persist a

@@ -419,14 +419,15 @@ const (
 )
 
 type MMIOBus struct {
-	regions   []region
+	regions []region
 	// CPUOPM (0xFF2F0000), the SH-4A CPU operation mode register. Only INTMU (bit 3) is
 	// modelled: when set, accepting an interrupt also sets SR.IMASK to its level (cpu.go).
 	// gint sets it at startup and relies on it; the OS never touches the register.
-	cpuopm *base
+	cpuopm    *base
+	ubc       *ubcUnit // User Break Controller 0xFF200000 (ubc.go)
 	periphIRQ *periphIRQ
 	etmu2     *etmuCounter
-	tmu       *tmu // TMU0-2 (gtimer.go); ETMU0-5 live in etmu2
+	tmu       *tmu      // TMU0-2 (gtimer.go); ETMU0-5 live in etmu2
 	intc      *intcUnit // priority/mask gate for every interrupt source (intc.go)
 	cpu       *CPU
 	unknown   map[uint32]int
@@ -522,9 +523,11 @@ func NewMMIOBus() *MMIOBus {
 	b.lcd = newLCD(pfc)
 	b.ccn = &ccn{base: newBase("CCN", 0xFF000000, 0x1000)}
 	b.cpuopm = &base{nm: "CPUOPM", bs: 0xFF2F0000, sz: 4, regs: map[uint32]uint32{}}
+	cpg := &cpg{base: newBase("CPG", 0xA4150000, 0x1000)}
+	b.ubc = newUBC(cpg)
 	b.regions = []region{
 		b.cpuopm,
-		&cpg{base: newBase("CPG", 0xA4150000, 0x1000)},
+		cpg,
 		pfc,
 		&base{nm: "WDT", bs: 0xA4520000, sz: 0x1000, regs: map[uint32]uint32{}},
 		b.intc,
@@ -542,6 +545,7 @@ func NewMMIOBus() *MMIOBus {
 		b.ccn,
 		&utlbArrays{base: newBase("UTLB", 0xF6000000, 0x02000000), c: b.ccn},
 		b.lcd,
+		b.ubc,
 	}
 	return b
 }
@@ -655,6 +659,8 @@ func (b *MMIOBus) regionRegs() map[string]map[uint32]uint32 {
 			out[x.nm] = x.stateMap()
 		case *ccn:
 			out[x.nm] = x.stateMap()
+		case *ubcUnit:
+			out[x.nm] = maps.Clone(x.regs)
 		case *rtc:
 			out[x.nm] = map[uint32]uint32{0x1C: x.rcr1, 0x1E: x.rcr2}
 		case *lcd:
@@ -701,6 +707,10 @@ func (b *MMIOBus) restoreRegionRegs(saved map[string]map[uint32]uint32) {
 		}
 		if x, isC := r.(*ccn); isC {
 			x.restoreState(m)
+			continue
+		}
+		if x, isU := r.(*ubcUnit); isU {
+			x.restore(m)
 			continue
 		}
 		if x, isI := r.(*intcUnit); isI {

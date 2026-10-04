@@ -19,6 +19,7 @@ type cState struct {
 	Rbank1               []uint32
 	Pr, Gbr, Vbr         uint32
 	Ssr, Spc, Mach, Macl uint32
+	Sgr, Dbr             uint32
 	Data                 map[string]uint32
 }
 
@@ -27,6 +28,7 @@ type cSetup struct {
 	Rbank1                                 []uint32
 	Sr, Pr, Gbr, Vbr, Ssr, Spc, Mach, Macl uint32
 	Fpul, Fpscr                            uint32
+	Sgr, Dbr                               uint32
 }
 
 type cCase struct {
@@ -61,6 +63,7 @@ func replayGo(c *cCase) (cState, string) {
 	cpu.sr = c.Setup.Sr
 	cpu.pr, cpu.gbr, cpu.vbr = c.Setup.Pr, c.Setup.Gbr, c.Setup.Vbr
 	cpu.ssr, cpu.spc = c.Setup.Ssr, c.Setup.Spc
+	cpu.sgr, cpu.dbr = c.Setup.Sgr, c.Setup.Dbr
 	cpu.mach, cpu.macl = c.Setup.Mach, c.Setup.Macl
 	cpu.fpul, cpu.fpscr = c.Setup.Fpul, c.Setup.Fpscr
 
@@ -98,6 +101,7 @@ func replayGo(c *cCase) (cState, string) {
 		Rbank1: append([]uint32{}, cpu.rbank1[:]...),
 		Pr:     cpu.pr, Gbr: cpu.gbr, Vbr: cpu.vbr,
 		Ssr: cpu.ssr, Spc: cpu.spc, Mach: cpu.mach, Macl: cpu.macl,
+		Sgr: cpu.sgr, Dbr: cpu.dbr,
 		Data: data,
 	}
 	return st, panicMsg
@@ -154,6 +158,8 @@ func diff(name string, want, got *cState) string {
 	add("vbr", want.Vbr, got.Vbr)
 	add("ssr", want.Ssr, got.Ssr)
 	add("spc", want.Spc, got.Spc)
+	add("sgr", want.Sgr, got.Sgr)
+	add("dbr", want.Dbr, got.Dbr)
 	add("mach", want.Mach, got.Mach)
 	add("macl", want.Macl, got.Macl)
 	for k, w := range want.Data {

@@ -87,6 +87,14 @@ def sts_macl(n):   return 0x001A | (n << 8)
 def sts_mach(n):   return 0x000A | (n << 8)
 def sts_pr(n):     return 0x002A | (n << 8)
 def ldc_sr(n):     return 0x400E | (n << 8)
+def ldc_sgr(n):    return 0x403A | (n << 8)
+def stc_sgr(n):    return 0x003A | (n << 8)
+def ldcl_sgr(n):   return 0x4036 | (n << 8)   # ldc.l @Rn+,SGR
+def stcl_sgr(n):   return 0x4032 | (n << 8)   # stc.l SGR,@-Rn
+def ldc_dbr(n):    return 0x40FA | (n << 8)
+def stc_dbr(n):    return 0x00FA | (n << 8)
+def ldcl_dbr(n):   return 0x40F6 | (n << 8)   # ldc.l @Rn+,DBR
+def stcl_dbr(n):   return 0x40F2 | (n << 8)   # stc.l DBR,@-Rn
 def stc_sr(n):     return 0x0002 | (n << 8)
 def ldc_bank(n, b):return 0x408E | (n << 8) | (b << 4)   # ldc Rn,Rb_BANK
 def stc_bank(b, n):return 0x0082 | (n << 8) | (b << 4)   # stc Rb_BANK,Rn
@@ -252,6 +260,16 @@ def build_cases():
                   data={str(VBR + 0x600): (NOP << 16) | NOP},
                   irq=[0x560, 8]))   # (intevt, level)
 
+    # --- SGR / DBR (debug base register: where a user break goes when CBCR.UBDE=1; the UBC
+    # itself is Go-only, emu_go/ubc.go): ldc/stc in register and stack forms, privileged ---
+    C.append(case("ldc_stc_sgr_dbr", [ldc_sgr(1), ldc_dbr(2), stc_sgr(3), stc_dbr(4)], steps=4,
+                  setup={"r": reg(r1=0x8C0FFF00, r2=0x0815A000), "sr": 0x40000000}))
+    C.append(case("ldcl_stcl_sgr_dbr", [stcl_sgr(5), stcl_dbr(5), ldcl_dbr(5), ldcl_sgr(5)], steps=4,
+                  setup={"r": reg(r5=DATA + 0x40), "sr": 0x40000000,
+                         "sgr": 0x12345678, "dbr": 0x9ABCDEF0},
+                  data={str(DATA + 0x38): 0, str(DATA + 0x3C): 0},
+                  check=[DATA + 0x38, DATA + 0x3C]))   # pushed SGR at +0x3C, DBR at +0x38, popped back in reverse order
+
     # --- MMU (cont.18q, emu_go/mmu.go): ldtlb, translation, precise MMU exceptions ---
     # Common: r8 = CCN base; r1 = PTEH (VPN 0x00300000, ASID 0); r2 = PTEL; r3 = MMUCR
     # (URC=5, SV=1, AT=1). The 4 KB page maps onto DATA's physical page.
@@ -314,6 +332,7 @@ def replay(case):
     cpu._sr = s.get("sr", 0) & U
     cpu.pr = s.get("pr", 0); cpu.gbr = s.get("gbr", 0); cpu.vbr = s.get("vbr", 0)
     cpu.ssr = s.get("ssr", 0); cpu.spc = s.get("spc", 0)
+    cpu.sgr = s.get("sgr", 0); cpu.dbr = s.get("dbr", 0)
     cpu.mach = s.get("mach", 0); cpu.macl = s.get("macl", 0)
     cpu.fpul = s.get("fpul", 0); cpu.fpscr = s.get("fpscr", 0)
     pc = case["pc"]
@@ -335,7 +354,7 @@ def state(cpu, mem, check):
         "pc": cpu.pc & U, "sr": cpu.sr & U,
         "r": [x & U for x in cpu.r], "rbank1": [x & U for x in cpu.rbank1],
         "pr": cpu.pr & U, "gbr": cpu.gbr & U, "vbr": cpu.vbr & U,
-        "ssr": cpu.ssr & U, "spc": cpu.spc & U,
+        "ssr": cpu.ssr & U, "spc": cpu.spc & U, "sgr": cpu.sgr & U, "dbr": cpu.dbr & U,
         "mach": cpu.mach & U, "macl": cpu.macl & U,
         "data": {str(a): mem.r32(a) for a in check},
     }

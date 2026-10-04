@@ -72,10 +72,15 @@ type Memory struct {
 
 	// DRAM write-watch (investigation only; nil = disabled). Called for every DRAM
 	// write with phys in [wrLo,wrHi) — used to catch the PC that draws into VRAM.
-	wrLo, wrHi uint32
-	wrHook     func(phys, size, val uint32)
-	mmioHook   func(va, size, val uint32) // investigation: every MMIO write (nil = off)
-	flashRdHook func(phys, size uint32)   // investigation: data reads from flash (nil = off)
+	wrLo, wrHi  uint32
+	wrHook      func(phys, size, val uint32)
+	mmioHook    func(va, size, val uint32) // investigation: every MMIO write (nil = off)
+	ubcOps      bool                       // the UBC watches operand accesses (ubc.go stepUBC)
+	flashRdHook func(phys, size uint32)    // investigation: data reads from flash (nil = off)
+	// accHook (investigation only; nil = off): every access to DRAM (addr = physical address),
+	// to the on-chip memories and MMIO at 0xE0000000.. (addr = P4 address), DRAM instruction
+	// fetches and DMA source reads. Used by ramfree_probe_test.go to map unused RAM.
+	accHook func(addr, size uint32, write bool)
 
 	// NOR command state machine
 	fcmd   int
@@ -145,10 +150,16 @@ func (m *Memory) translated(va uint32) bool {
 func (m *Memory) priv() bool { return m.cpu == nil || m.cpu.sr&srMD != 0 }
 
 func (m *Memory) Read(va, size uint32) uint32 {
+	if m.ubcOps {
+		return m.ubcRead(va, size)
+	}
 	if m.translated(va) {
 		va = 0xA0000000 | m.mmu.translate(va, false, m.priv())
 	}
 	if va >= 0xE0000000 {
+		if m.accHook != nil {
+			m.accHook(va, size, false)
+		}
 		if va >= IlramBase && va < IlramBase+IlramSize {
 			return beRead(m.ilram, va-IlramBase, size)
 		}
@@ -171,6 +182,9 @@ func (m *Memory) Read(va, size uint32) uint32 {
 					mphys, size, m.cpu.pc, m.cpu.pc-2, v)
 				m.rdLog--
 			}
+		}
+		if m.accHook != nil {
+			m.accHook(mphys, size, false)
 		}
 		return beRead(m.dram, mphys-DramBase, size)
 	}
@@ -197,6 +211,10 @@ func (m *Memory) Read(va, size uint32) uint32 {
 }
 
 func (m *Memory) Write(va, size, val uint32) {
+	if m.ubcOps {
+		m.ubcWrite(va, size, val)
+		return
+	}
 	if m.translated(va) {
 		va = 0xA0000000 | m.mmu.translate(va, true, m.priv())
 	}
@@ -206,6 +224,9 @@ func (m *Memory) Write(va, size, val uint32) {
 	}
 	val &= mask
 	if va >= 0xE0000000 {
+		if m.accHook != nil {
+			m.accHook(va, size, true)
+		}
 		if va >= IlramBase && va < IlramBase+IlramSize {
 			beWrite(m.ilram, va-IlramBase, size, val)
 			return
@@ -231,6 +252,9 @@ func (m *Memory) Write(va, size, val uint32) {
 		}
 		if m.wrHook != nil && mphys >= m.wrLo && mphys < m.wrHi {
 			m.wrHook(mphys, size, val)
+		}
+		if m.accHook != nil {
+			m.accHook(mphys, size, true)
 		}
 		beWrite(m.dram, mphys-DramBase, size, val)
 		return
@@ -430,9 +454,15 @@ func (m *Memory) LoadFlashDelta(path string) (int, error) {
 // DRAM (the VRAM push), else a copy read through the bus.
 func (m *Memory) span(va, n uint32) []byte {
 	if p := va & 0x1FFFFFFF; p >= DramBase && p+n <= DramBase+DramSize {
+		if m.accHook != nil {
+			m.accHook(p, n, false)
+		}
 		return m.dram[p-DramBase : p-DramBase+n]
 	}
 	if va-XyramBase < XyramSize && va-XyramBase+n <= XyramSize {
+		if m.accHook != nil {
+			m.accHook(va, n, false)
+		}
 		return m.xyram[va-XyramBase : va-XyramBase+n]
 	}
 	b := make([]byte, n) // DMA addresses are physical: read through the uncached P2 alias
@@ -452,8 +482,17 @@ func (m *Memory) fetch16(pc uint32) uint32 {
 			return uint32(m.flash[p])<<8 | uint32(m.flash[p+1])
 		}
 		if p-DramBase < DramSize {
+			if m.accHook != nil {
+				m.accHook(p, 2, false)
+			}
 			return uint32(m.dram[p-DramBase])<<8 | uint32(m.dram[p-DramBase+1])
 		}
+	}
+	if m.ubcOps { // a delay slot fetched inside a watched instruction: not an operand access
+		m.ubcOps = false
+		v := m.Read(pc, 2)
+		m.ubcOps = true
+		return v
 	}
 	return m.Read(pc, 2)
 }
@@ -464,6 +503,24 @@ func (m *Memory) R32(va uint32) uint32 { return m.Read(va, 4) }
 func (m *Memory) W8(va, v uint32)      { m.Write(va, 1, v) }
 func (m *Memory) W16(va, v uint32)     { m.Write(va, 2, v) }
 func (m *Memory) W32(va, v uint32)     { m.Write(va, 4, v) }
+
+// ubcRead / ubcWrite: an operand access of the instruction being executed while the UBC
+// watches them (ubcOps, set only inside stepUBC). Accesses nested in it (an MMIO write that
+// starts a DMA transfer, say) are not the CPU's and are not seen.
+func (m *Memory) ubcRead(va, size uint32) uint32 {
+	m.ubcOps = false
+	v := m.Read(va, size)
+	m.ubcOps = true
+	m.cpu.ubc.operand(va, size, v, false)
+	return v
+}
+
+func (m *Memory) ubcWrite(va, size, val uint32) {
+	m.ubcOps = false
+	m.cpu.ubc.operand(va, size, val, true)
+	m.Write(va, size, val)
+	m.ubcOps = true
+}
 
 // big-endian helpers
 func beRead(buf []byte, off, size uint32) uint32 {
