@@ -143,11 +143,23 @@
 > is one snapshot (power-up noise proves nothing wrote there since the DRAM last lost power, not that
 > nothing ever could); the emulator's zero-initialised DRAM says nothing about real initial contents.
 >
-> **NEXT:** (1) debugger stage 2 (cg50_addons `notes/debugger.md`): start a target add-in under a
-> resident monitor at 0x8C4E0000+ (DBR stub optionally in OS IL RAM 0xFD8026C0–0xFD803F3F), stop at
-> its entry 0x00300000; first verify on the calculator that 0x8C4E0000–0x8C7FFFFF stays untouched
-> across a real session (probe add-in / canary) and dump 0xFE200000–0xFE3FFFFF (OC RAM size
-> unknown); (2) commit this session (emulator: UBC/DBR/SGR, ramfree probe; then cg50_addons);
+> **Later the same day — debugger stage 2 works on the real calculator** (cg50_addons
+> `notes/debugger.md`): DASM arms the UBC from inside the OS world and opens the MAIN MENU; the
+> next add-in stops at 0x00300000 on a resident monitor at 0x8C4E0000 (SR.BL=1 throughout).
+> Emulator additions: `monitor_probe_test.go` (the launch-break experiment: the OS's own
+> MSTPCR0 = 0xA3086 has UDB=1 at the menu, but it only read-modify-writes it, so a UBC powered on
+> stays on through the launch, and DBR is never touched), `monitor_dasm_probe_test.go` (the full
+> flow with Geometry and a gint add-in), `ramchk_probe_test.go`; **an MMU exception taken with
+> SR.BL=1 now halts the core** ("the real CPU resets") — it found that our September KeyProbe can
+> reset the calculator (OS file code run inside gint's world: the OS flushes the whole TLB at
+> 0x8002C842, rebuilds the code-page table, reloads the RAM entries only at the end
+> (FUN_8002e60a); a gint timer interrupt in between touches add-in RAM with BL=1).
+> **Emulator gap found on the calculator:** KEYSC data words should latch the LAST scan, and the
+> unit only scans when its mode/the OS's ISR drive it; the model serves the live matrix (the
+> monitor's first version hung on the real calc waiting for the launching EXE to be "released";
+> fixed in the monitor by doing synchronous scans the OS's way, 0x801E56FA).
+> **NEXT:** (1) model the KEYSC latch (Go + Python oracle + keysc golden); (2) debugger stage 3
+> (cg50_addons); (3) commit/push this session's rest;
 > (3)-(5) as before: shared Android debug keystore, desktop app, WASM.
 > Emulator gaps noticed: a not-taken bt/s/bf/s outside the UBC path still runs its slot as a
 > separate step (an interrupt can land in between; only timing, the golden boot depends on the

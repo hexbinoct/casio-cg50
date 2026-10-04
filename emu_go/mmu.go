@@ -1,5 +1,7 @@
 package main
 
+import "fmt"
+
 // SH-4A MMU (cont.18q): the UTLB, ldtlb, address translation and MMU exceptions — needed to
 // run add-ins. Built-in apps live in the OS image in P1/P2 and never translate, but an add-in
 // (.g3a) runs at virtual 0x00300000 (code) / 0x08100000 (RAM), mapped by the OS:
@@ -155,6 +157,11 @@ func (c *ccn) translate(va uint32, write, md bool) uint32 {
 
 // raise performs MMU-exception entry for fault f at instruction address spc.
 func (c *ccn) raise(cpu *CPU, f mmuFault, spc uint32) {
+	if cpu.sr&srBL != 0 {
+		// the real CPU resets on an exception while SR.BL=1 (the user saw it as a reboot to the
+		// language screen); halt with the cause instead of running a handler it never would
+		panic(fmt.Sprintf("MMU exception %#x at %#x (va %#x) with SR.BL=1: the real CPU resets", f.expevt, spc, f.va))
+	}
 	c.regs[ccnTEA] = f.va
 	c.regs[ccnPTEH] = f.va&0xFFFFFC00 | c.regs[ccnPTEH]&0xFF
 	c.regs[ccnEXPEVT] = f.expevt
