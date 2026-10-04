@@ -25,6 +25,9 @@ package main
 //     MONDBG_BASELINE=1: hold RIGHT in KeyProbe without the debugger — the emulator faults in
 //     gint's interrupt handler (TLB miss on add-in RAM with SR.BL=1) after ~7 s either way.
 //   TestMonitorDasmCancel  from the MAIN MENU back into DASM: everything disarmed.
+//   TestMonitorDasmTheme   S<->D in DASM's picker picks the light theme (the theme word at the top
+//     of the free DRAM, 0x8C7FFFF8 = "THM" + 1); the monitor stops in it (white background), and
+//     S<->D in the monitor switches back to dark (the word + 0, dark background).
 // Screenshots of the whole 396x224 panel: $TMPDIR/cg50_mondbg_*.png.
 //   go -C emu_go test -tags probe -run TestMonitorDasm -count=1 -v .
 
@@ -86,6 +89,7 @@ type monRig struct {
 	entry, imgEnd, stopAt uint32
 	n                     uint32 // stops seen
 	shots                 string // screenshot name prefix
+	light                 bool   // S<->D in DASM's picker before F2 (the light theme)
 }
 
 func newMonRig(t *testing.T, shots string) *monRig {
@@ -139,6 +143,9 @@ func (r *monRig) armFromDasm() {
 	r.launchFromMenu([][2]uint32{{2, 7}, {2, 7}, {2, 7}, {2, 7}, {2, 7}, {2, 7}, {2, 7}, {2, 7}, {1, 7}, {1, 7}})
 	swapAddinCode(t, e, r.dasm)
 	r.key(2, 7, 60_000_000) // throwaway DOWN (the first key after launch is swallowed)
+	if r.light {
+		r.key(5, 5, 60_000_000) // S<->D: light theme
+	}
 	r.key(5, 9, 60_000_000) // F2: debug the next add-in
 	r.shot("01_explain")
 	if e.mem.R32(monBase) != 0x4D4F4E31 {
@@ -382,4 +389,43 @@ func TestMonitorDasmCancel(t *testing.T) {
 			t.Logf("note: pc %#x", e.cpu.pc)
 		}
 	}
+}
+
+const monTheme = 0x8C7FFFF8 // the theme word (cg50_addons dasm/monitor/theme.h)
+
+// panelPixel reads one RGB565 pixel of the LCD panel.
+func panelPixel(e *Emulator, x, y int) uint16 {
+	buf := make([]byte, panelW*panelH*2)
+	e.mmio.lcd.renderPanel(buf)
+	p := 2 * (y*panelW + x)
+	return uint16(buf[p])<<8 | uint16(buf[p+1])
+}
+
+func TestMonitorDasmTheme(t *testing.T) {
+	r := newMonRig(t, "mondbg_theme")
+	r.light = true
+	r.armFromDasm()
+	e := r.e
+	if w := e.mem.R32(monTheme); w != 0x54484D01 {
+		t.Fatalf("theme word %#x after S<->D in DASM, want 0x54484d01 (light)", w)
+	}
+	for i := 0; i < 4; i++ { // Z -> J (Geometry)
+		r.key(1, 8, 30_000_000)
+	}
+	r.e.InjectKey(2, 1)
+	r.waitStop("entry")
+	r.shot("04_entry_light")
+	// x = 390, y = 90: background right of the registers, above the disassembly
+	if c := panelPixel(e, 390, 90); c != 0xFFDF {
+		t.Fatalf("light monitor background %#04x, want 0xffdf", c)
+	}
+	r.key(5, 5, 30_000_000) // S<->D in the monitor: dark
+	r.shot("05_entry_dark")
+	if w := e.mem.R32(monTheme); w != 0x54484D00 {
+		t.Fatalf("theme word %#x after S<->D in the monitor, want 0x54484d00 (dark)", w)
+	}
+	if c := panelPixel(e, 390, 90); c != 0x0883 {
+		t.Fatalf("dark monitor background %#04x, want 0x0883", c)
+	}
+	r.detach()
 }
