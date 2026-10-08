@@ -1,0 +1,74 @@
+site_name: CG50 Internals
+site_description: Software-level documentation of the Casio fx-CG50 (SH7305) — memory map, CPU quirks, peripherals and OS internals, verified on hardware and in an emulator.
+repo_url: https://github.com/hexbinoct/casio-cg50
+repo_name: hexbinoct/casio-cg50
+edit_uri: edit/main/wiki/docs/
+docs_dir: docs
+site_dir: site
+
+# Broken links or #anchors between pages fail `mkdocs build --strict`.
+validation:
+  omitted_files: warn
+  absolute_links: warn
+  unrecognized_links: warn
+  anchors: warn
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - search.highlight
+    - content.code.copy
+    - content.action.edit
+    - toc.follow
+  palette:
+    # Dark by default; colours are set in assets/extra.css.
+    - scheme: slate
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-sunny
+        name: Light mode
+    - scheme: default
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-night
+        name: Dark mode
+  icon:
+    repo: fontawesome/brands/github
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+
+extra_css:
+  - assets/extra.css
+
+nav:
+  - Home: index.md
+  - Hardware:
+      - Memory map: memory-map.md
+      - CPU (SH-4A core): cpu.md
+  - Peripherals:
+      - Interrupts (INTC): peripherals/interrupts.md
+      - Keyboard (KEYSC): peripherals/keyboard.md
+      - Display (R61524): peripherals/display.md
+      - Timers and clock: peripherals/timers.md
+      - Battery ADC: peripherals/battery-adc.md
+      - BCD ALU (0xA4CB0000): peripherals/bcd-alu.md
+  - OS internals:
+      - Boot and power-off: os/boot.md
+  - About:
+      - How facts are verified: about/verification.md

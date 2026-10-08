@@ -50,3 +50,6 @@ re/libfxcg_keyboard.h
 
 # macOS Finder metadata
 .DS_Store
+
+# MkDocs build output (the wiki site)
+wiki/site/

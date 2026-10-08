@@ -9,7 +9,51 @@
   pending, so the next session can continue without being reminded.
 ============================================================================= -->
 
-> ## ⏯ RESUME HERE (last session end: 2026-10-04, cont.18z = on-device debugger stage 0, home Mac)
+> ## ⏯ RESUME HERE (last session end: 2026-10-08, cont.19 = the "CG50 Internals" docs site, office)
+>
+> **Session in one paragraph:** inspired by hackspire.org, the user asked for a software-only
+> documentation site for the fx-CG50 in this repo, hosted later on GitHub Pages. Built with
+> **MkDocs Material in `wiki/`**. **Everything you need to continue is in
+> [`wiki/README.md`](wiki/README.md):** build/preview commands for both machines, the writing
+> rules (evidence boxes; check every fact against the current code and the 3.60 image, never
+> copy from these notes), the list of **pages done**, the **pages planned but not written**,
+> and the emulator issues the research found. Preview: `python3 -m pip install -r
+> wiki/requirements.txt` once, then `python3 -m mkdocs serve --livereload -f wiki/mkdocs.yml -a
+> 127.0.0.1:5817`.
+>
+> **Done:** Home, Memory map, CPU, Interrupts, Keyboard, Display, Timers, Battery ADC, BCD ALU,
+> Boot and power-off, How facts are verified (`mkdocs build --strict` clean, links/anchors
+> validated). **Not deployed yet**: the Pages workflow needs the user's go-ahead (public repo, so
+> Actions are allowed). **Next:** the planned pages in `wiki/README.md` (MMU and add-in launch,
+> Flash and storage, Syscalls, Number format, Writing probe add-ins, Open questions).
+>
+> **Corrections to these notes found while writing (the site has the right versions):**
+> - The "Interrupt system" in "Study findings" (VBR 0x800014D4 → really 0x80001454, dispatcher
+>   0x80001A54, tables 0xFD8004D0/0xFD8006D0) is the **boot code's** dispatcher. The running OS
+>   3.60 uses **VBR 0x80020F00**, interrupt entry 0x80021500, handler table **0xFD8010C8**
+>   (128 words from 0x80028A18, copied by 0x802EEB2C), priority bytes 0xFD8012C8 (all 0xF0) —
+>   verified 128/128 against the real `ilram.bin` (`re/irq_ilram_check.py`). Slots
+>   0xF20–0x1020 hold 0xF0F0F0F0 (the copy overruns the 119-entry table) = the cont.18x crash pc.
+> - **0xFF000024 is EXPEVT**, not a "HW strap" (the emulator returns 0x0A02 after reset so the
+>   OS picks model 0xCA02). What a real calc reads there at reset is unmeasured.
+> - Boot code 0x0–0x1FFCF is byte-identical in 3.60 and 3.80 (`re/boot_compare.py`).
+> - Nothing in 3.60 references 0xA4130000 ("FRC"); the early "counter" waits read R64CNT.
+>   ETMU0–5 = 0xA44D0030 + 0x20·i; 0xA44A0000 is a separate one-shot delay unit.
+> - The LCD frame push uses DMA **channel 0** (0xFE008020), not ch2; Bdisp_PutDisp_DD in 3.60 =
+>   0x8005552C (3.80's 0x80055260 is wrong for 3.60). 3.60 syscall table = 0x80687CD0.
+> - cont.18l's "0x1b8/0x1c0/0x2d8 → 0x801deebe/0x801def3a/0x801dfc6c" are really INTEVT
+>   0x620/0x640/0xAA0 (0x1C0 → 0x801DED64 = rts).
+>
+> **TODO — emulator issues found (user, 2026-10-08: keep as notes for later; full list in
+> `wiki/README.md`):** stale comments (lcd.go /
+> emu/mmio.py "DMA ch2"; keysc.go header's "120 scans then every 5" is the throttle, normal
+> repeat is 20 then every scan); stripe pushes with y1>0 (DAR = 0x14000000+1536·y1) would bypass
+> the panel model; OS interrupt levels 0x560=8 (OS programs 12) and RTC=9 (OS programs 8); KEYSC
+> +0x12 reads 0 (hw 2) and data words are live (hw seems to latch the last scan); ADC +0x88/+0x8A
+> merged, no +0x90 mirror. New helper scripts in `re/`: boot_compare, irq_scan360,
+> irq_ilram_check, find_timer_refs, probe_frc_reads, wiki_keysc_check.
+>
+> ## ⏯ (prev) RESUME HERE (last session end: 2026-10-04, cont.18z = on-device debugger stage 0, home Mac)
 >
 > **Session in one paragraph:** the user chose approach A for the on-device debugger
 > (`cg50_addons/notes/debugger.md`: a resident monitor + the UBC, in stages). **Stage 0 is done
