@@ -9,6 +9,36 @@
   pending, so the next session can continue without being reminded.
 ============================================================================= -->
 
+> ## ⏯ RESUME HERE (last session end: 2026-10-09, cont.19b = site deployed + div0u fix, home then office)
+>
+> **The docs site is LIVE** at https://hexbinoct.github.io/casio-cg50/ (`.github/workflows/docs.yml`,
+> `mkdocs build --strict` then deploy on pushes to `main` touching `wiki/`; the repo is PUBLIC so
+> Actions are allowed). First run green (~7 min). Check the Actions tab after each wiki push.
+>
+> **CPU fix (home, ed50654): `div0u` clears T too** (0 → M, Q, T), in both `emu/cpu.py` and
+> `emu_go/cpu.go`. gcc's signed-division helper runs `div0u` right after a `cmp/hi` that sets T, so
+> quotients were 2^24 off: FlowCE's strokes drew as lines across the screen. New conformance
+> cases `div0u_clears_t`, `div1_full_quotient_100_7_t_set`. FlowCE probe tests in
+> `emu_go/flowce_probe_test.go` (`-tags probe`; the .g3a lives on the Mac, ~/main/casio/flowce_cg50).
+> The OS boot itself hits it: the old golden diverged at instruction 24000 (r7 off by 2^24).
+>
+> **⚠ Golden is per-machine:** `emu/golden_boot.bin` is git-ignored, so after pulling any
+> `emu/cpu.py`/`emu/mmio.py` change from the other machine run `python emu/gen_golden.py` before
+> trusting `TestGoldenBoot`. (Office had to, 2026-10-09; then `go -C emu_go test .` green, 92 s.)
+>
+> **Wiki: all existing pages completed** (CPU, Memory map, Boot, Display, Interrupts, Keyboard,
+> Timers, Verification — details in `wiki/README.md` → "Pages"). Headline findings, checked in the
+> 3.60 image / emulator: **fls0 starts at physical 0xC80000** (driver base 0xA0C80000, limit
+> 0x1380000); **power-off is a `sleep` inside PowerOff (syscall 0x1839, 0x802AEA24), not a
+> reboot** — 0xFD8017DC = 1 is set only before the OS RESTARTS itself (CLAUDE.md corrected);
+> the idle routine picks plain vs deeper sleep by the USB pin 0xA4050162 bit 1 (emulator reads 0
+> → always deeper); INTEVT 0x620/0x640 = IRQ1/IRQ2 pins, 0xA20 = USB, 0xC00 = SCIF; no FPU.
+> New probe tests (`-tags probe`): cpuwiki_probe_test.go, poweroff_probe_test.go,
+> firstboot_probe_test.go. New re/ scripts: exc_table360.py, fls0_layout.py, fls0_peek.py,
+> lit_users.py, ram_globals.py, fe2_span.py. ~15 emulator discrepancies found and NOT fixed —
+> listed at the end of `wiki/README.md` (incl. power-off showing white instead of dark).
+> **Next:** the new pages (MMU and add-in launch first), or fix the emulator TODO list.
+>
 > ## ⏯ RESUME HERE (last session end: 2026-10-08, cont.19 = the "CG50 Internals" docs site, office)
 >
 > **Session in one paragraph:** inspired by hackspire.org, the user asked for a software-only

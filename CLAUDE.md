@@ -52,8 +52,9 @@ The **Python emulator (`emu/`) is the reference oracle**, not dead code.
 - Boots the real **3.60** flash. Two images in `os/flash_dump/`: `flash_full.bin` (the June 16 MB dump:
   the goldens, the suite and `cg50_state.bin` are built on it — keep it) and `flash_full_32mb.bin` (the
   whole 32 MB flash, incl. all of the storage memory fls0) with its own `cg50_state_32mb.bin`, booted
-  with `CG50_FLASH` / `CG50_STATE` and `CG50_WARM=1` (a power-on from "off": the OS skips first-boot
-  setup only if IL RAM 0xFD8017DC == 1, which its power-off routine sets) — RECON_NOTES cont.18w.
+  with `CG50_FLASH` / `CG50_STATE` and `CG50_WARM=1` (a boot that skips first-boot setup: the OS
+  does so only if IL RAM 0xFD8017DC == 1, which it sets before restarting itself; an ordinary
+  power-off is a `sleep` in PowerOff and never reboots — wiki os/boot.md) — RECON_NOTES cont.18w.
   Runs every built-in app and add-ins incl. gint ones; the Android app (`android/`) runs it on the
   user's phone. The current open task is in the `RECON_NOTES.md` RESUME block (direction since
   2026-09-30: the emulator as the everyday test device, desktop + web/WASM — `docs/DESKTOP_AND_WEB.md`).

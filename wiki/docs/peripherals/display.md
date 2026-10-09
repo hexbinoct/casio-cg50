@@ -328,12 +328,43 @@ the last transfer again.
     `TE` set restarted the transfer, gint add-ins showed smeared, half-drawn screens.
     Test: `TestDMACInterrupt`.
 
-## Not yet known
+## Switching the panel off and on
+
+Three small syscalls control the panel as a whole:
+
+| Syscall | Address | What it does |
+|---|---|---|
+| `0x0197` | `0x8004DE80` | R007 ← `0x0000`: display off |
+| `0x0196` | `0x8004DE66` | R007 ← `0x0100`: display on |
+| `0x0192` | `0x8004DDB4` | R111 ← 2, a short wait (`0x8004E3C6` with argument 25), then sets bit 2 of R100 (read-modify-write) |
+
+When the calculator is switched off (`PowerOff`, see
+[Boot and power-off](../os/boot.md#power-off)), the OS:
+
+1. paints the whole panel white: VRAM and the frame are pushed as usual;
+2. calls `0x0197` (display off), then `0x0192`;
+3. clears bit 5 of the PFC byte **`0xA405012E`**.
+
+Switching back on, the OS writes `0x20` to `0xA405012E` (bit 5 set again, at `0x8004DD06`),
+then reprograms the controller from its register table in the LCD initialisation
+`0x8004DD3A` (R100 = `0x0030`, the gamma registers R300–R329, the window and so on, ending
+with R111 ← 1). After the first redraw the display is switched on with R007 = `0x0100`.
+
+!!! info "Verified in the emulator"
+    These are the writes the OS makes when it is switched off with SHIFT, AC/ON and on again
+    with AC/ON, in this order. Probe: `TestPowerOffTrace`.
 
 !!! warning "Unconfirmed"
-    How the OS switches the panel off at auto power-off has not been traced. In the emulator
-    the screen does not go blank then (only a black band appears at the bottom), so part of
-    what the OS does there is not modelled yet.
+    What the bits mean is inferred from when the OS writes them. Bit 5 of `0xA405012E` is
+    probably the **backlight**: it is cleared right after the panel is switched off and set
+    again before the panel is initialised. That R100 bit 2 is
+    a standby bit, and what R111 does, has not been checked against the controller.
+
+**In the emulator the screen does not go dark.** The panel model stores R007, R100 and R111
+but always shows GRAM, and it ignores `0xA405012E`. Since the OS's last push before switching
+off is an all-white frame (`0xFFFF` everywhere, frame included), the emulator shows a white
+screen while the calculator is off, where the real one is dark. Modelling R007 = 0 (and the
+backlight bit) as a dark panel would fix it.
 
 ## In the emulator
 

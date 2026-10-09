@@ -108,8 +108,11 @@ timer slot has none: 820 counts, **25.0 ms**.
     also hold `0x333`.
 
 !!! warning "Unconfirmed"
-    Which channel each timer slot uses, and when the OS runs them, has not been traced. What
-    the words at `+0x24`/`+0x28` are is unknown.
+    Which channel each timer slot uses, and when the OS runs them, has not been traced. The
+    OS itself never addresses `0xA44D0024`/`0xA44D0028`: no word in the OS image points
+    anywhere in `0xA44D0000`–`0xA44D002F`, and the timer syscalls' table lists only the five
+    channel bases. They sit where a channel's TCOR and TCNT would be if one started at
+    `0xA44D0020`, but what they are is unknown.
 
 ## TMU
 
@@ -198,9 +201,24 @@ The OS turns the periodic interrupt on **only around `sleep`**. Its idle routine
 
 1. sets RCR2 = (RCR2 & `0x0F`) | `0x50`: PES = 1/2 s;
 2. sets SR.BL (blocks interrupts) with IMASK = 0;
-3. calls `0x801DF084`; if it returns 1, writes 0 to the clock generator register
-   `0xA4150020` and executes `sleep`, otherwise calls `0xA0020926`;
+3. calls `0x801DF084` (syscall `0x11C0`), which returns bit 1 of the port register
+   `0xA4050162`, the pin Casio's test menu calls
+   [USB](interrupts.md#external-pins-irq1-and-irq2), and picks one of two ways to sleep:
+    - **bit set:** writes 0 to the clock generator register `0xA4150020` and executes
+      `sleep` right there (`0x802AE77A`);
+    - **bit clear:** calls `0xA0020926`, the uncached address of `0x80020926`. That routine
+      blocks interrupts and calls the **deeper idle routine `0x80020880`**, which:
+        1. saves VBR at `0xFD8024A0` and loads `0x80020F00`;
+        2. sets bits 15–8 of the bus controller register `0xFEC10044` to `0x0E` (after
+           waking they go back to `0x0A`);
+        3. sets bits 7 and 0 of `0xA4150020`, clears its bit 5, and changes `0xA4150024`;
+        4. lowers IMASK to 0 (BL stays set) and executes `sleep` (`0x800208E8`) if bit 7
+           reads back set;
+        5. after waking, undoes steps 2 and 3 (`0xA4150020` = 1) and restores VBR;
 4. after waking, clears SR.BL and sets RCR2 &= `0x0F`, turning the periodic interrupt off.
+
+If an interrupt arrives while bit 7 of `0xA4150020` is still set, the OS's interrupt entry
+undoes step 3 itself (see [Interrupts](interrupts.md#the-os-360-dispatcher)).
 
 `sleep` halts the CPU until any interrupt request arrives, even with BL set; the request is
 taken once BL is cleared (see [Interrupts](interrupts.md)). The RTC handler at
@@ -214,11 +232,20 @@ taken once BL is cleared (see [Interrupts](interrupts.md)). The RTC handler at
     between them; without the RTC's periodic interrupt the cursor never blinked. Tests:
     `TestRTCPeriodicInRunMatrix`, `TestCursorBlinks`, `TestSleepWakesOnRequest`.
 
+!!! info "Verified in the emulator"
+    The emulator's port register reads 0 there, so the OS always takes the deeper path. In a
+    warm boot followed by Run-Matrix (163 million instructions, probe `TestCPUWikiStats`),
+    all 763 `sleep`s ran at `0x800208E8`; the one at `0x802AE77A` never ran.
+
 !!! warning "Unconfirmed"
     The OS sets PES again on every pass through its idle routine. The emulator keeps the
     period on the RTC's own 1/2 s grid, so setting PES again does not restart it. That is
     how the SH7724's RTC derives the periodic event, but it has not been measured here.
-    What `0x801DF084` checks, and the other sleep path `0xA0020926`, have not been traced.
+    Which level the "USB" pin has with and without a cable, and so which path a real
+    calculator normally takes, is not known. If the pin is high with a cable plugged in (the
+    IRQ1 handler posts its event when the pin goes high), the deeper path is the everyday
+    one and the plain `sleep` is used only while a cable is connected. On the SH7724, bit 7
+    of `0xA4150020` (STBY) makes `sleep` enter software standby, where the clocks stop.
 
 !!! danger "Careful with the CPG and `sleep` from probe add-ins"
     A probe add-in that copied this idle routine (write `0xA4150020`, then `sleep`) reset a
@@ -232,16 +259,47 @@ multiplies its argument by 100 and jumps to it), uses a unit at `0xA44A0000`:
 
 1. clears bit 14 of the clock generator register `0xA4150030` (and sets it again at the end
    if it was set);
-2. clears the start bit (bit 5 of `+0x00`) and waits for bit 13 of `+0x60` to clear;
-3. writes `+0x60` = 5, `+0x64` = 0, and a computed count to `+0x68`;
-4. sets the start bit and spins until **bit 15 of `+0x60`** is set.
+2. if the unit is already running (start bit, bit 5 of `+0x00`, set), stops it and saves
+   `+0x60`, `+0x64` and `+0x68`;
+3. clears the start bit and waits for bit 13 of `+0x60` to clear;
+4. writes `+0x60` = 5, `+0x64` = 0, and the count **argument × 100 / 109** (computed in 64
+   bits) to `+0x68`;
+5. sets the start bit and spins until **bit 15 of `+0x60`** is set;
+6. if it stopped a running timing in step 2, puts the saved registers back (bit 13 of
+   `+0x60` cleared) and starts the unit again.
 
-It is called from about 20 places, among them the routine at `0x801E6D40` that programs the
-unknown unit at `0xA44C0000`.
+So the unit can carry a longer timing of its own, which a short delay interrupts and then
+resumes. Through `0x801DF69A`, a delay of *n* writes a count of 10000·*n* / 109, about 91.7·*n*.
+
+It is called from about 20 places, among them the routine at `0x801E6D3E` that programs the
+unit at `0xA44C0000` (below).
 
 !!! warning "Unconfirmed"
     Read from OS 3.60 code. The unit's clock, and so the length of a delay per unit of the
-    argument, is unknown.
+    argument, is unknown. On the SH7724, `0xA4150030` is MSTPCR0, where a set bit stops a
+    module's clock; clearing bit 14 would then give this unit its clock for the delay.
+
+## The unit at `0xA44C0000`
+
+The OS uses a unit at `0xA44C0000` through a few small routines:
+
+- **On** (`0x801E6D3E`): sets pin functions (port control `0xA4050100` keeps only bits
+  9–2; `0xA405014E` bits 9–8 = 1), clears bit 0 of `+0x20`, waits, writes a 16-bit value to
+  `+0x00`, waits again, and sets bit 0 of `+0x20`. The value comes from a table at
+  `0x8068FB48` indexed by a level 1–3 kept at `0xFD801D90`: `0xC003`, `0xC001` or `0xC005`.
+- **Off** (`0x801E6D8A`): clears bit 0 of `+0x20`, writes 0 to `+0x00`, clears bit 0 of the
+  port data register `0xA4050120`, and writes the same pin functions as "on".
+- `0x801E6DC4` returns bit 0 of `+0x20`, the "on" state; `0x801E6D22` sets the level.
+
+Two routines, `0x801E6E00` and `0x801E6E4A`, install a 250 ms OS timer in slot 3 through the
+timer syscalls; the second also switches the unit on. Both act only when `0x801504DA` returns
+1, and otherwise switch the unit off. The wait routines that end in `sleep` can switch it off
+too (calls at `0x802AE818` and `0x802AEC7A`). The boot code also writes `+0x20`
+(`0x80002744`).
+
+!!! warning "Unconfirmed"
+    Read from OS 3.60 code. What the unit is, what the levels and the `+0x00` values mean,
+    and what `0x801504DA` tests are not known.
 
 ## No counter at `0xA4130000`
 
@@ -264,9 +322,33 @@ The clock settings on a real calculator:
     FRQCR (`0xA4150000`, the clock generator's frequency control register) reads
     `0x0F011112` from an add-in.
 
+That is the OS's own setting. At start-up (`0x80020352`) the OS writes FRQCR =
+(FRQCR & `0x000F00F0`) | **`0x8F001102`** and waits for bit 0 of `0xA4150060`. Bit 31 (KICK)
+applies the change and reads back as 0, giving `0x0F011112`. A routine at `0x80020988` switches
+to `0x8F101103` instead, and `0x800209E4` restores `0x8F001102`; when the OS uses them has not
+been traced.
+
+Decoded with the layout gint uses for the SH7305 (each divider is 2^(n+1)):
+
+| Field | Bits | Value | Meaning |
+|---|---|---|---|
+| STC | 29–24 | 15 | PLL × 16 |
+| IFC | 23–20 | 0 | CPU clock (Iφ) = PLL / 2 |
+| SFC | 15–12 | 1 | Sφ = PLL / 4 |
+| BFC | 11–8 | 1 | Bus clock (Bφ) = PLL / 4 |
+| P1FC | 3–0 | 2 | Peripheral clock (Pφ) = PLL / 8 |
+
+The PLL's input is the 32.768 kHz clock multiplied by the FLL setting in FLLFRQ
+(`0xA4150050`), halved when its SELXM bit is set. With FLF = 900 and SELXM = 1 (the input is
+14.7456 MHz), that gives a PLL of 235.9 MHz, a **CPU clock of 117.96 MHz**, a bus clock of
+58.98 MHz and **Pφ = 29.4912 MHz**: the figures the emulator uses. The other setting,
+`0x8F101103`, divides the CPU clock by 4 and Pφ by 16, halving both.
+
 !!! warning "Unconfirmed"
-    The value is taken to be the stock setting, with the CPU at about **118 MHz**. The
-    register has not been decoded here and nobody has timed the CPU directly.
+    FLLFRQ has never been read, and the OS image holds no pointer to it, so OS 3.60 does not
+    set it. The 117.96 MHz figure therefore rests on FLF = 900 with SELXM = 1. The gint
+    timer result above supports the decoding: gint computes Pφ from these same registers, and
+    its 1 ms timer stayed within 0.1% of the RTC. Nobody has timed the CPU directly.
 
 How many instructions per second the OS actually gets is less clear. The only comparison so
 far uses the main menu's key repeat. With a key held, the keyboard is scanned every 30.3 ms;
@@ -332,7 +414,12 @@ polling every device before every instruction.
 - [`emu_go/mmio.go`](https://github.com/hexbinoct/casio-cg50/blob/main/emu_go/mmio.go):
   `SetInstrPerSecond`; `etmu`, a stub for `0xA44A0000` whose `+0x60` always reads `0x8000`,
   so every one-shot delay ends at once; `freeCounter`, the catch-all at `0xA4130000` that
-  rises on every read.
+  rises on every read; `cpg`, the clock generator as plain registers, except that
+  `0xA4150060` reads 0 so the OS's wait after a FRQCR write ends. FRQCR therefore reads back
+  what software last wrote, KICK bit included, not the calculator's `0x0F011112`.
+  Nothing models the unit at `0xA44C0000`.
+- The idle routine's choice of `sleep` depends on the pin-function block (plain memory), so
+  the emulator always takes the deeper path through `0x80020880`.
 - [`emu_go/schedule_test.go`](https://github.com/hexbinoct/casio-cg50/blob/main/emu_go/schedule_test.go):
   `TestScheduledStepMatchesExact`.
 - The Python oracle (`emu/mmio.py`: `RTC`, `ETMUCounter`, `ETMU`, `FreeCounter`) models the

@@ -6,8 +6,10 @@ hardware and stores which keys are down in six 16-bit registers. When a key goes
 an interrupt, and the OS's keyboard interrupt handler (ISR) reads those registers, works out
 which key it is, and handles debouncing, key repeat and the key queue.
 
-The OS does not drive the matrix lines itself. Everything goes through this unit. (Some older
-notes put the key scanner at `0xA4080000`; that address is the
+For normal key input the OS does not drive the matrix lines itself: everything goes through
+this unit. The one exception is a check for a single held key that drives the lines through
+port pins (see [Checking one key without the unit](#checking-one-key-without-the-unit)).
+(Some older notes put the key scanner at `0xA4080000`; that address is the
 [interrupt controller](interrupts.md).)
 
 !!! success "Verified on hardware"
@@ -76,9 +78,27 @@ The OS accesses every register as 16 bits.
 | `0xA44B0012` | `+0x12` | Bit 0 = scan in progress | read only |
 | `0xA44B0014` | `+0x14` | Bits 15–8: interrupt enable per flag. Bits 7–0: status flags | `0x4800` idle |
 | `0xA44B0016` | `+0x16` | Configuration, meaning unknown | `0x0000` |
-| `0xA44B0018` | `+0x18` | Configuration, meaning unknown | `0x00C8` |
-| `0xA44B001A` | `+0x1A` | Configuration, meaning unknown | `0x0FFF` |
-| `0xA44B001C` | `+0x1C` | Configuration, meaning unknown | `0x00FF` |
+| `0xA44B0018` | `+0x18` | Configuration, meaning unknown | `0x00C8` (200) |
+| `0xA44B001A` | `+0x1A` | Probably one bit per **column** (12 bits) | `0x0FFF` |
+| `0xA44B001C` | `+0x1C` | Probably one bit per **row** (8 bits) | `0x00FF` |
+
+`+0x0E`, `+0x16` and `+0x18` only ever get the values above. Every routine that sets the unit
+up writes the same three values, and no other OS code touches them. `+0x1A` and `+0x1C` take
+three different pairs of values:
+
+| `+0x1A`, `+0x1C` | When |
+|---|---|
+| `0x0FFF`, `0x00FF` | Normal use: the [setup](#setup) and syscall `0x11C7` (`0x801DF438`) |
+| `0x0001`, `0x0001` | Syscall `0x11C6` (`0x801DF3F0`, a copy at `0x80002D50` in the boot code): written while the unit is off, just before it is switched on. One of its callers (at `0x802AEC22`) then arms the [wake-up pins](interrupts.md#external-pins-irq1-and-irq2) and loops on the OS's [idle routine](timers.md#the-2-hz-wake-up) |
+| `0`, `0` | While the OS [checks one key itself](#checking-one-key-without-the-unit), with the unit off |
+
+!!! warning "Unconfirmed"
+    The "one bit per column / per row" reading rests on the widths alone: `0x0FFF` has 12 bits
+    and the matrix has 12 columns, `0x00FF` has 8 bits for 8 rows. If it is right, the
+    `0x0001`, `0x0001` setting leaves only row 0 and column 0 in use, and the only key there is
+    **AC/ON**: the unit would then watch only the key that turns the calculator on. Nothing in
+    the code says this directly. The SH7724's key-scan unit is laid out differently, so its
+    manual does not help.
 
 !!! success "Verified on hardware"
     The calculator read `+0x0C` … `+0x1E` as
@@ -169,8 +189,11 @@ sets IPRF bits 15–12 to 13 and unmasks the interrupt.
     `0x76` instead of `0x48` because a key was held: the ISR had already switched it.
 
 !!! warning "Unconfirmed"
-    The setup also writes `0xFF` to the PFC byte at `0xA40501C6`, and the scan on demand below
-    writes 0 there while the unit is off. What that byte does is not known.
+    The setup also writes `0xFF` to the byte at `0xA40501C6`, in the pin-function controller
+    (PFC). The [single-key check](#checking-one-key-without-the-unit) writes `0xFF` there too,
+    and the scan on demand below writes 0 while the unit is off. Every routine that switches
+    the keyboard lines between uses writes this byte, so it probably configures those pins.
+    What each bit does is not known.
 
 ### The interrupt handler
 
@@ -241,6 +264,26 @@ keys named by the caller are down and EXE is up.
 
 !!! warning "Unconfirmed"
     Read from the OS's code. Who calls it, and for which keys, is not known.
+
+### Checking one key without the unit
+
+Syscall `0x127E` (`0x801E3BA8`) tells whether one given key is held, without the key-scan
+unit:
+
+1. It masks the keyboard interrupt, switches the unit off (control = 0) and sets `+0x1A` and
+   `+0x1C` to 0.
+2. It reprograms the pin functions of the keyboard lines (`0xA4050116`, `0xA4050118`,
+   `0xA405014C`, the byte at `0xA40501C6`).
+3. For each of the 12 columns it drives the column's line low through the port data registers
+   `0xA4050136` (columns 0–5) and `0xA4050138` (columns 6–11), waits, and reads the rows from
+   the port register `0xA405016C`, five times in a row to debounce.
+
+About a dozen small routines between `0x801E3800` and `0x801E3A2C` call it. The OS's start-up
+code has its own copy (from `0x80020138`), and so does the boot code.
+
+!!! warning "Unconfirmed"
+    Read from the OS 3.60 code. Which key each caller asks about, and so what the check is for
+    (probably key combinations held at power-on), has not been traced.
 
 ### From position to key code
 
@@ -341,6 +384,9 @@ settings.
 - Save-states store the control, mode and interrupt-enable registers.
 - Known differences from the calculator: the key-data words are live, not latched at the last
   scan, and `+0x12` reads 0 (the calculator reads 2; the OS's busy test looks only at bit 0).
+  `+0x0E` and `+0x16`–`+0x1C` are stored but have no effect, so a `0x0001`, `0x0001` setting
+  does not limit the keys. The port pins are not wired to the keypad, so the
+  [single-key check](#checking-one-key-without-the-unit) never sees a key.
 - Tests in
   [`emu_go/keysc_test.go`](https://github.com/hexbinoct/casio-cg50/blob/main/emu_go/keysc_test.go):
   `TestKeyscProtocol` (the register protocol as the OS drives it), `TestKeyscMatrixLayout`,

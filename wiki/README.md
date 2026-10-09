@@ -58,7 +58,16 @@ stays as it was: check the run in the Actions tab after pushing.
 ## Pages
 
 Done (2026-10-08): Home, Memory map, CPU, Interrupts, Keyboard, Display, Timers, Battery ADC,
-BCD ALU, Boot and power-off, How facts are verified.
+BCD ALU, Boot and power-off, How facts are verified. **Completed 2026-10-09** (the audit's gaps):
+CPU (no FPU, register banks, exception vectors + the OS's error screen, delay slots, the two
+`sleep` paths, In the emulator), Memory map (flash layout, **fls0 starts at physical
+`0xC80000`**, VRAM, RAM variables, the six `0xFE200000` blocks, In the emulator), Boot
+(main loop, power-off = a `sleep` inside PowerOff `0x802AEA24`, restarts and the restart flag
+`0xFD8017DC`, first-boot setup's four screens, In the emulator), Display (panel off/on and the
+probable backlight bit `0xA405012E` bit 5), Interrupts (`0x620`/`0x640` = IRQ1/IRQ2 pins,
+`0xA20` = USB, `0xC00` = SCIF; `0xF00` still unknown), Keyboard (`+0x1A`/`+0x1C` values,
+single-key check through port pins), Timers (idle path chosen by the USB pin `0xA4050162` bit 1,
+FRQCR decoded, the `0xA44C0000` unit), Verification (probe table: source, results, facts).
 
 Planned, not yet written (in suggested order; sources in brackets):
 
@@ -83,12 +92,21 @@ Planned, not yet written (in suggested order; sources in brackets):
 8. User's call: a **firmware** page (how the 3.80 updater is packed). Not written on purpose:
    it is effectively instructions for extracting Casio's firmware.
 
-Additions to existing pages:
+Still open in existing pages (needs hardware, or more tracing):
 
-- Memory map: VRAM `0xAC000000`, OS RAM globals (model code `0x8C04CA24`).
-- CPU: exception/interrupt vectors, delay-slot rules, register banks, `sleep`.
-- Boot: the main loop's pass, the power-off routine, the first-boot setup flow.
-- Verification: links to each probe's source and raw results.
+- BCD ALU: link to the Number format page once it exists.
+- Memory map: what the `CASIOMEMDATA` blocks at `0xB80000` hold (code near `0x802AF800`); the
+  real size of the `0xFE200000` blocks (a read-only stepped dump).
+- Boot: what power-off writes to flash `0xB80000`-`0xB9FFFF`; what triggers the three restart
+  routines (`0x8014EEA8`, `0x8035F4DC`, syscall `0x11ED`); `0x8035FCE8`, `0x801504DA`.
+- Interrupts: the device behind `0xF00`; bit 5 of `0xA4150020`.
+- Keyboard: `+0x0E`, `+0x16`, `+0x18`, `+0x1E`, PFC byte `0xA40501C6`.
+- Timers: the clocks of `0xA44A0000` and `0xA44C0000`; FLLFRQ (`0xA4150050`, a CPG **read**:
+  the user's call).
+- Safe probes worth running: read `0xA4050162` with/without USB cable (which sleep path a real
+  calc takes); read `0xA4140024`; read `0xA405012E`; KEYSC `+0x1A`=`+0x1C`=1 test with the key
+  interrupt masked; an unaligned read and an illegal opcode (error-screen text); one DSP `F…`
+  opcode; `mov.l @(disp,PC)` in an `rts` slot.
 
 ## TODO: emulator issues the research found
 
@@ -110,3 +128,22 @@ green, per CLAUDE.md. Then update the matching wiki page's "In the emulator" sec
   modelled.
 - The emulator's FRC region at `0xA4130000` (64 KB, also covers the RTC page) is a
   leftover from the 3.80 bring-up.
+- Found 2026-10-09 while completing the pages:
+    - `F…` (DSP) opcodes are counted and skipped in both cores: an add-in using them computes
+      wrong results silently.
+    - Illegal instruction / `trapa` halt the emulator instead of raising EXPEVT `0x180`/`0x160`
+      (the OS's System ERROR screen never appears); no slot-illegal exception.
+    - `setSR` switches banks on RB even with MD = 0 (harmless: always MD = 1).
+    - Is SR bit 12 set for an add-in in the emulator? Hardware reads `0x40001101`.
+    - IL RAM is 64 KB flat (hardware mirrors every 16 KB); all 2 MB from `0xFE200000` is RAM.
+    - Stale comments: `emu_go/memory.go:377` and `tools/flash_dump/dump.c` say fls0 is at
+      `0x01000000`+ (it starts at `0xC80000`).
+    - `0xA4140024` always reads `0x40`, commented "key-scan ready": it is INTREQ00 bit 6 (IRQ1).
+    - CPG is plain registers: FRQCR reads back the KICK bit, not the hardware's `0x0F011112`.
+    - KEYSC `+0x1A`/`+0x1C` have no effect; the single-key check (syscall `0x127E`) never
+      sees a key.
+    - Nothing models `0xA44C0000` (`scanWatched` calls it "PORTL"); IRQ pins, USB, SCIF raise
+      no interrupts.
+    - The USB pin (`0xA4050162` bit 1) reads 0, so the OS always takes the deeper sleep path.
+    - Power-off: the panel model ignores R007 = 0 and the backlight bit `0xA405012E` bit 5, so
+      "off" shows the all-white frame the OS pushes before switching off (real calc is dark).

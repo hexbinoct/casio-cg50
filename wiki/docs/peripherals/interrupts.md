@@ -147,9 +147,18 @@ The handler is an ordinary function. It runs in register bank 0, with BL clear a
 IMASK from the table. When it returns, `0x80021020` blocks exceptions again, pops what step 2
 pushed, and `rte` resumes the interrupted code.
 
+Bit 7 of `0xA4150020` belongs to the OS's deeper idle routine `0x80020880` (see
+[Timers](timers.md#the-2-hz-wake-up)). That routine sets bits 7 and 0 of `0xA4150020` and
+changes `0xA4150024` and `0xFEC10044` before its `sleep`, then undoes all three after waking.
+The undo is exactly what step 1 does: `0xA4150024` gets bit 14 set and bit 1 cleared,
+`0xA4150020` = 1, and `0xFEC10044` gets `0x0A00` in place of its bits 15–8. So an interrupt
+that finds bit 7 still set restores the normal clock and bus settings before any handler runs.
+
 !!! warning "Unconfirmed"
-    What bits 5 and 7 of `0xA4150020` mean in step 1 is not known. They are probably related
-    to waking from a low-power state, but this has not been traced.
+    On the SH7724, `0xA4150020` is STBCR and bit 7 is STBY: with it set, `sleep` enters
+    *software standby*, where the clocks stop, instead of plain sleep. That fits, but the
+    SH7305's bit has not been checked. What bit 5 means is not known; the deeper idle routine
+    clears it before sleeping.
 
 ### The tables in IL RAM
 
@@ -185,15 +194,15 @@ Interrupt codes with their own handler in the OS 3.60 table:
 |---|---|---|---|
 | `0x1C0` | NMI (SH-4A non-maskable interrupt code) | `0x801DED64` | Returns at once (`rts`) |
 | `0x560` | Battery A/D converter | `0x801DED94` | Masks its source, posts an event, clears the end flags (bits 14 and 15 of `0xA4610088`/`0xA461008A`), unmasks |
-| `0x620` | Unknown | `0x801DEEBE` | Uses registers at `0xA414001C` and `0xA4140024` |
-| `0x640` | Unknown | `0x801DEF3A` | Uses `0xA4140024` |
+| `0x620` | [Pin IRQ1](#external-pins-irq1-and-irq2), the "USB" wake-up | `0x801DEEBE` | Masks IRQ1, flips its trigger level, posts an event if the pin went high, clears its request |
+| `0x640` | [Pin IRQ2](#external-pins-irq1-and-irq2), the "3PIN" wake-up | `0x801DEF3A` | Masks IRQ2, posts an event, clears its request |
 | `0x900`, `0xC20`, `0xC40`, `0xD00` | ETMU3, ETMU1, ETMU2, ETMU4 | `0x802D8AC4` | One handler; reads INTEVT to tell the timers apart |
 | `0x9E0` | ETMU0 | `0x802D8A18` | Uses ETMU0 (`0xA44D0030`) and IPRJ |
-| `0xA20` | Unknown | `0x803741C0` | Uses a unit at `0xA4D80000`, IMR9 and pin-function registers |
+| `0xA20` | [USB controller](#usb-and-the-serial-port) (`0xA4D80000`) | `0x803741C0` | Jumps to the USB driver at `0x80744D68` |
 | `0xAA0` | RTC periodic interrupt | `0x801DFC6C` | Acknowledges RCR2 (`0xA413FEDE`); this 2 Hz wake-up drives the cursor blink |
 | `0xBE0` | KEYSC | `0x801DEDCC` | Jumps to the keyboard handler `0x801E4C00` |
-| `0xC00` | Unknown | `0x803196D2` | Uses `0xA4410010` |
-| `0xF00` | Unknown | `0x802D8A18` | Same handler as ETMU0 |
+| `0xC00` | [Serial port](#usb-and-the-serial-port) (SCIF, `0xA4410000`) | `0x803196D2` | Reads the status registers, then runs the receive, transmit or error routine |
+| `0xF00` | Unknown | `0x802D8A18` | Same handler as ETMU0. It never reads INTEVT and touches only ETMU0, IPRJ and the ETMU5 counter, so it gives no clue to the source |
 
 Every other slot from `0x040` to `0xF00` points at a common error routine (`0x8002C9A2`,
 or a variant passing an error kind). The low slots are exception codes: `0x040`–`0x080`
@@ -212,9 +221,70 @@ any DMAC channel.
     `TestKeyscMenuTap`).
 
 !!! warning "Unconfirmed"
-    The devices behind `0x620`, `0x640`, `0xA20`, `0xC00` and `0xF00` are not identified;
-    the table only lists the registers their handlers touch. When, if ever, the OS enables
-    the ETMU interrupts is not known.
+    The device behind `0xF00` is not identified. When, if ever, the OS enables the ETMU
+    interrupts is not known. The identities of `0x620`, `0x640`, `0xA20` and `0xC00` are
+    explained in the next two sections.
+
+## External pins IRQ1 and IRQ2
+
+INTEVT `0x620` and `0x640` are two of the chip's **external interrupt pins**, IRQ1 and IRQ2.
+They have their own registers at `0xA4140000`, outside the INTC block above, with the same
+layout as the SH7724's IRQ pin registers:
+
+| Address | Register | IRQ1 (`0x620`) | IRQ2 (`0x640`) |
+|---|---|---|---|
+| `0xA4140010` | INTPRI00, 4-bit priority per pin (32-bit) | bits 27–24, OS: 13 | bits 23–20, OS: 5 |
+| `0xA414001C` | ICR1, 2-bit trigger per pin (16-bit) | bits 13–12 | bits 11–10 |
+| `0xA4140024` | INTREQ00, request flags (8-bit) | bit 6 | bit 5 |
+| `0xA4140044` | INTMSK00, write 1 to mask (8-bit) | bit 6 | bit 5 |
+| `0xA4140064` | INTMSKCLR00, write 1 to unmask (8-bit) | bit 6 | bit 5 |
+
+The OS uses them as **wake-up sources**. Syscall `0x11BD` (`0x801DEF60`) arms IRQ1 just
+before the OS waits in `sleep`. It arms IRQ2 too, but only when setting bytes in IL RAM allow
+it (`0xFD8017C9` = 1, among others in `0xFD8017C8`–`0xFD8017CB`). It is called, for example,
+at `0x802AE822` in the wait routine `0x802AE790` and at `0x802AEC28`. Syscall `0x11BE`
+(`0x801DEFA2`) disarms both afterwards.
+
+Casio's own hardware test menu names the two pins: its "[REMOTE ON]" screen lists **USB** and
+**3PIN** and shows ON or OFF for each. The test reads them with syscall `0x11BF`
+(`0x801DF02E`), which checks bit 1 of the port register `0xA4050162` for one and bit 2 of
+`0xA4050134` for the other. The IRQ1 handler reads the same bit 1 of `0xA4050162` (syscall
+`0x11C0`, `0x801DF084`), so IRQ1 is the **USB** pin and IRQ2 the **3PIN** pin, the 2.5 mm
+serial link socket. "Remote on" would be the calculator switching on when a cable is plugged
+in.
+
+The IRQ1 handler watches both directions. When the trigger is "high level" and the pin is
+high, it posts an event and switches the trigger to "low level"; when the trigger is "low
+level", it switches back to "high level". The OS's
+[idle routine](timers.md#the-2-hz-wake-up) also reads this pin to choose how deeply to sleep.
+
+!!! warning "Unconfirmed"
+    Read from the OS 3.60 code. The register names, and "high level"/"low level" for ICR1's
+    codes 3 and 2, come from the SH7724, whose IRQ registers sit at the same addresses with
+    the same bit positions. Every bit the OS uses matches that layout. Which level the USB pin
+    shows with and without a cable has not been read on a calculator.
+
+## USB and the serial port
+
+**`0xA20` is the USB controller at `0xA4D80000`.** On the SH7724 that address is the first
+USB module, also with INTEVT `0xA20`. The OS's USB code agrees:
+
+- the start routine (around `0x80373E96`) sets IPRF bits 7–4 to 13 (on the SH7724, IPRF 7–4
+  is the USB field) and touches IMR9 bit 1;
+- the stop routine `0x803741D4` masks IMR9 bit 1 and the DMAC fields (IMR5 bits 4–5, IPRE
+  15–12), clears IPRF 7–4, writes 0 to `0xA4D80000`, and sets bits in the clock generator
+  registers `0xA4150014` and `0xA4150038`;
+- the handler jumps into the USB driver at `0x80744D68`.
+
+**`0xC00` is the serial port (SCIF) at `0xA4410000`**, behind the 3-pin link socket. The
+handler reads the 16-bit status register at `+0x10` and the line status at `+0x24`. It runs
+the receive routine on an overrun (`+0x24` bit 0) or received data (`+0x10` bits 0–1), the
+transmit routine when bit 5 (transmit FIFO empty) is set, and an error routine for bit 7.
+These bits are those of the SH-4A SCIF's SCFSR and SCLSR.
+
+!!! warning "Unconfirmed"
+    Both identifications rest on the SH7724's register layouts and on the OS code above. No
+    probe has used either unit.
 
 ## gint
 
@@ -255,6 +325,11 @@ the 3.80 updater, describe these as the OS's. They are present at the same addre
   as their level.
 - The Python reference emulator (`emu/mmio.py`, `INTCStub`) does not gate requests. The
   OS's boot does not depend on it.
+- The IRQ pins, USB and the serial port raise no interrupts. The block at `0xA4140000` is a
+  stub (`intx` in `mmio.go`, `INTX` in `emu/mmio.py`) whose byte `+0x24` always reads `0x40`.
+  Its comment calls that bit "key-scan ready", but it is INTREQ00 bit 6, IRQ1's request flag.
+  The pin-function block is plain memory that reads back what was written, and in practice
+  the "USB" pin bit at `0xA4050162` reads 0.
 - Tests: `emu_go/intc_test.go` (`TestINTCGate`, `TestINTCGateAtAcceptance`,
   `TestCPUOPMIntmuSetsIMASK`), `TestSleepWakesOnRequest` in `emu_go/rtc_test.go`; probe
   `emu_go/intc_dump_test.go` logs the OS's INTC writes.
