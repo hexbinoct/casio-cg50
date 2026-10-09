@@ -1,5 +1,6 @@
 site_name: CG50 Internals
 site_description: Software-level documentation of the Casio fx-CG50 (SH7305) — memory map, CPU quirks, peripherals and OS internals, verified on hardware and in an emulator.
+site_url: https://hexbinoct.github.io/casio-cg50/
 repo_url: https://github.com/hexbinoct/casio-cg50
 repo_name: hexbinoct/casio-cg50
 edit_uri: edit/main/wiki/docs/

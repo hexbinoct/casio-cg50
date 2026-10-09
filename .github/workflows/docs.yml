@@ -1,0 +1,48 @@
+# The "CG50 Internals" site: builds wiki/ with MkDocs Material and deploys it to GitHub Pages
+# (https://hexbinoct.github.io/casio-cg50/). Runs when wiki/ or this file changes on main, or by
+# hand (Actions -> Docs site -> Run workflow). --strict fails on a broken link or #anchor, as
+# wiki/README.md asks before every commit, so a broken page never goes live.
+name: Docs site
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "wiki/**"
+      - ".github/workflows/docs.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: wiki/requirements.txt
+      - run: python -m pip install -r wiki/requirements.txt
+      - run: python -m mkdocs build --strict -f wiki/mkdocs.yml
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: wiki/site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

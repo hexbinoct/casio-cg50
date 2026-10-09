@@ -20,12 +20,14 @@ peripherals, OS 3.60 internals. Built with MkDocs Material from `wiki/docs/`. St
 - Dark theme by default; colours in `docs/assets/extra.css`. A browser that toggled before
   remembers its choice in localStorage.
 
-## Not yet published
+## Publishing
 
-The site is not deployed. Plan: a GitHub Actions workflow that builds `wiki/` and deploys to
-Pages (the repo is **public**, so Actions are fine under the no-Actions-on-private rule), then
-Settings → Pages → Source "GitHub Actions" once. Result: `hexbinoct.github.io/casio-cg50`.
-**Ask the user before adding the workflow.**
+Live at **https://hexbinoct.github.io/casio-cg50/** (since 2026-10-09). The workflow
+`.github/workflows/docs.yml` builds `wiki/` with `mkdocs build --strict` and deploys it to
+Pages on every push to `main` that touches `wiki/` (or by hand: Actions → Docs site → Run
+workflow). The repo is **public**, so Actions are fine under the no-Actions-on-private rule.
+Pages' source is "GitHub Actions" (set once). A broken link fails the build and the live site
+stays as it was: check the run in the Actions tab after pushing.
 
 ## Rules for writing pages
 
