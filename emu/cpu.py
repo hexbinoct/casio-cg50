@@ -184,7 +184,7 @@ class CPU:
             self._branch_delayed(tgt); return
         if op == 0x0008: self._sr &= ~self.T; return   # clrt
         if op == 0x0018: self._sr |= self.T; return    # sett
-        if op == 0x0019: self._sr &= ~self.Q & ~self.M; return  # div0u (clears M/Q)
+        if op == 0x0019: self._sr &= ~self.Q & ~self.M & ~self.T; return  # div0u: 0 -> M, Q, T
         if op == 0x0028: self.mach = self.macl = 0; return       # clrmac
         if op == 0x0048: self._sr &= ~self.S; return   # clrs
         if op == 0x0058: self._sr |= self.S; return    # sets

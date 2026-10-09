@@ -324,8 +324,8 @@ func (c *CPU) execute(op uint32) {
 	case 0x0018:
 		c.sr |= srT
 		return
-	case 0x0019:
-		c.sr &^= (srQ | srM)
+	case 0x0019: // div0u: 0 -> M, Q, T (SH-4 manual; leaving T set made gcc's divisions off by 2^24)
+		c.sr &^= (srQ | srM | srT)
 		return
 	case 0x0028:
 		c.mach, c.macl = 0, 0

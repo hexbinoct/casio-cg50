@@ -243,6 +243,12 @@ def build_cases():
                   setup={"r": reg(r0=7, r1=100, r2=0)}, steps=len(dcode)))
     C.append(case("div1_full_quotient_ffffffff_3", dcode,
                   setup={"r": reg(r0=3, r1=0xFFFFFFFF, r2=0)}, steps=len(dcode)))
+    # div0u clears T as well as M and Q (SH-4 manual: 0 -> M, Q, T). The cases above start from
+    # T=0, so a div0u that left T alone passed them; gcc's __sdivsi3_i4i runs div0u right after
+    # a cmp/hi that set T, and every such quotient came out 2^24 too large (FlowCE, 2026-10-09).
+    C.append(case("div0u_clears_t", [DIV0U], setup={"sr": SR_T | 0x300}))          # T, Q, M set
+    C.append(case("div1_full_quotient_100_7_t_set", dcode,
+                  setup={"r": reg(r0=7, r1=100, r2=0), "sr": SR_T}, steps=len(dcode)))  # 0x0e
     # MAC.L @Rm+,@Rn+ : sum 0x40000000^2*2 + 0x10000^2 + 0x7FFFFFFF^2 over 4 ops (r0,r1 both
     # walking the array). S=0 -> MACH:MACL=60000000:00000001 (full 64-bit); S=1 -> saturate to
     # 48-bit signed 00007fff:ffffffff. Both are real-hardware results.
