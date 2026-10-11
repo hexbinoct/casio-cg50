@@ -147,3 +147,11 @@ green, per CLAUDE.md. Then update the matching wiki page's "In the emulator" sec
     - The USB pin (`0xA4050162` bit 1) reads 0, so the OS always takes the deeper sleep path.
     - Power-off: the panel model ignores R007 = 0 and the backlight bit `0xA405012E` bit 5, so
       "off" shows the all-white frame the OS pushes before switching off (real calc is dark).
+- Found 2026-10-10/11 by the add-in work (Wolf3D, FastGraph, CodeView):
+    - CPG `PLLCR` (`0xA4150024`) reads `0x4000`: PLLE but no FLLE (bit 12). On the calculator
+      the FLL always runs, and gint's `clock_freq()` computes Pφ = 29.49 MHz there. In the
+      emulator it gets about 65 kHz, so every gint timer delay given in µs is wrong. A fix
+      changes what the boot sees, so the Python oracle and the goldens need it too.
+    - `Bdisp_PutDisp_DD_stripe` (syscall `0x0260`) for rows 12-203 shows garbled and
+      blue-tinted on the panel, while VRAM is correct. The full `Bdisp_PutDisp_DD` (`0x025F`)
+      is fine.

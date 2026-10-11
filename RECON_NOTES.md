@@ -9,6 +9,35 @@
   pending, so the next session can continue without being reminded.
 ============================================================================= -->
 
+> ## ⏯ RESUME HERE (last session end: 2026-10-11, cont.19c = add-in work on the Mac, emulator unchanged)
+>
+> **No emulator code changed.** This session used the emulator as the test device for four add-in
+> projects outside this repo (each has its own `notes/` under `~/main/casio/`): `wolf3d_cg50` (an
+> fx-9860 .g1a running through a shim; public repo hexbinoct/wolf3d-cg50), `graph_cg50`
+> (FastGraph), `codeview_cg50` (a PRGM program reader), and `flowce_cg50` (rebased onto upstream
+> v1.9).
+>
+> **Two emulator bugs found, not fixed** (in `wiki/README.md` → TODO):
+> - CPG `PLLCR` reads `0x4000` (no FLLE), so gint's `clock_freq()` gives Pφ ≈ 65 kHz.
+> - `Bdisp_PutDisp_DD_stripe` with a partial row range renders garbled on the panel.
+>
+> **New probe tests (untracked, `-tags probe`):**
+> - `wolf_probe_test.go`: key and screen script for the shim, keylog and crashlog modes.
+> - `graph_probe_test.go`: `TestGraph`, which launches any .g3a (`GRAPH_G3A`) and saves the
+>   frames.
+> - `codeview_probe_test.go`: `TestTokens` dumps `OpCodeToStr` (0x128F) for all 1,792 opcodes;
+>   `TestMCSList` lists main memory's `"system"` directory and dumps each program.
+>
+> **Calling the OS from Go:** `e.syscall(n, budget, args...)` with the OS idle. Arguments 5 and up
+> go on the stack at `(e.cpu.r[15] - 0x100) &^ 3`; write them there first. Buffers come from the
+> OS's own `sys_malloc` (0x1F44).
+>
+> **Test data:** the 32 MB state holds 9 programs from the user's calculator (ADDNUM, BIGNUM 1680 B,
+> INTTOBAS/EXP/STR, LIST, OCTA, OPCODEX, TRY) and 3 .py files.
+>
+> **Next:** unchanged from cont.19b below. The two new bugs are candidates for the emulator TODO
+> list.
+
 > ## ⏯ RESUME HERE (last session end: 2026-10-09, cont.19b = site deployed + div0u fix, home then office)
 >
 > **The docs site is LIVE** at https://hexbinoct.github.io/casio-cg50/ (`.github/workflows/docs.yml`,
