@@ -74,8 +74,21 @@ func addinCode(e *Emulator, va uint32) (uint16, bool) {
 	if ent == 0 {
 		return 0, false
 	}
-	p := ent&0x1FFFF000 | va&0xFFF
-	return uint16(e.mem.flash[p])<<8 | uint16(e.mem.flash[p+1]), true
+	return uint16(e.mem.R16(0x80000000 | ent&0x1FFFF000 | va&0xFFF)), true // flash, or the monitor's RAM copy
+}
+
+// The monitor's software breakpoints (stage 3): RAM copies of the code pages at monPages, the
+// hook block at monHook (the target's VBR when that was the OS's), trapa #0xC3.
+const (
+	monPages = 0x8C700000
+	monHook  = 0x8C7F0000
+	monTrap  = 0xC3C3
+)
+
+// pageCopied: the OS's page table maps va's page onto one of the monitor's RAM copies.
+func pageCopied(e *Emulator, va uint32) bool {
+	ent := e.mem.R32(0x8C04CF0C + (va-0x00300000)>>12*4)
+	return ent&0x1FFFF000 >= monPages&0x1FFFFFFF && ent&0x1FFFF000 < (monPages+16*4096)&0x1FFFFFFF
 }
 
 func isCall(op uint16) bool {
@@ -87,6 +100,7 @@ type monRig struct {
 	e                     *Emulator
 	dasm                  string
 	entry, imgEnd, stopAt uint32
+	regs                  uint32 // the monitor's mon_regs (the target's state as the monitor shows it)
 	n                     uint32 // stops seen
 	shots                 string // screenshot name prefix
 	light                 bool   // S<->D in DASM's picker before F2 (the light theme)
@@ -152,6 +166,7 @@ func (r *monRig) armFromDasm() {
 		t.Fatalf("no monitor at %#x: %#x", monBase, e.mem.R32(monBase))
 	}
 	r.entry, r.imgEnd, r.stopAt = e.mem.R32(monBase+8), e.mem.R32(monBase+12), e.mem.R32(monBase+24)
+	r.regs = e.mem.R32(monBase + 20)
 	t.Logf("monitor: entry %#x image end %#x stops @%#x", r.entry, r.imgEnd, r.stopAt)
 	r.key(2, 1, 100_000_000) // EXE: arm + MAIN MENU
 	r.shot("02_menu")
@@ -163,10 +178,34 @@ func (r *monRig) armFromDasm() {
 	}
 }
 
+// typeHex types v in the monitor's address prompt (digits 0-9, F1-F6 = A-F) and confirms it.
+func (r *monRig) typeHex(v uint32) {
+	digit := [10][2]uint32{{6, 1}, {6, 2}, {5, 2}, {4, 2}, {6, 3}, {5, 3}, {4, 3}, {6, 4}, {5, 4}, {4, 4}}
+	fn := [6][2]uint32{{6, 9}, {5, 9}, {4, 9}, {3, 9}, {2, 9}, {1, 9}}
+	for i := 7; i >= 0; i-- {
+		d := v >> (4 * i) & 15
+		var k [2]uint32
+		if d < 10 {
+			k = digit[d]
+		} else {
+			k = fn[d-10]
+		}
+		r.key(k[0], k[1], 20_000_000)
+	}
+	r.key(2, 1, 20_000_000) // EXE
+}
+
+// gotoAddr: F4, the address, EXE (the cursor / memory view moves there).
+func (r *monRig) gotoAddr(v uint32) {
+	r.key(3, 9, 20_000_000)
+	r.typeHex(v)
+}
+
 func (r *monRig) inMon() bool   { return r.e.cpu.pc >= monBase && r.e.cpu.pc < r.imgEnd }
 func (r *monRig) stops() uint32 { return r.e.mem.R32(r.stopAt) }
 
-// waitStop runs until the monitor shows its next stop (and waits for a key); returns SPC.
+// waitStop runs until the monitor shows its next stop (and waits for a key); returns the PC it
+// shows (mon_regs.spc: for a software breakpoint the trapa's address, SPC - 2).
 func (r *monRig) waitStop(what string) uint32 {
 	t, e := r.t, r.e
 	r.n++
@@ -180,8 +219,9 @@ func (r *monRig) waitStop(what string) uint32 {
 			if c0, c1 := e.mem.Read(ubcBase, 4), e.mem.Read(ubcBase+0x20, 4); (c0|c1)&1 != 0 {
 				t.Fatalf("a channel is enabled while the monitor runs: CBR0=%#x CBR1=%#x", c0, c1)
 			}
-			t.Logf("stop %d (%s): spc=%#x ssr=%#x r15=%#x vbr=%#x", r.n, what, e.cpu.spc, e.cpu.ssr, e.cpu.sgr, e.cpu.vbr)
-			return e.cpu.spc
+			pc := e.mem.R32(r.regs + 96)
+			t.Logf("stop %d (%s): pc=%#x ssr=%#x r15=%#x vbr=%#x", r.n, what, pc, e.cpu.ssr, e.cpu.sgr, e.cpu.vbr)
+			return pc
 		}
 	}
 	t.Fatalf("no stop %d (%s): pc=%#x spc=%#x breaks=%d CBR0=%#x CBR1=%#x CAR1=%#x", r.n, what, e.cpu.pc, e.cpu.spc,
@@ -215,6 +255,17 @@ func (r *monRig) detach() {
 		t.Fatalf("breaks after detach: %d -> %d", breaks, e.cpu.ubc.breaks)
 	}
 	t.Logf("after detach: pc=%#x vbr=%#x stops=%d", e.cpu.pc, e.cpu.vbr, r.stops())
+	for va := uint32(0x00300000); va < 0x00500000; va += 4096 {
+		if e.mem.R32(0x8C04CF0C+(va-0x00300000)>>12*4) == 0 {
+			break
+		}
+		if pageCopied(e, va) {
+			t.Fatalf("page %#x still mapped onto a RAM copy after the detach", va)
+		}
+	}
+	if e.mem.R32(monHook) == 0x484F4F4B && e.mem.R32(monHook+8) != 0 {
+		t.Fatal("the hook block still sends traps to the monitor after the detach")
+	}
 }
 
 func TestMonitorDasm(t *testing.T) {
@@ -254,12 +305,21 @@ func TestMonitorDasm(t *testing.T) {
 	t.Logf("call at %#x: breakpoint at %#x", call, call+4)
 	r.key(2, 7, 20_000_000) // DOWN, DOWN: the cursor on call+4
 	r.key(2, 7, 20_000_000)
-	r.key(4, 9, 20_000_000) // F3: breakpoint there
+	r.key(4, 9, 20_000_000) // F3: breakpoint there (add-in code: a software breakpoint)
 	r.shot("06_bp_set")
 	pc = r.resume(2, 1, "EXE continue to the breakpoint")
 	r.shot("07_at_bp")
 	if pc != call+4 {
 		t.Fatalf("continue stopped at %#x, want the breakpoint %#x", pc, call+4)
+	}
+	// it was the trapa: the page runs from a RAM copy, the OS's VBR is replaced by the hook
+	// block, and while the monitor shows the stop the original instruction is back
+	if !pageCopied(r.e, call+4) || r.e.cpu.vbr != monHook || r.e.mem.R32(monHook+4) != 0x80020F00 {
+		t.Fatalf("not a software breakpoint: page table %#x, vbr %#x (hook's replaced vbr %#x)",
+			r.e.mem.R32(0x8C04CF0C+(call+4-0x00300000)>>12*4), r.e.cpu.vbr, r.e.mem.R32(monHook+4))
+	}
+	if op, _ := addinCode(r.e, call+4); op == monTrap {
+		t.Fatal("the trapa is still in place while the monitor shows the stop")
 	}
 	pc = r.resume(6, 9, "F1 step")
 	call = nextCall()
@@ -340,13 +400,23 @@ func TestMonitorDasmGint(t *testing.T) {
 		t.Fatalf("entry stop at %#x", pc)
 	}
 	r.shot("04_entry")
-	sAddr := monSymbol(t, r.dasm, "_S") // static struct S: started, ch1, bp, bp_on
-	r.e.mem.W32(sAddr+8, idle)
-	r.e.mem.W32(sAddr+12, 1)
+	r.gotoAddr(idle)        // F4: the cursor on the loop
+	r.key(4, 9, 20_000_000) // F3: a software breakpoint there
+	r.shot("04b_gint_bp_set")
 	pc := r.resume(2, 1, "EXE continue to the loop")
 	r.shot("05_gint_bp")
 	if pc != idle || r.e.cpu.vbr != 0x8C160000 {
 		t.Fatalf("stop at %#x vbr %#x, want %#x in gint's world (vbr 0x8c160000)", pc, r.e.cpu.vbr, idle)
+	}
+	// the trap came through gint's own exception entry, patched by the monitor in the
+	// target's code before gint's kernel copied it to VBR+0x100
+	if !pageCopied(r.e, idle) || r.e.mem.R16(0x8C160100) != 0xD001 || r.e.mem.R32(0x8C160108) != monHook+0x700 {
+		t.Fatalf("not a software breakpoint through gint's entry: page copied %v, vbr+0x100 = %#x %#x",
+			pageCopied(r.e, idle), r.e.mem.R16(0x8C160100), r.e.mem.R32(0x8C160108))
+	}
+	pc = r.resume(2, 1, "EXE: steps off the breakpoint, runs, back to it")
+	if pc != idle {
+		t.Fatalf("second stop at %#x, want the breakpoint %#x again", pc, idle)
 	}
 	for i := 0; i < 3; i++ {
 		pc = r.resume(6, 9, "F1 step")
@@ -354,6 +424,9 @@ func TestMonitorDasmGint(t *testing.T) {
 	r.shot("06_gint_step")
 	r.detach()
 	r.shot("07_detached")
+	if r.e.mem.R16(0x8C160100) != 0x4F22 || r.e.mem.R32(0x8C160108) == monHook+0x700 {
+		t.Fatalf("gint's exception entry not restored: %#x", r.e.mem.R16(0x8C160100))
+	}
 	// the target still answers keys and draws: KeyProbe wants RIGHT held for ~7 s
 	// (stop at its next frame: holding on makes the emulator fault in gint's interrupt handler,
 	// with or without the debugger — see MONDBG_BASELINE)
@@ -370,6 +443,40 @@ func TestMonitorDasmGint(t *testing.T) {
 		t.Fatal("the target did not draw again after the detach")
 	}
 	t.Logf("the target drew a new frame after the detach (pushes %d -> %d)", p0, r.e.Pushes())
+}
+
+// TestMonitorDasmWatch: Geometry again; at the entry stop a write watchpoint (F6) on the word
+// below the stack pointer: the first push stops it, with the push done. The memory view (F5)
+// and go-to (F4) are used on the way.
+func TestMonitorDasmWatch(t *testing.T) {
+	r := newMonRig(t, "mondbg_watch")
+	r.armFromDasm()
+	for i := 0; i < 4; i++ { // Z -> J (Geometry)
+		r.key(1, 8, 30_000_000)
+	}
+	r.e.InjectKey(2, 1)
+	if pc := r.waitStop("entry"); pc != 0x00300000 {
+		t.Fatalf("entry stop at %#x", pc)
+	}
+	sp := r.e.cpu.sgr
+	wa := sp - 4
+	r.key(2, 9, 20_000_000) // F5: memory view
+	r.gotoAddr(wa)          // F4 in it: the memory view at the address
+	r.shot("05_memview")
+	r.key(1, 9, 20_000_000) // F6: watch (the suggestion is the memory view's address)
+	r.key(2, 1, 20_000_000) // EXE: accept it
+	r.key(5, 2, 20_000_000) // 2: write
+	r.shot("06_watch_set")
+	if c := r.e.mem.Read(ubcBase, 4); c&1 != 0 {
+		t.Fatalf("channel 0 enabled while the monitor runs: %#x", c)
+	}
+	pc := r.resume(2, 1, "EXE continue to the write")
+	r.shot("07_watch_hit")
+	if r.e.cpu.sgr > wa || r.e.mem.Read(ubcBase+8, 4) != wa {
+		t.Fatalf("watch stop at %#x: r15 %#x (watched %#x), CAR0 %#x", pc, r.e.cpu.sgr, wa, r.e.mem.Read(ubcBase+8, 4))
+	}
+	t.Logf("the write to %#x stopped at %#x (r15 %#x -> %#x, value %#x)", wa, pc, sp, r.e.cpu.sgr, r.e.mem.R32(wa))
+	r.detach()
 }
 
 func TestMonitorDasmCancel(t *testing.T) {
