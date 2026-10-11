@@ -102,7 +102,7 @@ func (e *Emulator) Pushes() uint64 { e.mu.Lock(); defer e.mu.Unlock(); return e.
 
 // FrameGen changes whenever the panel's GRAM does (pushes, partial writes such as the cursor);
 // a host that sees the same value it last drew can skip the frame.
-func (e *Emulator) FrameGen() uint64 { e.mu.Lock(); defer e.mu.Unlock(); return e.mmio.lcd.gen }
+func (e *Emulator) FrameGen() uint64 { e.mu.Lock(); defer e.mu.Unlock(); return e.mmio.lcd.frameGen() }
 
 // InjectKey queues a tap of the matrix key at 0-based (row,col); see re/KEYMAP.md. The key
 // is held for a few hardware scans then released, and queued taps are spaced so each one is

@@ -3,7 +3,7 @@ package main
 // R61524 LCD controller on bus area 5 (0xB4000000; P0 alias 0x14000000) — cont.18o.
 //
 // The screen the user sees is the controller's GRAM, not VRAM. The OS reaches GRAM two ways:
-//   - the frame push: set up a window + address, select R202 (GRAM write), then DMAC ch2
+//   - the frame push: set up a window + address, select R202 (GRAM write), then DMAC ch0
 //     streams the 384x216 VRAM into the data port (dmac.write -> lcd.dma);
 //   - direct CPU pixel writes: the text-cursor blink (Keyboard_CursorFlash sc 0x8CA ->
 //     0x800c4006 draw / 0x800c4266 erase) writes the caret straight to GRAM and never
@@ -21,6 +21,11 @@ package main
 //
 // CPU-visible behaviour (index, register read-back) is mirrored in emu/mmio.py LCD; GRAM,
 // the address counter and DMA streaming are presentation-only (GRAM reads return 0 in both).
+//
+// The panel is dark unless R007 bit 8 (display on) is set and the backlight is on (PFC
+// 0xA405012E bit 5, probably the backlight enable). Power-off writes R007 = 0 and clears the
+// bit after pushing an all-white frame; power-on sets the bit and ends with R007 = 0x0100
+// (wiki display.md). Before this, "off" showed that white frame.
 
 const (
 	panelW = 396
@@ -51,11 +56,29 @@ func newLCD(pfc *base) *lcd {
 // for a fresh machine and for snapshots that predate the LCD model.
 func (l *lcd) bootDefaults() {
 	l.reg[0x003] = 0x00A0
+	l.reg[0x007] = 0x0100 // display on
 	l.reg[0x210], l.reg[0x211] = 0, panelW-1
 	l.reg[0x212], l.reg[0x213] = 0, panelH-1
 }
 
 func (l *lcd) rs() bool { return l.pfc != nil && l.pfc.regs[0x13C]&0x10 != 0 }
+
+// lit reports whether the panel shows GRAM: display on (R007 bit 8) and the backlight not
+// switched off (PFC byte 0xA405012E bit 5; a snapshot that never wrote it counts as on).
+func (l *lcd) lit() bool {
+	if l.reg[0x007]&0x0100 == 0 {
+		return false
+	}
+	if l.pfc != nil {
+		if v, ok := l.pfc.regs[0x12E]; ok && v&0x20 == 0 {
+			return false
+		}
+	}
+	return true
+}
+
+// frameGen changes whenever what the panel shows may have: a GRAM write or lit() toggling.
+func (l *lcd) frameGen() uint64 { return l.gen<<1 | uint64(b2u(l.lit())) }
 
 func (l *lcd) read(va, size uint32) uint32 {
 	if !l.rs() {
@@ -176,6 +199,10 @@ func (l *lcd) dma(src []byte) {
 
 // renderOS writes the OS's 384x216 area of GRAM into dst as big-endian RGB565.
 func (l *lcd) renderOS(dst []byte) {
+	if !l.lit() {
+		clear(dst[:FbWidth*FbHeight*2])
+		return
+	}
 	for y := 0; y < FbHeight; y++ {
 		row := l.gram[y*panelW:]
 		for x := 0; x < FbWidth; x++ {
@@ -191,6 +218,10 @@ func (l *lcd) renderOS(dst []byte) {
 // rows below), which the OS paints in its frame colour (DrawFrame) and gint add-ins use as
 // part of their 396x224 screen.
 func (l *lcd) renderPanel(dst []byte) {
+	if !l.lit() {
+		clear(dst[:panelW*panelH*2])
+		return
+	}
 	for y := 0; y < panelH; y++ {
 		row := l.gram[y*panelW:]
 		for x := 0; x < panelW; x++ {
@@ -228,7 +259,7 @@ const (
 )
 
 func (l *lcd) stateMap() map[uint32]uint32 {
-	m := map[uint32]uint32{lcdKeyVer: 1, lcdKeyIdx: l.idx, lcdKeyH: l.h, lcdKeyV: l.v}
+	m := map[uint32]uint32{lcdKeyVer: 2, lcdKeyIdx: l.idx, lcdKeyH: l.h, lcdKeyV: l.v}
 	for i, r := range l.reg {
 		if r != 0 {
 			m[lcdKeyReg|uint32(i)] = uint32(r)
@@ -238,10 +269,12 @@ func (l *lcd) stateMap() map[uint32]uint32 {
 }
 
 // restoreState applies stateMap output; a map without the marker (a snapshot taken before
-// the LCD model, when this region was a plain register log) gets the boot defaults.
+// the LCD model, when this region was a plain register log) gets the boot defaults. Version 1
+// snapshots predate the display-on model: their R007 counts as on.
 func (l *lcd) restoreState(m map[uint32]uint32) {
 	l.reg = [lcdReg]uint16{}
-	if m[lcdKeyVer] != 1 {
+	ver := m[lcdKeyVer]
+	if ver != 1 && ver != 2 {
 		l.idx, l.h, l.v = 0, 0, 0
 		l.bootDefaults()
 		return
@@ -251,5 +284,8 @@ func (l *lcd) restoreState(m map[uint32]uint32) {
 		if k&0xFFFFF000 == lcdKeyReg {
 			l.reg[k&(lcdReg-1)] = uint16(v)
 		}
+	}
+	if ver == 1 {
+		l.reg[0x007] |= 0x0100
 	}
 }

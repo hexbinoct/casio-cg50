@@ -35,12 +35,26 @@ func (b *base) read(va, size uint32) uint32 {
 func (b *base) write(va, size, val uint32) { b.regs[va-b.bs] = val }
 
 // CPG: boot PLL routine spins on 'ready' bit0 at +0x60 -> return 0 so it exits.
+// FRQCR (+0x00): bit 31 (KICK) applies a write and reads back 0. The OS writes
+// (FRQCR & 0x000F00F0) | 0x8F001102 (0x80020352), so starting from frqcrReset it reads the
+// calculator's 0x0F011112 afterwards (an add-in reads that on hardware; wiki timers.md).
 type cpg struct{ base }
+
+const frqcrReset = 0x0F011112
+
+func newCPG() *cpg {
+	c := &cpg{base: newBase("CPG", 0xA4150000, 0x1000)}
+	c.regs[0] = frqcrReset
+	return c
+}
 
 func (c *cpg) read(va, size uint32) uint32 {
 	off := va - c.bs
-	if off == 0x60 {
+	switch off {
+	case 0x60:
 		return 0
+	case 0x00:
+		return c.regs[0] &^ 0x80000000 // KICK reads 0
 	}
 	return c.regs[off]
 }
@@ -305,15 +319,20 @@ func (p *periphIRQ) adcTick(cpu *CPU) {
 }
 func (p *periphIRQ) setTimerFlag() { p.regs[0x88] |= 0xC000 }
 
-// INTX (0xA4140000): byte +0x24 reports key-scan ready (bit6) so the timer ISR's
-// scan poll completes.
+// INTX (0xA4140000): the external IRQ pin registers (SH7724 layout: ICR0 +0x00, INTPRI00
+// +0x10, ICR1 +0x1C, INTREQ00 +0x24, INTMSK00 +0x44, INTMSKCLR00 +0x64). Byte +0x24 holds the
+// pins' request flags: bit 6 = IRQ1 (INTEVT 0x620, the USB pin), bit 5 = IRQ2 (0x640, the
+// 3-pin port); writing 0 clears a flag, writing 1 leaves it. Nothing is ever plugged in, so
+// no flag is ever set: the OS's standby loop (syscall 0x11ED, 0x801dff06) reads them through
+// 0x801df090 as "woken by a cable" (wiki interrupts.md). Older versions returned 0x40 here.
 type intx struct{ base }
 
-func (x *intx) read(va, size uint32) uint32 {
-	if (va-x.bs)&0xFFFF == 0x24 {
-		return 0x40
+func (x *intx) write(va, size, val uint32) {
+	if (va-x.bs)&0xFFFF == 0x24 && size == 1 {
+		x.regs[va-x.bs] &= val // write-0-to-clear (no flag is ever set: stays 0)
+		return
 	}
-	return x.regs[va-x.bs]
+	x.base.write(va, size, val)
 }
 
 // bcdALU: hardware multi-word BCD arithmetic unit @0xA4CB0000 (RE'd cont.18c, command
@@ -478,8 +497,8 @@ func scanWatched(va uint32) (string, uint32, bool) {
 		return "KEYSC", b & 0xFFF, true
 	case 0xA4050000:
 		return "PFC", b & 0xFFF, true
-	case 0xA44C0000: // port strobe/clock pins the matrix scan toggles (found cont.18k)
-		return "PORTL", b & 0xFFF, true
+	case 0xA44C0000: // unidentified unit: on/off at +0x20 bit 0, level word at +0x00 (wiki timers.md)
+		return "A44C", b & 0xFFF, true
 	case 0xA44D0000:
 		return "ETMU2", b & 0xFFF, true
 	}
@@ -523,7 +542,7 @@ func NewMMIOBus() *MMIOBus {
 	b.lcd = newLCD(pfc)
 	b.ccn = &ccn{base: newBase("CCN", 0xFF000000, 0x1000)}
 	b.cpuopm = &base{nm: "CPUOPM", bs: 0xFF2F0000, sz: 4, regs: map[uint32]uint32{}}
-	cpg := &cpg{base: newBase("CPG", 0xA4150000, 0x1000)}
+	cpg := newCPG()
 	b.ubc = newUBC(cpg)
 	b.regions = []region{
 		b.cpuopm,

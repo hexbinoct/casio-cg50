@@ -110,8 +110,8 @@ func TestKeyscProtocol(t *testing.T) {
 	if got := mem.Read(B+0x14, 2); got&0x2 == 0 {
 		t.Fatalf("mode 0x800 did not report scan-complete: %#x", got)
 	}
-	if got := mem.Read(B+0x12, 2); got != 0 {
-		t.Fatalf("busy bit set: %#x", got)
+	if got := mem.Read(B+0x12, 2); got != 2 { // bit 0 = busy (never); bit 1 reads 1 like the calculator
+		t.Fatalf("+0x12 = %#x, want 2 (busy bit clear)", got)
 	}
 }
 

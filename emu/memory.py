@@ -34,7 +34,8 @@ FLASH_MUT_TOP = 0x02000000      # mutable/writable NOR extent (32MB): OS image +
 DRAM_BASE = 0x0C000000
 DRAM_SIZE = 0x00800000          # 8 MB (fx-CG50 has 8MB? adjust when confirmed)
 ILRAM_BASE = 0xFD800000         # on-chip RAM (boot stack @0xFD804000 implies >=16KB here)
-ILRAM_SIZE = 0x00010000         # 64 KB (provisional)
+ILRAM_SIZE = 0x00010000         # a 64 KB window over 16 KB, mirrored every 16 KB (the real dump repeats)
+ILRAM_MASK = 0x00003FFF
 OCRAM_BASE = 0xFE200000         # on-chip RAM for kernel lists/structs (swept 0xFE380000.. etc)
 OCRAM_SIZE = 0x00200000         # 2 MB
 
@@ -79,7 +80,7 @@ class Memory:
         # P4 control space (0xE0000000-0xFFFFFFFF) — partly on-chip RAM, partly regs
         if va >= 0xE0000000:
             if ILRAM_BASE <= va < ILRAM_BASE + ILRAM_SIZE:
-                return ("ram", self.ilram, va - ILRAM_BASE)
+                return ("ram", self.ilram, (va - ILRAM_BASE) & ILRAM_MASK)
             if OCRAM_BASE <= va < OCRAM_BASE + OCRAM_SIZE:
                 return ("ram", self.ocram, va - OCRAM_BASE)
             return ("mmio", None, va)          # control regs (0xFF.., 0xFE.., store queues)

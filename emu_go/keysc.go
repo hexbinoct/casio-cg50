@@ -13,10 +13,15 @@ package main
 //                 word3 bit10, UP (1,8) = word4 bit1. The ISR maps (row,col) through the OS
 //                 table 0x8068fa70[col*8+row] = (row+1)<<8|(col+1) = the 1-based grid code.
 //   +0x0C  control: bit15 = unit enable (OS writes 0x8000 at init).
-//   +0x0E, +0x16, +0x18(=0xC8), +0x1A(=0x0FFF), +0x1C(=0xFF)  scan timing/config (opaque).
+//   +0x0E, +0x16, +0x18(=0xC8)  scan timing/config (opaque).
+//   +0x1A, +0x1C  column / row enables: bit c of +0x1A = column c (12), bit r of +0x1C = row r
+//                 (8). Normal use 0x0FFF / 0xFF; the OS writes 1 / 1 while the calculator is
+//                 off (only AC/ON, (0,0), can wake it) and 0 / 0 around its single-key check.
+//                 A key outside them is neither reported nor detected. Inferred from the bit
+//                 widths and those values (wiki keyboard.md); unwritten = all enabled.
 //   +0x10  mode: 0x200 = normal (auto key-detect, then auto-scan while keys are held),
 //                0x400 = detect only, 0x800 = scan now (sync scan), 0 = off.
-//   +0x12  bit0 = scan busy (we are never busy).
+//   +0x12  bit0 = scan busy (we are never busy); reads 2 like the calculator (bit 1 unknown).
 //   +0x14  [15:8] interrupt enable per flag, [7:0] status flags, write-1-to-clear:
 //                 bit3 = key detected (matrix went non-empty), bit1 = scan complete.
 //          The ISR arms 0x48 (flags 3,6) while idle and 0x76 (1,2,4,5,6) while a key is
@@ -28,7 +33,7 @@ package main
 // key is held (and for 2 scans after the last release, so the OS sees the empty matrix and
 // its state machine returns to idle) each scan sets the scan-complete flag. Mode 0x800 sets
 // scan-complete every period unconditionally. Key repeat is the OS's own logic (initial
-// delay 120 scans, then every 5 scans), so scanPeriod is also the repeat clock.
+// delay 20 scans, then every scan; see DefaultKeyScanPeriod), so scanPeriod is also the repeat clock.
 
 const (
 	KeyscINTEVT = 0xBE0
@@ -74,6 +79,36 @@ func (k *keyscUnit) anyHeld() bool {
 	return false
 }
 
+// data is key-data word w as the unit reports it: the live matrix within the column and row
+// enables (+0x1A / +0x1C).
+func (k *keyscUnit) data(w uint32) uint32 {
+	cols, rows := uint32(0x0FFF), uint32(0xFF)
+	if v, ok := k.regs[0x1A]; ok {
+		cols = v
+	}
+	if v, ok := k.regs[0x1C]; ok {
+		rows = v & 0xFF
+	}
+	var m uint32
+	if cols>>(2*w)&1 != 0 {
+		m |= rows
+	}
+	if cols>>(2*w+1)&1 != 0 {
+		m |= rows << 8
+	}
+	return uint32(k.held[w]) & m
+}
+
+// anyEnabled reports whether a key inside the enables is held (what the unit can detect).
+func (k *keyscUnit) anyEnabled() bool {
+	for w := uint32(0); w < 6; w++ {
+		if k.data(w) != 0 {
+			return true
+		}
+	}
+	return false
+}
+
 // press / release change the physical matrix (0-based row 0..7, col 0..11). Key-detect is
 // edge-triggered on the real unit (it wakes the scanner), so a press into an empty matrix
 // makes the next tick scan immediately instead of waiting out the scan period.
@@ -106,7 +141,7 @@ func (k *keyscUnit) read(va, size uint32) uint32 {
 	off := va - k.bs
 	switch {
 	case off < 0x0C:
-		w := uint32(k.held[off>>1])
+		w := k.data(off >> 1)
 		switch size {
 		case 2:
 			return w
@@ -118,7 +153,7 @@ func (k *keyscUnit) read(va, size uint32) uint32 {
 		}
 		var lo uint32
 		if (off>>1)+1 < 6 {
-			lo = uint32(k.held[(off>>1)+1])
+			lo = k.data(off>>1 + 1)
 		}
 		return w<<16 | lo
 	case off == 0x0C:
@@ -126,7 +161,7 @@ func (k *keyscUnit) read(va, size uint32) uint32 {
 	case off == 0x10:
 		return k.mode
 	case off == 0x12:
-		return 0
+		return 2
 	case off == 0x14:
 		return k.ie<<8 | k.flags
 	}
@@ -154,7 +189,7 @@ func (k *keyscUnit) tick(cpu *CPU) {
 		return
 	}
 	k.scanNext = cpu.cycles + k.scanPeriod
-	held := k.anyHeld()
+	held := k.anyEnabled()
 	if k.ctrl&0x8000 == 0 || k.mode == 0 {
 		k.wasHeld = held
 		return

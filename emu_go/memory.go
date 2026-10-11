@@ -17,7 +17,8 @@ const (
 	DramBase    = 0x0C000000
 	DramSize    = 0x00800000 // 8 MB
 	IlramBase   = 0xFD800000
-	IlramSize   = 0x00010000 // 64 KB
+	IlramSize   = 0x00010000 // a 64 KB window...
+	IlramMask   = 0x00003FFF // ...over 16 KB of RAM, mirrored every 16 KB (the real 64 KB dump repeats)
 	OcramBase   = 0xFE200000 // on-chip RAM the OS uses for kernel lists/structs (swept 0xFE380000.. etc)
 	OcramSize   = 0x00200000 // 2 MB: covers 0xFE224000, 0xFE2FFC24, 0xFE380000-8BFFC, 0xFE3C0000, 0xFE3FFD00
 	// X/Y memory (0xE5007000/0xE5017000, gint's .xyram at 0xE500E000) and the IL memory at
@@ -161,7 +162,7 @@ func (m *Memory) Read(va, size uint32) uint32 {
 			m.accHook(va, size, false)
 		}
 		if va >= IlramBase && va < IlramBase+IlramSize {
-			return beRead(m.ilram, va-IlramBase, size)
+			return beRead(m.ilram, (va-IlramBase)&IlramMask, size)
 		}
 		if va-XyramBase < XyramSize {
 			return beRead(m.xyram, va-XyramBase, size)
@@ -228,7 +229,7 @@ func (m *Memory) Write(va, size, val uint32) {
 			m.accHook(va, size, true)
 		}
 		if va >= IlramBase && va < IlramBase+IlramSize {
-			beWrite(m.ilram, va-IlramBase, size, val)
+			beWrite(m.ilram, (va-IlramBase)&IlramMask, size, val)
 			return
 		}
 		if va-XyramBase < XyramSize {
@@ -374,7 +375,7 @@ func (m *Memory) flashProgram(phys, size, val uint32) {
 
 // ---- fls0 persistence -------------------------------------------------------
 // The fx-CG50 keeps its settings + first-boot-complete state in the NOR-flash fls0
-// filesystem (phys 0x01000000+, the storage tail past the 16MB OS image, which boots
+// filesystem (phys 0x00C80000-0x01FFFFFF, driver base 0xA0C80000; wiki memory-map.md), which boots
 // blank=0xFF -> first-boot setup runs every cold start). Snapshotting the flash pages the
 // OS wrote (and reloading them next boot) makes the emulator resume at the MAIN MENU like a
 // real, already-set-up calculator. We persist a DELTA vs the fresh baseline (OS image prefix

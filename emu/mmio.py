@@ -15,7 +15,7 @@ Register identities reverse-engineered in RECON_NOTES.md:
   0xA4490000  TMU  timer unit ; 0xA44A0000 ETMU
   0xA4610000  timer/periph IRQ block (ack @ +0x88)
   0xFEC10000  bus/SDRAM controller (16-reg timing block)
-  0xFE008000  DMAC (ch regs; ch2 @ +0x20; DMAOR @ +0x60)
+  0xFE008000  DMAC (ch regs; ch0 @ +0x20 = the frame push; DMAOR @ +0x60)
   0xFF000000  CCN/MMU/cache (PTEH/PTEL/TTB/TEA/MMUCR/CCR/INTEVT/EXPEVT...)
   0xB4000000  R61524 LCD (area5; index/data both @ +0, RS = PFC 0xA405013C bit4) — see LCD
 """
@@ -170,16 +170,22 @@ class UTLBArrays(Region):
 
 
 class CPG(Region):
-    """Clock generator. The boot PLL routine spins on a 'ready' bit0 at +0x60."""
+    """Clock generator. The boot PLL routine spins on a 'ready' bit0 at +0x60. FRQCR (+0):
+    KICK (bit 31) reads 0, and it starts at the calculator's 0x0F011112 so the OS's
+    read-modify-write lands on it again. Mirror of emu_go mmio.go cpg."""
+    FRQCR_RESET = 0x0F011112
+
     def read(self, va, size):
         off = va - self.base
         if off == 0x60:
             return 0x0           # bit0 == 0  -> 'while (reg & 1)' exits immediately
+        if off == 0x00:
+            return self.regs.get(0, self.FRQCR_RESET) & 0x7FFFFFFF
         return self.regs.get(off, 0)
 
 
 class DMAC(Region):
-    """DMA controller. Bdisp_PutDisp_DD spins on CHCR (ch base +0x0C... here ch2
+    """DMA controller. Bdisp_PutDisp_DD spins on CHCR (ch base +0x0C... here ch0
     block at +0x20, control word index [3]) until the 'transfer end' (TE) bit set.
     We complete instantly: report TE=1 (bit1) so the wait loop exits."""
     def read(self, va, size):
@@ -226,6 +232,15 @@ class KeyScan(Region):
     def any_held(self):
         return any(self.held)
 
+    def data(self, w):
+        """Key-data word w within the column (+0x1A) / row (+0x1C) enables (mirror of keysc.go)."""
+        cols, rows = self.regs.get(0x1A, 0x0FFF), self.regs.get(0x1C, 0xFF) & 0xFF
+        m = (rows if (cols >> (2 * w)) & 1 else 0) | ((rows << 8) if (cols >> (2 * w + 1)) & 1 else 0)
+        return self.held[w] & m
+
+    def any_enabled(self):
+        return any(self.data(w) for w in range(6))
+
     def press(self, row, col):
         if row < 8 and col < 12:
             if not self.any_held():
@@ -246,19 +261,19 @@ class KeyScan(Region):
     def read(self, va, size):
         off = va - self.base
         if off < 0x0C:
-            w = self.held[off >> 1]
+            w = self.data(off >> 1)
             if size == 2:
                 return w
             if size == 1:
                 return (w >> 8) if (off & 1) == 0 else (w & 0xFF)
-            lo = self.held[(off >> 1) + 1] if (off >> 1) + 1 < 6 else 0
+            lo = self.data((off >> 1) + 1) if (off >> 1) + 1 < 6 else 0
             return (w << 16) | lo
         if off == 0x0C:
             return self.ctrl
         if off == 0x10:
             return self.mode
         if off == 0x12:
-            return 0
+            return 2                     # like the calculator (bit 0 = busy, bit 1 unknown)
         if off == 0x14:
             return (self.ie << 8) | self.flags
         return self.regs.get(off, 0)
@@ -279,7 +294,7 @@ class KeyScan(Region):
         if cpu.cycles < self.scan_next:
             return
         self.scan_next = cpu.cycles + self.scan_period
-        held = self.any_held()
+        held = self.any_enabled()
         if (self.ctrl & 0x8000) == 0 or self.mode == 0:
             self.was_held = held
             return
@@ -517,17 +532,17 @@ class RTC(Region):
 
 
 class INTX(Region):
-    """0xA4140000 block used by the keyboard driver (regs +0x24/+0x64). The timer
-    ISR's key-scan poll loop (0x801dff06) reads byte +0x24 and spins until bit6 or
-    bit5 is set (a 'key-scan complete / event ready' flag from the KIU). With a 0
-    stub the ISR never returns (BL stuck) -> interrupts wedge. We report scan-ready
-    (bit6) so each scan completes; writes (acks) are stored but reads keep bit6 set
-    so the next timer ISR's scan also completes. KIU data stays 0 = no key pressed."""
-    def read(self, va, size):
+    """0xA4140000: the external IRQ pin registers (SH7724 layout; INTREQ00 at +0x24).
+    Byte +0x24 holds the pins' request flags: bit 6 = IRQ1 (the USB pin), bit 5 = IRQ2
+    (the 3-pin port); writing 0 clears a flag. Nothing is plugged in, so no flag is ever
+    set and it reads 0. (It used to read 0x40, from a misreading of the OS's standby loop
+    0x801dff06.) Mirror of emu_go mmio.go intx."""
+    def write(self, va, size, val):
         off = (va - self.base) & 0xFFFF
-        if off == 0x24:
-            return 0x40                      # bit6: scan complete / ready
-        return self.regs.get(off, 0)
+        if off == 0x24 and size == 1:
+            self.regs[off] = self.regs.get(off, 0) & val   # write-0-to-clear
+            return
+        super().write(va, size, val)
 
 
 def _bcd_add(a, b, carry):
@@ -628,7 +643,7 @@ class LCD(Region):
         self.boot_defaults()
 
     def boot_defaults(self):
-        self.reg = {0x003: 0x00A0, 0x210: 0, 0x211: 395, 0x212: 0, 0x213: 223}
+        self.reg = {0x003: 0x00A0, 0x007: 0x0100, 0x210: 0, 0x211: 395, 0x212: 0, 0x213: 223}  # R007: display on (mirror of lcd.go)
 
     def _rs(self):
         return bool(self.pfc.regs.get(0x13C, 0) & 0x10)

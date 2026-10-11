@@ -29,7 +29,7 @@ struct region { const char *name; uint32_t addr; uint32_t size; };
 
 static const struct region REGIONS[] = {
     /* THE key dump: whole flash = OS + fls0 storage + system area. All 32 MB: fls0
-     * continues at phys 0x01000000+, so a 16 MB dump misses most of your files. */
+     * runs from phys 0x00C80000 to the end, so a 16 MB dump misses most of your files. */
     { "flash_full", 0x80000000, 0x02000000 },
     /* OS region only (cross-check vs our unpacked image; must match). */
     { "os",         0x80000000, 0x00C00000 },
