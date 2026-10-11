@@ -116,6 +116,18 @@ def jsr(n):        return 0x400B | (n << 8)
 RTS = 0x000B
 NOP = 0x0009
 def tas(n):        return 0x401B | (n << 8)
+UNDEF = 0x0000                                   # an undefined opcode (general illegal)
+def trapa(i):      return 0xC300 | (i & 0xFF)
+def movca(n):      return 0x00C3 | (n << 8)       # movca.l R0,@Rn
+def tstb_gbr(i):   return 0xCC00 | (i & 0xFF)     # tst.b #imm,@(R0,GBR)
+def andb_gbr(i):   return 0xCD00 | (i & 0xFF)
+def xorb_gbr(i):   return 0xCE00 | (i & 0xFF)
+def orb_gbr(i):    return 0xCF00 | (i & 0xFF)
+def mac_w(m, n):   return 0x400F | (n << 8) | (m << 4)   # mac.w @Rm+,@Rn+
+def movua(m):      return 0x40A9 | (m << 8)       # movua.l @Rm,R0
+def movua_inc(m):  return 0x40E9 | (m << 8)       # movua.l @Rm+,R0
+def movli(m):      return 0x0063 | (m << 8)       # movli.l @Rm,R0
+def movco(n):      return 0x0073 | (n << 8)       # movco.l R0,@Rn
 
 U = 0xFFFFFFFF
 SR_T = 1
@@ -322,6 +334,40 @@ def build_cases():
                                       movl_ld(10, 6), movl_ld(9, 7)], steps=5,
                   setup={"r": reg(r1=VPN | 0x307, r2=pte(0x13C), r9=0xF6000300, r10=0xF7000300),
                          "sr": MD}))
+
+    # --- general exceptions (2026-10-09): undefined opcode 0x180, slot illegal 0x1A0 (SPC =
+    # the branch), trapa 0x160 (SPC = after it, TRA = imm*4). They used to halt the emulator.
+    exc_regs = [0xFF000020, 0xFF000024]                  # TRA, EXPEVT
+    exc_setup = lambda **kw: {"r": reg(r15=0x8C0F0000, **kw), "sr": MD, "vbr": VBR}
+    C.append(case("illegal_general", [UNDEF], setup=exc_setup(), data=vec, check=exc_regs))
+    C.append(case("slot_illegal_branch", [bra(1), bra(1)], setup=exc_setup(), data=vec, check=exc_regs))
+    C.append(case("slot_illegal_bt", [bra(1), bt(1)], setup=exc_setup(), data=vec, check=exc_regs))
+    C.append(case("slot_illegal_ldc_sr", [bra(1), ldc_sr(1)], setup=exc_setup(r1=MD), data=vec,
+                  check=exc_regs))
+    C.append(case("slot_undefined", [bra(1), UNDEF], setup=exc_setup(), data=vec, check=exc_regs))
+    # SR.RB selects bank 1 only with MD=1: dropping to user mode with RB=1 keeps bank 0
+    C.append(case("sr_rb_ignored_when_md0", [ldc_sr(1)],
+                  setup={"r": reg(r0=0x11, r1=0x20000000), "rbank1": [0x99] + [0] * 7, "sr": MD}))
+
+    # --- instructions that were missing (2026-10-09) ---
+    C.append(case("movca_stores", [movca(1)], setup={"r": reg(r0=0xDEADBEEF, r1=DATA)},
+                  data={str(DATA): 0}, check=[DATA]))
+    C.append(case("gbr_byte_logic", [tstb_gbr(0x0B), andb_gbr(0x0F), xorb_gbr(0xFF), orb_gbr(0x80)],
+                  steps=4, setup={"r": reg(r0=1), "gbr": DATA},
+                  data={str(DATA): 0x12345678}, check=[DATA]))           # byte 0x34: T=1, ->0x04->0xFB->0xFB
+    macw_data = {str(DATA): 0xFFFE7FFF, str(DATA + 8): 0x00037FFF}       # (-2, 0x7FFF) x (3, 0x7FFF)
+    C.append(case("macw_64bit", [mac_w(1, 0), mac_w(1, 0)], steps=2,
+                  setup={"r": reg(r0=DATA, r1=DATA + 8), "sr": 0, "mach": 0, "macl": 5}, data=macw_data))
+    C.append(case("macw_saturate32", [mac_w(1, 0), mac_w(1, 0)], steps=2,
+                  setup={"r": reg(r0=DATA, r1=DATA + 8), "sr": 0x2, "mach": 0, "macl": 0x7FFFFFF0},
+                  data=macw_data))
+    C.append(case("movua_unaligned", [movua(1), mov(0, 3), movua_inc(2)], steps=3,
+                  setup={"r": reg(r1=DATA + 1, r2=DATA + 3)},
+                  data={str(DATA): 0x11223344, str(DATA + 4): 0x55667788}))
+    C.append(case("movli_movco_ok", [movli(1), addi(0, 1), movco(1)], steps=3,
+                  setup={"r": reg(r1=DATA)}, data={str(DATA): 5}, check=[DATA]))
+    C.append(case("movco_no_reservation", [movco(1)], setup={"r": reg(r0=7, r1=DATA), "sr": SR_T},
+                  data={str(DATA): 5}, check=[DATA]))
     return C
 
 

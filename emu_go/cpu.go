@@ -1,7 +1,11 @@
 package main
 
 // SH-4 / SH-4A integer + system core. Faithful port of emu/cpu.py.
-// FPU ops are stubbed (no-ops). Delayed branches modelled correctly.
+// The SH7305 has no FPU: the F... opcodes are SH4AL-DSP instructions, not modelled (counted
+// and skipped). Delayed branches modelled correctly. Undefined opcodes, a branch in a delay
+// slot and trapa take the real exceptions (EXPEVT 0x180 / 0x1A0 / 0x160, VBR+0x100).
+
+import "fmt"
 
 const mask32 = 0xFFFFFFFF
 
@@ -23,10 +27,6 @@ const (
 func s8(x uint32) int32  { return int32(int8(uint8(x))) }
 func s16(x uint32) int32 { return int32(int16(uint16(x))) }
 func s32(x uint32) int32 { return int32(x) }
-
-type IllegalInstruction struct{ op, pc uint32 }
-
-func (e IllegalInstruction) Error() string { return "illegal instruction" }
 
 type pend struct{ level, intevt uint32 }
 
@@ -54,6 +54,13 @@ type CPU struct {
 	irqCnt   uint64
 	fpuOps   uint64
 
+	inSlot      bool      // executing a delay slot (branchDelayed)
+	slotPC      uint32    // ...owned by the branch at this address (SPC of a slot exception)
+	excTaken    bool      // a general exception was entered from the delay slot
+	ldst        bool      // SR.LDST: movli.l reserved, movco.l may store (exceptions clear it)
+	illegalOps  uint64    // illegal / slot illegal instructions taken (EXPEVT 0x180 / 0x1A0)
+	lastIllegal [2]uint32 // {opcode, pc} of the latest one, for diagnostics
+
 	// High-level emulation hook (hle.go): when pc == hlePC, hle() may run the OS routine
 	// natively (returning true = done, pc already at the return address). 0 = off.
 	hlePC uint32
@@ -76,10 +83,11 @@ func NewCPU(mem *Memory) *CPU {
 	return c
 }
 
+// bank1 reports whether R0-R7 name bank 1: SR.RB only counts in privileged mode (MD=1).
+func bank1(sr uint32) bool { return sr&(srMD|srRB) == srMD|srRB }
+
 func (c *CPU) setSR(val uint32) {
-	oldRB := c.sr & srRB
-	newRB := val & srRB
-	if oldRB != newRB {
+	if bank1(c.sr) != bank1(val) {
 		for i := 0; i < 8; i++ {
 			c.r[i], c.rbank1[i] = c.rbank1[i], c.r[i]
 		}
@@ -141,13 +149,10 @@ func (c *CPU) gatePending() int {
 
 // trapa #imm: the unconditional trap exception (EXPEVT 0x160, TRA = imm << 2), entered at
 // VBR+0x100 with SPC = the instruction after the trapa. DASM's debugger monitor uses it for
-// software breakpoints. (In a delay slot it would be a slot illegal instruction: not modelled.)
+// software breakpoints. In a delay slot it is a slot illegal instruction (branchDelayed).
 func (c *CPU) trapa(imm uint32) {
 	c.mem.Write(0xFF000020, 4, imm<<2)
-	c.mem.Write(0xFF000024, 4, expevtTrapa)
-	c.ssr, c.spc, c.sgr = c.sr, c.pc, c.r[15]
-	c.setSR(c.sr | srMD | srRB | srBL)
-	c.pc = c.vbr + 0x100
+	c.generalException(expevtTrapa, c.pc)
 }
 
 func (c *CPU) acceptInterrupt() bool {
@@ -164,6 +169,7 @@ func (c *CPU) acceptInterrupt() bool {
 		return false
 	}
 	c.pending = append(c.pending[:i], c.pending[i+1:]...)
+	c.ldst = false
 	c.ssr = c.sr
 	c.spc = c.pc
 	c.sgr = c.r[15]
@@ -251,6 +257,7 @@ func (c *CPU) stepMMU() {
 			}
 			c.r, c.rbank1 = r0, rb0
 			c.pr, c.sr, c.gbr, c.mach, c.macl, c.fpul, c.fpscr = pr0, sr0, gbr0, mach0, macl0, fpul0, fpscr0
+			c.inSlot, c.excTaken, c.ldst = false, false, false
 			c.mem.mmu.raise(c, f, pc0)
 			c.faulted = true
 		}
@@ -303,9 +310,54 @@ func (c *CPU) callInject(addr uint32, args ...uint32) uint32 {
 
 func (c *CPU) branchDelayed(target uint32) {
 	slot := c.mem.fetch16(c.pc)
+	if slotIllegal(slot) { // an instruction that changes PC or SR can't sit in a delay slot
+		c.illegalOps++
+		c.lastIllegal = [2]uint32{slot, c.pc}
+		c.generalException(0x1A0, c.pc-2)
+		return
+	}
 	c.pc += 2
+	c.inSlot, c.slotPC = true, c.pc-4
 	c.execute(slot)
+	c.inSlot = false
+	if c.excTaken { // the slot raised a general exception: PC is already at the handler
+		c.excTaken = false
+		return
+	}
 	c.pc = target
+}
+
+// slotIllegal: the instructions the SH-4A forbids in a delay slot (slot illegal instruction
+// exception): every branch incl. bt/bf, trapa, and ldc / ldc.l to SR.
+func slotIllegal(op uint32) bool {
+	return isDelayedBranch(op) || op&0xFD00 == 0x8900 || op&0xFF00 == 0xC300 ||
+		op&0xF0FF == 0x400E || op&0xF0FF == 0x4007
+}
+
+// generalException enters a general exception (VBR+0x100) with code expevt, resuming at spc.
+// Like the MMU's (mmu.go raise), one taken with SR.BL=1 resets the real CPU: halt instead.
+func (c *CPU) generalException(expevt, spc uint32) {
+	if c.sr&srBL != 0 {
+		panic(fmt.Sprintf("exception %#x at %#x with SR.BL=1: the real CPU resets", expevt, spc))
+	}
+	c.mem.Write(0xFF000024, 4, expevt)
+	c.ssr, c.spc, c.sgr = c.sr, spc, c.r[15]
+	c.ldst = false
+	c.setSR(c.sr | srMD | srRB | srBL)
+	c.pc = c.vbr + 0x100
+	c.excTaken = c.inSlot
+}
+
+// illegal takes the exception for the undefined opcode at c.pc-2: a general illegal
+// instruction (0x180), or in a delay slot a slot illegal instruction (0x1A0) at the branch.
+func (c *CPU) illegal(op uint32) {
+	c.illegalOps++
+	c.lastIllegal = [2]uint32{op, c.pc - 2}
+	if c.inSlot {
+		c.generalException(0x1A0, c.slotPC)
+	} else {
+		c.generalException(0x180, c.pc-2)
+	}
 }
 
 func (c *CPU) execute(op uint32) {
@@ -358,6 +410,10 @@ func (c *CPU) execute(op uint32) {
 	case 0x00AB, 0x0093:
 		return // synco/(rsv) -> nop
 	}
+	if op&0xF0FF == 0x00C3 { // movca.l R0,@Rn (allocates a cache line: a plain store here)
+		c.mem.W32(c.r[(op>>8)&0xF], c.r[0])
+		return
+	}
 
 	switch hi {
 	case 0x0:
@@ -402,8 +458,19 @@ func (c *CPU) execute(op uint32) {
 		case 0x23: // braf
 			c.branchDelayed(c.pc + 2 + r[n])
 			return
-		case 0x83, 0x93, 0xA3, 0xB3, 0xC3, 0xD3, 0xE3:
-			return // pref/ocbi/... -> nop
+		case 0x83, 0x93, 0xA3, 0xB3, 0xD3, 0xE3:
+			return // pref/ocbi/ocbp/ocbwb/prefi/icbi -> nop (no cache model)
+		case 0x63: // movli.l @Rm,R0 (the register field is the source): reserve
+			r[0] = mem.R32(r[n])
+			c.ldst = true
+			return
+		case 0x73: // movco.l R0,@Rn: store only while the reservation holds; T = stored
+			if c.ldst {
+				mem.W32(r[n], r[0])
+			}
+			c.setT(c.ldst)
+			c.ldst = false
+			return
 		}
 		if (op & 0x8F) == 0x82 { // stc Rm_bank,Rn
 			r[n] = c.rbank1[(op>>4)&7]
@@ -451,7 +518,8 @@ func (c *CPU) execute(op uint32) {
 			r[n] = mem.R32(r[0] + r[m])
 			return
 		}
-		panic(IllegalInstruction{op, c.pc - 2})
+		c.illegal(op)
+		return
 
 	case 0x1: // mov.l Rm,@(disp,Rn)
 		mem.W32(r[n]+d4*4, r[m])
@@ -526,7 +594,8 @@ func (c *CPU) execute(op uint32) {
 			c.macl = uint32(s16(r[n]) * s16(r[m]))
 			return
 		}
-		panic(IllegalInstruction{op, c.pc - 2})
+		c.illegal(op)
+		return
 
 	case 0x3:
 		switch d4 {
@@ -587,7 +656,8 @@ func (c *CPU) execute(op uint32) {
 			c.macl = uint32(res)
 			return
 		}
-		panic(IllegalInstruction{op, c.pc - 2})
+		c.illegal(op)
+		return
 
 	case 0x4:
 		c.exec4(op, n, m, d8)
@@ -698,6 +768,7 @@ func (c *CPU) execute(op uint32) {
 			}
 			return
 		}
+		c.illegal(op)
 		return
 
 	case 0x9: // mov.w @(disp,PC),Rn
@@ -760,6 +831,18 @@ func (c *CPU) execute(op uint32) {
 		case 0xB:
 			r[0] = r[0] | d8
 			return
+		case 0xC: // tst.b #imm,@(R0,GBR)
+			c.setT(mem.R8(c.gbr+r[0])&d8 == 0)
+			return
+		case 0xD: // and.b #imm,@(R0,GBR)
+			mem.W8(c.gbr+r[0], mem.R8(c.gbr+r[0])&d8)
+			return
+		case 0xE: // xor.b #imm,@(R0,GBR)
+			mem.W8(c.gbr+r[0], mem.R8(c.gbr+r[0])^d8)
+			return
+		case 0xF: // or.b #imm,@(R0,GBR)
+			mem.W8(c.gbr+r[0], mem.R8(c.gbr+r[0])|d8)
+			return
 		}
 		return
 
@@ -777,7 +860,7 @@ func (c *CPU) execute(op uint32) {
 		return
 	}
 
-	panic(IllegalInstruction{op, c.pc - 2})
+	c.illegal(op)
 }
 
 func (c *CPU) exec4(op, n, m, d8 uint32) {
@@ -992,6 +1075,14 @@ func (c *CPU) exec4(op, n, m, d8 uint32) {
 		c.setT(v == 0)
 		mem.W8(r[n], v|0x80)
 		return
+	case 0xA9, 0xE9: // movua.l @Rm,R0 / @Rm+,R0 (the register field is the source): unaligned
+		a := r[n]
+		v := mem.R8(a)<<24 | mem.R8(a+1)<<16 | mem.R8(a+2)<<8 | mem.R8(a+3)
+		if d8 == 0xE9 && n != 0 {
+			r[n] += 4
+		}
+		r[0] = v
+		return
 	}
 	if (op & 0x8F) == 0x8E { // ldc Rn,Rm_bank
 		c.rbank1[(op>>4)&7] = r[n]
@@ -1008,6 +1099,10 @@ func (c *CPU) exec4(op, n, m, d8 uint32) {
 		return
 	}
 	d4 := op & 0xF
+	if d4 == 0xF { // mac.w @Rm+,@Rn+
+		c.macw(n, m)
+		return
+	}
 	if d4 == 0xC { // shad
 		sh := s32(r[m])
 		if sh >= 0 {
@@ -1032,7 +1127,7 @@ func (c *CPU) exec4(op, n, m, d8 uint32) {
 		}
 		return
 	}
-	panic(IllegalInstruction{op, c.pc - 2})
+	c.illegal(op)
 }
 
 func (c *CPU) div1(n, m uint32) {
@@ -1102,6 +1197,32 @@ func (c *CPU) div1(n, m uint32) {
 		c.sr &^= srQ
 	}
 	c.setT(Q == M)
+}
+
+// macw: MAC.W @Rm+,@Rn+ (SH-4A manual). S=0: MACH:MACL += the 16x16 signed product (64 bit).
+// S=1: MACL saturates at 32 bits (0x7FFFFFFF / 0x80000000) and MACH bit 0 is set on overflow.
+// Not checked on the calculator (no OS 3.60 or gcc code seen using it).
+func (c *CPU) macw(n, m uint32) {
+	r := &c.r
+	tn := int64(s16(c.mem.R16(r[n])))
+	r[n] += 2
+	tm := int64(s16(c.mem.R16(r[m])))
+	r[m] += 2
+	p := tn * tm
+	if c.sr&srS == 0 {
+		mac := int64(uint64(c.mach)<<32|uint64(c.macl)) + p
+		c.mach, c.macl = uint32(uint64(mac)>>32), uint32(mac)
+		return
+	}
+	v := int64(s32(c.macl)) + p
+	switch {
+	case v > 0x7FFFFFFF:
+		c.macl, c.mach = 0x7FFFFFFF, c.mach|1
+	case v < -0x80000000:
+		c.macl, c.mach = 0x80000000, c.mach|1
+	default:
+		c.macl = uint32(v)
+	}
 }
 
 func b2u(b bool) uint32 {

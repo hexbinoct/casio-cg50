@@ -29,6 +29,18 @@ class IllegalInstruction(Exception):
     pass
 
 
+def _is_delayed_branch(op):
+    return (op in (0x000B, 0x002B) or (op & 0xF0FF) in (0x0003, 0x0023, 0x400B, 0x402B)
+            or (op & 0xE000) == 0xA000 or (op & 0xFD00) == 0x8D00)
+
+
+def slot_illegal(op):
+    """Instructions the SH-4A forbids in a delay slot: branches incl. bt/bf, trapa, ldc(.l) SR.
+    Mirror of emu_go cpu.go slotIllegal."""
+    return (_is_delayed_branch(op) or (op & 0xFD00) == 0x8900 or (op & 0xFF00) == 0xC300
+            or (op & 0xF0FF) in (0x400E, 0x4007))
+
+
 class CPU:
     # SR bit masks
     T = 0x00000001
@@ -67,6 +79,11 @@ class CPU:
         self.sleeping = False    # `sleep` executed: halted until an interrupt is accepted
         self.idle = 0            # cycles spent asleep (drives the ADC model, see mmio.PeriphIRQ)
         self.irq_count = 0
+        self.in_slot = False     # executing a delay slot
+        self.slot_pc = 0         # ...owned by the branch here (SPC of a slot exception)
+        self.exc_taken = False   # a general exception was entered from the slot
+        self.ldst = False        # SR.LDST (movli.l / movco.l)
+        self.illegal_ops = 0
 
     # ---- SR with register-bank handling ----
     @property
@@ -81,8 +98,9 @@ class CPU:
             self._sr = val
             self._sr_init = True
             return
-        new_rb = val & self.RB
-        if old_rb != new_rb:
+        # SR.RB selects bank 1 only in privileged mode (MD=1); mirror of emu_go bank1()
+        bank1 = lambda v: (v & (self.MD | self.RB)) == (self.MD | self.RB)
+        if bank1(self._sr) != bank1(val):
             # swap active r0-7 with the saved bank
             self.r[0:8], self.rbank1 = self.rbank1, self.r[0:8]
         self._sr = val
@@ -105,6 +123,7 @@ class CPU:
         if level <= imask:
             return False
         self.pending.pop()
+        self.ldst = False
         # hardware interrupt sequence (SH-4)
         self.ssr = self._sr
         self.spc = self.pc
@@ -154,14 +173,41 @@ class CPU:
         except MMUFault as f:
             self.r, self.rbank1 = r0, rb0
             self.pr, self._sr, self.gbr, self.mach, self.macl, self.fpul, self.fpscr = saved
+            self.in_slot = self.exc_taken = self.ldst = False
             mmu.raise_fault(self, f, pc0)
 
     def _branch_delayed(self, target):
-        """Execute the delay-slot instruction, then jump to target."""
+        """Execute the delay-slot instruction, then jump to target (mirror of branchDelayed)."""
         slot = self.mem.r16(self.pc)
+        if slot_illegal(slot):
+            self.illegal_ops += 1
+            self._general_exception(0x1A0, u32(self.pc - 2)); return
         self.pc = u32(self.pc + 2)
-        self.execute(slot)              # delay slot (assumed non-branch)
+        self.in_slot, self.slot_pc = True, u32(self.pc - 4)
+        self.execute(slot)
+        self.in_slot = False
+        if self.exc_taken:              # the slot raised a general exception
+            self.exc_taken = False; return
         self.pc = u32(target)
+
+    def _general_exception(self, expevt, spc):
+        """General exception entry (VBR+0x100). With SR.BL=1 the real CPU resets: halt."""
+        if self._sr & self.BL:
+            raise IllegalInstruction(f"exception {expevt:#x} at {spc:#x} with SR.BL=1: the real CPU resets")
+        self.mem.write(0xFF000024, 4, expevt)
+        self.ssr, self.spc, self.sgr = self._sr, u32(spc), self.r[15]
+        self.ldst = False
+        self.set_sr(self._sr | self.MD | self.RB | self.BL)
+        self.pc = u32(self.vbr + 0x100)
+        self.exc_taken = self.in_slot
+
+    def _illegal(self, op):
+        """Undefined opcode at pc-2: illegal (0x180), or slot illegal (0x1A0) in a delay slot."""
+        self.illegal_ops += 1
+        if self.in_slot:
+            self._general_exception(0x1A0, self.slot_pc)
+        else:
+            self._general_exception(0x180, u32(self.pc - 2))
 
     # ---- the decoder/executor ----
     def execute(self, op):
@@ -194,6 +240,8 @@ class CPU:
             return
         if op == 0x001B: self.sleeping = True; return   # sleep: halt until an interrupt (see step)
         if op in (0x00AB, 0x0093): return  # synco / (rsv) -> nop
+        if (op & 0xF0FF) == 0x00C3:               # movca.l R0,@Rn (a plain store: no cache)
+            mem.w32(self.r[(op >> 8) & 0xF], self.r[0]); return
 
         # ---- 0x0 group ----
         if hi == 0x0:
@@ -214,8 +262,13 @@ class CPU:
             if d8 == 0x23:                        # braf Rn
                 self._branch_delayed(u32(self.pc + 2 + r[n])); return
             if d8 == 0x29: r[n] = self.sr & self.T; return     # movt
-            if d8 in (0x83, 0x93, 0xA3, 0xB3, 0xC3, 0xD3, 0xE3):
-                return                            # pref/ocbi/ocbp/ocbwb/movca/prefi/icbi -> nop
+            if d8 in (0x83, 0x93, 0xA3, 0xB3, 0xD3, 0xE3):
+                return                            # pref/ocbi/ocbp/ocbwb/prefi/icbi -> nop
+            if d8 == 0x63:                        # movli.l @Rm,R0 (register field = source)
+                r[0] = mem.r32(r[n]); self.ldst = True; return
+            if d8 == 0x73:                        # movco.l R0,@Rn
+                if self.ldst: mem.w32(r[n], r[0])
+                self._set_t(self.ldst); self.ldst = False; return
             if d4 == 0x4: mem.w8(u32(r[0] + r[n]), r[m] & 0xFF); return
             if d4 == 0x5: mem.w16(u32(r[0] + r[n]), r[m] & 0xFFFF); return
             if d4 == 0x6: mem.w32(u32(r[0] + r[n]), r[m]); return
@@ -234,7 +287,7 @@ class CPU:
             if d4 == 0xC: r[n] = s8(mem.r8(u32(r[0] + r[m]))) & MASK32; return
             if d4 == 0xD: r[n] = s16(mem.r16(u32(r[0] + r[m]))) & MASK32; return
             if d4 == 0xE: r[n] = mem.r32(u32(r[0] + r[m])); return
-            raise IllegalInstruction(f"0x{op:04x}")
+            return self._illegal(op)
 
         if hi == 0x1:                              # mov.l Rm,@(disp,Rn)
             mem.w32(u32(r[n] + d4 * 4), r[m]); return
@@ -262,7 +315,7 @@ class CPU:
             if d4 == 0xD: r[n] = u32(((r[m] & 0xFFFF) << 16) | (r[n] >> 16)); return  # xtrct
             if d4 == 0xE: self.macl = u32((r[n] & 0xFFFF) * (r[m] & 0xFFFF)); return   # mulu.w
             if d4 == 0xF: self.macl = u32(s16(r[n]) * s16(r[m])); return     # muls.w
-            raise IllegalInstruction(f"0x{op:04x}")
+            return self._illegal(op)
 
         if hi == 0x3:
             if d4 == 0x0: self._set_t(r[n] == r[m]); return                  # cmp/eq
@@ -291,7 +344,7 @@ class CPU:
                 res = u32(r[n]) * u32(r[m]); self.mach = u32(res >> 32); self.macl = u32(res); return
             if d4 == 0xD:                                                    # dmuls.l
                 res = s32(r[n]) * s32(r[m]); self.mach = u32(res >> 32); self.macl = u32(res); return
-            raise IllegalInstruction(f"0x{op:04x}")
+            return self._illegal(op)
 
         if hi == 0x4:
             return self._exec_4(op, n, m, d8)
@@ -341,6 +394,7 @@ class CPU:
             if sub == 0xF:                          # bf/s
                 if not self.sr & self.T: self._branch_delayed(u32(self.pc + 2 + s8(d8) * 2))
                 return
+            return self._illegal(op)
 
         if hi == 0x9:                              # mov.w @(disp,PC),Rn
             ea = u32(self.pc + 2 + d8 * 2)
@@ -360,12 +414,9 @@ class CPU:
             if sub == 0x0: mem.w8(u32(self.gbr + d8), r[0] & 0xFF); return
             if sub == 0x1: mem.w16(u32(self.gbr + d8 * 2), r[0] & 0xFFFF); return
             if sub == 0x2: mem.w32(u32(self.gbr + d8 * 4), r[0]); return
-            if sub == 0x3:                         # trapa #imm (mirror of emu_go cpu.go trapa)
-                mem.write(0xFF000020, 4, d8 << 2)  # TRA = imm << 2
-                mem.write(0xFF000024, 4, 0x160)    # EXPEVT: unconditional trap
-                self.ssr, self.spc, self.sgr = self._sr, self.pc, r[15]   # spc = the next instruction
-                self.set_sr(self._sr | self.MD | self.RB | self.BL)
-                self.pc = u32(self.vbr + 0x100); return
+            if sub == 0x3:                          # trapa #imm: TRA = imm*4, resume after it
+                mem.write(0xFF000020, 4, d8 << 2)
+                return self._general_exception(0x160, self.pc)
             if sub == 0x4: r[0] = s8(mem.r8(u32(self.gbr + d8))) & MASK32; return
             if sub == 0x5: r[0] = s16(mem.r16(u32(self.gbr + d8 * 2))) & MASK32; return
             if sub == 0x6: r[0] = mem.r32(u32(self.gbr + d8 * 4)); return
@@ -374,6 +425,11 @@ class CPU:
             if sub == 0x9: r[0] = r[0] & d8; return
             if sub == 0xA: r[0] = r[0] ^ d8; return
             if sub == 0xB: r[0] = r[0] | d8; return
+            ea = u32(self.gbr + r[0])
+            if sub == 0xC: self._set_t((mem.r8(ea) & d8) == 0); return    # tst.b #imm,@(R0,GBR)
+            if sub == 0xD: mem.w8(ea, mem.r8(ea) & d8); return             # and.b
+            if sub == 0xE: mem.w8(ea, mem.r8(ea) ^ d8); return             # xor.b
+            if sub == 0xF: mem.w8(ea, mem.r8(ea) | d8); return             # or.b
 
         if hi == 0xD:                              # mov.l @(disp,PC),Rn
             ea = u32((self.pc + 2 & ~3) + d8 * 4)
@@ -387,7 +443,7 @@ class CPU:
                 print(f"  [cpu] FPU op 0x{op:04x} @0x{u32(self.pc-2):08x} (stubbed nop)")
             return
 
-        raise IllegalInstruction(f"0x{op:04x} @0x{u32(self.pc-2):08x}")
+        return self._illegal(op)
 
     # ---- 0x4 group (shifts / system control) ----
     def _exec_4(self, op, n, m, d8):
@@ -461,7 +517,13 @@ class CPU:
             r[n] = u32(r[n] - 4); mem.w32(r[n], self.rbank1[(op >> 4) & 7]); return
         if d8 == 0x1B:                             # tas.b @Rn
             v = mem.r8(r[n]); self._set_t(v == 0); mem.w8(r[n], v | 0x80); return
+        if d8 in (0xA9, 0xE9):                     # movua.l @Rm,R0 / @Rm+,R0 (unaligned)
+            a = r[n]
+            v = (mem.r8(a) << 24) | (mem.r8(u32(a + 1)) << 16) | (mem.r8(u32(a + 2)) << 8) | mem.r8(u32(a + 3))
+            if d8 == 0xE9 and n != 0: r[n] = u32(r[n] + 4)
+            r[0] = v; return
         d4 = op & 0xF
+        if d4 == 0xF: return self._macw(n, m)      # mac.w @Rm+,@Rn+
         if d4 == 0xC:                              # shad Rm,Rn
             sh = s32(r[m])
             if sh >= 0: r[n] = u32(r[n] << (sh & 0x1F))
@@ -472,7 +534,24 @@ class CPU:
             if sh >= 0: r[n] = u32(r[n] << (sh & 0x1F))
             else: r[n] = r[n] >> (((-sh) & 0x1F) if sh != -32 else 32) if sh != -32 else 0
             return
-        raise IllegalInstruction(f"0x{op:04x} @0x{u32(self.pc-2):08x}")
+        return self._illegal(op)
+
+    def _macw(self, n, m):
+        """MAC.W @Rm+,@Rn+ (SH-4A manual; mirror of emu_go macw). S=0: 64-bit accumulate;
+        S=1: MACL saturates at 32 bits, MACH bit 0 set on overflow. Unverified on hardware."""
+        r = self.r
+        tn = s16(self.mem.r16(r[n])); r[n] = u32(r[n] + 2)
+        tm = s16(self.mem.r16(r[m])); r[m] = u32(r[m] + 2)
+        p = tn * tm
+        if not self._sr & self.S:
+            mac = (self.mach << 32) | self.macl
+            if mac & (1 << 63): mac -= 1 << 64
+            mac = (mac + p) & ((1 << 64) - 1)
+            self.mach, self.macl = u32(mac >> 32), u32(mac); return
+        v = s32(self.macl) + p
+        if v > 0x7FFFFFFF: self.macl, self.mach = 0x7FFFFFFF, self.mach | 1
+        elif v < -0x80000000: self.macl, self.mach = 0x80000000, self.mach | 1
+        else: self.macl = u32(v)
 
     # bsrf/jsr/bsr set PR; handle the two that need PR (jsr/bsrf) here via wrappers
     def _set_t(self, cond):
