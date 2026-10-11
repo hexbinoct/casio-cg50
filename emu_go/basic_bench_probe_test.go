@@ -150,6 +150,61 @@ func runUntilIdle(t *testing.T, e *Emulator, maxCycles uint64) (uint64, bool) {
 	return e.cpu.cycles - start, false
 }
 
+// cbasicStart: a fresh state with the programs in main memory and C.Basic (BENCH_CBASIC = its
+// .g3a) installed and started from its MAIN MENU icon (the last one: LEFT from the first).
+func cbasicStart(t *testing.T) (*Emulator, []string) {
+	path := os.Getenv("BENCH_CBASIC")
+	g3a, err := os.ReadFile(path)
+	if err != nil {
+		t.Skip("BENCH_CBASIC: ", err)
+	}
+	e := installState(t)
+	names := benchPrograms(t, e)
+	if err := e.InstallAddin(filepath.Base(path), g3a); err != nil {
+		t.Fatal(err)
+	}
+	benchKey(t, e, 2, 8, 30_000_000) // LEFT: the last icon
+	e.InjectKey(2, 1)                // EXE
+	for i := 0; i < 300 && e.cpu.pc != 0x00300000; i++ {
+		e.Step(1_000_000)
+	}
+	e.Step(300_000_000)
+	if f := e.Fault(); f != "" {
+		t.Fatal(f)
+	}
+	return e, names
+}
+
+// TestCBasicBench: the same programs in C.Basic. BENCH_KEYS here = explore after the start.
+func TestCBasicBench(t *testing.T) {
+	e, names := cbasicStart(t)
+	savePanel(t, e, "cbasic_00_start")
+	if ks := os.Getenv("BENCH_KEYS"); ks != "" {
+		for i, k := range parseKeys(ks) {
+			benchKey(t, e, k[0], k[1], 60_000_000)
+			savePanel(t, e, fmt.Sprintf("cbasic_explore_%02d", i+1))
+		}
+		return
+	}
+	// each program from a fresh state: DOWN to it, F1 (EXE), until C.Basic waits for a key
+	tag := os.Getenv("BENCH_TAG") // e.g. "int" with BENCH_DIR=.../out-int
+	var b strings.Builder
+	for i, name := range names {
+		if i > 0 {
+			e, _ = cbasicStart(t)
+		}
+		for k := 0; k < i; k++ {
+			benchKey(t, e, 2, 7, 30_000_000) // DOWN
+		}
+		e.InjectKey(6, 9) // F1: EXE
+		cyc, done := runUntilIdle(t, e, 70_000_000*600)
+		savePanel(t, e, "cbasic_"+tag+name)
+		t.Logf("%-8s %8.3f s emulated (%d cycles)%s", name, float64(cyc)/70e6, cyc, map[bool]string{false: "  NOT FINISHED"}[done])
+		fmt.Fprintf(&b, "%s\t%d\t%v\n", name, cyc, done)
+	}
+	os.WriteFile(filepath.Join(os.TempDir(), "cg50_bench_cbasic"+tag+".tsv"), []byte(b.String()), 0o644)
+}
+
 func TestBasicBench(t *testing.T) {
 	e := installState(t)
 	names := benchPrograms(t, e)
