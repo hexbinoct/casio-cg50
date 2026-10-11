@@ -139,6 +139,17 @@ func (c *CPU) gatePending() int {
 	return best
 }
 
+// trapa #imm: the unconditional trap exception (EXPEVT 0x160, TRA = imm << 2), entered at
+// VBR+0x100 with SPC = the instruction after the trapa. DASM's debugger monitor uses it for
+// software breakpoints. (In a delay slot it would be a slot illegal instruction: not modelled.)
+func (c *CPU) trapa(imm uint32) {
+	c.mem.Write(0xFF000020, 4, imm<<2)
+	c.mem.Write(0xFF000024, 4, expevtTrapa)
+	c.ssr, c.spc, c.sgr = c.sr, c.pc, c.r[15]
+	c.setSR(c.sr | srMD | srRB | srBL)
+	c.pc = c.vbr + 0x100
+}
+
 func (c *CPU) acceptInterrupt() bool {
 	if len(c.pending) == 0 || (c.sr&srBL) != 0 {
 		return false
@@ -723,7 +734,8 @@ func (c *CPU) execute(op uint32) {
 			mem.W32(c.gbr+d8*4, r[0])
 			return
 		case 0x3:
-			panic(IllegalInstruction{op, c.pc - 2}) // trapa
+			c.trapa(d8)
+			return
 		case 0x4:
 			r[0] = uint32(s8(mem.R8(c.gbr + d8)))
 			return

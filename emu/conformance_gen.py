@@ -266,6 +266,14 @@ def build_cases():
                   data={str(VBR + 0x600): (NOP << 16) | NOP},
                   irq=[0x560, 8]))   # (intevt, level)
 
+    # --- trapa #imm: EXPEVT 0x160, TRA = imm << 2, SPC = the next instruction, SR.MD/RB/BL = 1,
+    # PC = VBR+0x100 (bank 1 becomes current: r0 = rbank1[0] afterwards) ---
+    C.append(case("trapa", [0xC33E], steps=1,
+                  setup={"r": reg(r0=0x11, r15=DATA + 0x80), "rbank1": [0x99, 0, 0, 0, 0, 0, 0, 0],
+                         "sr": 0x40000001, "vbr": VBR},
+                  data={str(VBR + 0x100): (NOP << 16) | NOP},
+                  check=[0xFF000020, 0xFF000024]))
+
     # --- SGR / DBR (debug base register: where a user break goes when CBCR.UBDE=1; the UBC
     # itself is Go-only, emu_go/ubc.go): ldc/stc in register and stack forms, privileged ---
     C.append(case("ldc_stc_sgr_dbr", [ldc_sgr(1), ldc_dbr(2), stc_sgr(3), stc_dbr(4)], steps=4,

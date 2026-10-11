@@ -360,7 +360,12 @@ class CPU:
             if sub == 0x0: mem.w8(u32(self.gbr + d8), r[0] & 0xFF); return
             if sub == 0x1: mem.w16(u32(self.gbr + d8 * 2), r[0] & 0xFFFF); return
             if sub == 0x2: mem.w32(u32(self.gbr + d8 * 4), r[0]); return
-            if sub == 0x3: raise IllegalInstruction(f"trapa #{d8:#x} @0x{u32(self.pc-2):08x}")
+            if sub == 0x3:                         # trapa #imm (mirror of emu_go cpu.go trapa)
+                mem.write(0xFF000020, 4, d8 << 2)  # TRA = imm << 2
+                mem.write(0xFF000024, 4, 0x160)    # EXPEVT: unconditional trap
+                self.ssr, self.spc, self.sgr = self._sr, self.pc, r[15]   # spc = the next instruction
+                self.set_sr(self._sr | self.MD | self.RB | self.BL)
+                self.pc = u32(self.vbr + 0x100); return
             if sub == 0x4: r[0] = s8(mem.r8(u32(self.gbr + d8))) & MASK32; return
             if sub == 0x5: r[0] = s16(mem.r16(u32(self.gbr + d8 * 2))) & MASK32; return
             if sub == 0x6: r[0] = mem.r32(u32(self.gbr + d8 * 4)); return

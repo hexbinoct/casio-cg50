@@ -51,8 +51,9 @@ const (
 	crrBIE  = 1 << 0
 	crrPCB  = 1 << 1
 
-	mstpcr0UDB = 1 << 17 // CPG MSTPCR0 (0xA4150030): UBC module stopped
-	expevtUBC  = 0x1E0
+	mstpcr0UDB  = 1 << 17 // CPG MSTPCR0 (0xA4150030): UBC module stopped
+	expevtUBC   = 0x1E0
+	expevtTrapa = 0x160
 )
 
 type ubcChan struct{ cbr, crr, car, camr uint32 }
