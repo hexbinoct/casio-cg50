@@ -75,11 +75,14 @@ the carry for the addition.
 
 ## In the OS (3.60)
 
-- Two routines drive the unit: `0x80072FC8` issues commands 1, 3, 3 (a three-word addition)
-  and `0x8007306E` issues 0, 2, 2 (a three-word subtraction).
+- Four routines do three-word operations: `0x80072F80` and `0x80072FC8` issue commands 1,
+  3, 3 (an addition), `0x8007306E` and `0x800730B8` issue 0, 2, 2 (a subtraction). The
+  number code around them also issues single commands of its own.
 - They are reached from the decimal number code, e.g. `0x80072E78`, and from the rounding
   step of the display formatter (`0x8004B2B0` → `0x8005DC06` → … → `0x80072FC8`).
 - The pointers to the registers are stored as literals at `0x80073000`–`0x8007300C`.
+- How the OS stores numbers, and which routines run between a result and the screen:
+  [Number format](../os/number-format.md).
 
 ## In the emulator
 

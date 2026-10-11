@@ -9,7 +9,22 @@
   pending, so the next session can continue without being reminded.
 ============================================================================= -->
 
-> ## ⏯ RESUME HERE (last session end: 2026-10-11, cont.19e = emulator differences fixed, office)
+> ## ⏯ RESUME HERE (last session end: 2026-10-11, cont.19f = six new wiki pages, office)
+>
+> **Wiki: all six planned pages written** (one agent per page, facts checked in the 3.60 image and
+> with new `-tags probe` tests; list + what's left in `wiki/README.md` → "Pages"): MMU and add-in
+> launch, Flash and storage memory, Syscalls, Number format, Writing probe add-ins, Open
+> questions (every Unconfirmed item in one place: keep it in step). New findings on the way:
+> the OS **fills** the add-in RAM (also its app stack, physical 0x0C160000-0x0C1DFFFF) with 0x55
+> at every launch, it doesn't zero it (real DRAM dump agrees); fractions are stored with nibble
+> 1 = 0xA (1/3 = `1a 21 a3`); four three-word ALU helpers, not two (0x80072F80/0x80072FC8 add,
+> 0x8007306E/0x800730B8 subtract); the emulator's flash has no ID/CFI reads, so the OS programs
+> 32-byte pieces instead of 512 (files identical) — in the README emulator TODO. New probes:
+> `emu_go/{mmuwiki,flashwiki,numfmt}_probe_test.go`; scripts `re/flash_routines360.py`,
+> `re/syscalls_wiki.py`. Evidence-box titles fixed in boot.md (rule 1).
+> **Next:** as cont.19e below.
+
+> ## ⏯ RESUME HERE (previous: 2026-10-11, cont.19e = emulator differences fixed, office)
 >
 > **Merged with the Mac's cont.19c/19d.** Both machines had implemented `trapa`: the Mac's
 > `cpu.go` `trapa()` and its conformance case `trapa` stay, but `trapa()` now goes through

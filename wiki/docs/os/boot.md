@@ -30,13 +30,13 @@ The CPU starts at `0xA0000000`, the uncached view of flash address 0. The code a
    to `0x500000F0` (register bank 0), runs the cached OS init (`0x8000495A`, `0x80002600`,
    `0x80009E04`) and finally calls the **OS main loop at `0x80003550`** forever.
 
-!!! info "Read from the 3.60 code; run by the emulator"
+!!! info "Verified in the emulator"
     The boot code of OS 3.60 is byte-for-byte the same as in the 3.80 updater, at the same
     addresses (`re/boot_compare.py`). The emulator runs this exact path on every cold boot of
     the 3.60 flash.
 
-!!! warning "Unconfirmed: what `0xFF000024` holds at reset"
-    On the SH-4A, `0xFF000024` is **EXPEVT**, the register that records which exception or
+!!! warning "Unconfirmed"
+    What `0xFF000024` holds at reset. On the SH-4A, `0xFF000024` is **EXPEVT**, the register that records which exception or
     reset happened; 0 and `0x20` are the codes for a power-on and a manual reset. Early notes
     called it a "hardware strap". The OS 3.60 needs model code `0xCA02` later in the boot
     (otherwise the storage-memory check never finishes), so the emulator returns `0x0A02`
@@ -45,7 +45,7 @@ The CPU starts at `0xA0000000`, the uncached view of flash address 0. The code a
 ## Waiting for a key
 
 The OS has no central loop that polls the hardware. Each screen (the MAIN MENU, an app, a
-dialog) runs its own loop around **GetKey** (syscall `0x0EAB`, `0x801951A6`), and the CPU
+dialog) runs its own loop around **GetKey** ([syscall](syscalls.md) `0x0EAB`, `0x801951A6`), and the CPU
 sleeps whenever nothing is waiting. The chain from the MAIN MENU down to the CPU's `sleep`
 instruction:
 
@@ -86,7 +86,7 @@ What it does, in order:
 
 1. With argument 1, runs `0x802AF4FE`. It paints the **whole panel white** (VRAM and the
    frame around it are pushed to the screen) and **writes to the flash**, through the flash
-   routines the OS keeps in IL RAM.
+   routines the OS keeps in IL RAM ([Flash and storage memory](../flash.md#why-the-routines-run-from-il-ram)).
 2. Depending on the keyboard driver's state (bytes from `0x8C090C1C`, see
    [Keyboard](../peripherals/keyboard.md)), it may idle for a while first (through
    `0x802AE790`).

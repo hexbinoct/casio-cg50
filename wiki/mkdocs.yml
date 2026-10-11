@@ -62,6 +62,7 @@ nav:
   - Hardware:
       - Memory map: memory-map.md
       - CPU (SH-4A core): cpu.md
+      - Flash and storage memory: flash.md
   - Peripherals:
       - Interrupts (INTC): peripherals/interrupts.md
       - Keyboard (KEYSC): peripherals/keyboard.md
@@ -71,5 +72,11 @@ nav:
       - BCD ALU (0xA4CB0000): peripherals/bcd-alu.md
   - OS internals:
       - Boot and power-off: os/boot.md
+      - MMU and add-in launch: os/mmu-and-addins.md
+      - Syscalls: os/syscalls.md
+      - Number format: os/number-format.md
+  - Guides:
+      - Writing probe add-ins: guides/probe-addins.md
   - About:
       - How facts are verified: about/verification.md
+      - Open questions: about/open-questions.md

@@ -88,7 +88,7 @@ three different pairs of values:
 
 | `+0x1A`, `+0x1C` | When |
 |---|---|
-| `0x0FFF`, `0x00FF` | Normal use: the [setup](#setup) and syscall `0x11C7` (`0x801DF438`) |
+| `0x0FFF`, `0x00FF` | Normal use: the [setup](#setup) and [syscall](../os/syscalls.md) `0x11C7` (`0x801DF438`) |
 | `0x0001`, `0x0001` | Syscall `0x11C6` (`0x801DF3F0`, a copy at `0x80002D50` in the boot code): written while the unit is off, just before it is switched on. One of its callers (at `0x802AEC22`) then arms the [wake-up pins](interrupts.md#external-pins-irq1-and-irq2) and loops on the OS's [idle routine](timers.md#the-2-hz-wake-up) |
 | `0`, `0` | While the OS [checks one key itself](#checking-one-key-without-the-unit), with the unit off |
 

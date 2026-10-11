@@ -28,7 +28,8 @@ Both can be wrong the same way, which is why hardware measurements come first.
 
 Small add-ins, built with the fxSDK and gint, run on a real fx-CG50 and write their
 measurements to a file or send them over USB. These are the strongest evidence on the
-site. The results are kept in the repository under `os/devic_probes/`.
+site. The results are kept in the repository under `os/devic_probes/`. How to write one:
+[Writing probe add-ins](../guides/probe-addins.md).
 
 ### The probes
 
@@ -52,4 +53,5 @@ calculator (below). It is compiled out of the source by default.
 !!! danger "Probes can reset your calculator"
     A probe that put the CPU to sleep after touching the clock generator reset a calculator
     to its first-boot setup. Files in storage memory survived; everything in RAM did not.
-    Read-only register sampling has been safe.
+    Read-only register sampling has been safe. The full rules:
+    [Writing probe add-ins](../guides/probe-addins.md#what-is-safe).

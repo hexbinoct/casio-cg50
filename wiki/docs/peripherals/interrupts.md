@@ -208,7 +208,7 @@ Every other slot from `0x040` to `0xF00` points at a common error routine (`0x80
 or a variant passing an error kind). The low slots are exception codes: `0x040`–`0x080`
 (TLB miss on read, on write, initial page write) go to `0x8002C918`, the handler that maps
 add-in code pages on demand (see
-[Memory map](../memory-map.md#add-in-mappings)). The OS has **no handler** for TMU0–2 or
+[MMU and add-in launch](../os/mmu-and-addins.md#code-pages-on-demand)). The OS has **no handler** for TMU0–2 or
 any DMAC channel.
 
 !!! success "Verified on hardware"

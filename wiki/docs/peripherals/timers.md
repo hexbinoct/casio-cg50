@@ -272,7 +272,9 @@ So the unit can carry a longer timing of its own, which a short delay interrupts
 resumes. Through `0x801DF69A`, a delay of *n* writes a count of 10000·*n* / 109, about 91.7·*n*.
 
 It is called from about 20 places, among them the routine at `0x801E6D3E` that programs the
-unit at `0xA44C0000` (below).
+unit at `0xA44C0000` (below). IL RAM holds a copy of this delay at `0xFD800718` for the flash
+routines, which can't run code from flash; see
+[Flash](../flash.md#why-the-routines-run-from-il-ram).
 
 !!! warning "Unconfirmed"
     Read from OS 3.60 code. The unit's clock, and so the length of a delay per unit of the

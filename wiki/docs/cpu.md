@@ -89,7 +89,7 @@ exception codes, that table holds:
 
 | EXPEVT | Exception | OS 3.60 handler |
 |---|---|---|
-| `0x040`, `0x060` | TLB miss (read, write) | `0x8002C918`, which maps the pages of a running add-in |
+| `0x040`, `0x060` | TLB miss (read, write) | `0x8002C918`, which maps the pages of a running add-in ([MMU and add-in launch](os/mmu-and-addins.md#code-pages-on-demand)) |
 | `0x080` | Initial page write | `0x8002C918` |
 | `0x0A0`, `0x0C0` | TLB protection violation (read, write) | Error screen: "PROTECT(R)" / "PROTECT(W)" |
 | `0x0E0`, `0x100` | Address error (read, write) | Error screen: "ADDRESS(R)" / "ADDRESS(W)" |
@@ -158,7 +158,8 @@ OS 3.60 has two `sleep` instructions. Both run with **BL = 1 and IMASK = 0**:
 !!! danger "Don't copy either sleep path into a probe add-in"
     A probe that wrote the clock generator register and then executed `sleep`, like the
     OS's idle routine, reset a real calculator to its first-boot setup. See
-    [Timers](peripherals/timers.md#the-2-hz-wake-up).
+    [Timers](peripherals/timers.md#the-2-hz-wake-up), and
+    [What is safe](guides/probe-addins.md#what-is-safe).
 
 ## Integer arithmetic matches the manual
 

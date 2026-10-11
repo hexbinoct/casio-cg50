@@ -36,13 +36,20 @@ See [How facts are verified](about/verification.md) for the details.
   [Timers](peripherals/timers.md) and the [Battery ADC](peripherals/battery-adc.md): the
   peripherals the OS runs on.
 - [BCD ALU](peripherals/bcd-alu.md): an undocumented decimal arithmetic unit every calculation goes through.
+- [Flash and storage memory](flash.md): the flash commands and the storage memory driver.
 - [Boot and power-off](os/boot.md): what the OS does from reset to the MAIN MENU.
+- [MMU and add-in launch](os/mmu-and-addins.md): how an add-in runs straight from flash.
+- [Syscalls](os/syscalls.md) and the [Number format](os/number-format.md): how add-ins call the
+  OS, and how it stores numbers.
+- [Writing probe add-ins](guides/probe-addins.md): how the hardware facts here were measured,
+  and what is safe. [Open questions](about/open-questions.md) lists what is still unknown.
 
 ## Other resources
 
 These cover ground this site doesn't repeat:
 
-- [WikiPrizm](https://prizm.cemetech.net/): syscalls and the PrizmSDK/libfxcg view of the calculator.
+- [WikiPrizm](https://prizm.cemetech.net/): syscalls (how they resolve in 3.60:
+  [Syscalls](os/syscalls.md)) and the PrizmSDK/libfxcg view of the calculator.
 - [gint](https://git.planet-casio.com/Lephenixnoir/gint) and [Planète Casio](https://www.planet-casio.com/):
   the add-in kernel whose drivers are themselves a map of the SH7305.
 - Simon Lothar's *fx calculators based on SuperH* documentation: OS headers and syscall lists.

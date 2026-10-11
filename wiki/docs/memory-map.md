@@ -42,8 +42,9 @@ The first 12 MB belong to the OS; the storage memory takes the rest from `0xC800
   stamp just below it (`0x801526EA` copies 14 characters from `0xA0B5FFE0`). The boot code
   also stores the constant at `0x8C04C9F8` (at `0x800036AC`).
 - The storage memory driver addresses the flash as **`0xA0C80000` + offset** and rejects any
-  offset + length above `0x1380000` (19.5 MB): its write routine at `0x80292C9A` and a second
-  routine around `0x80746610` both make that check. `0xC80000` + `0x1380000` is exactly the
+  offset + length above `0x1380000` (19.5 MB): its write routine at `0x80292C9A` and the
+  storage read routine in IL RAM (`0xFD800AE8`, copied from `0x8074660C`) both make that check
+  ([Flash and storage memory](flash.md#the-storage-memory)). `0xC80000` + `0x1380000` is exactly the
   32 MB end of the flash.
 
 !!! success "Verified on hardware"
@@ -56,7 +57,8 @@ The first 12 MB belong to the OS; the storage memory takes the rest from `0xC800
 !!! warning "Unconfirmed"
     What the three `CASIOMEMDATA` blocks hold has not been traced. The code that erases and
     writes them is around `0x802AF800`; that the OS keeps a copy of its main memory there
-    is a guess from the tag.
+    is a guess from the tag. The blocks contain main memory's folder names (`system`,
+    `library`, `@LOCAL40`), which supports it; see [Flash](flash.md#the-oss-own-area).
 
 ### DRAM
 
@@ -68,7 +70,7 @@ session (every built-in app, Python, several add-ins, file installs):
 | `0x0C000000`–`0x0C0287FF` | VRAM, the OS's drawing buffer (part of the OS data range below) |
 | `0x0C000000`–`0x0C0DFFFF` | OS data; much of it rewritten at every app launch |
 | `0x0C0E0000`–`0x0C4DFFFF` | Rewritten at every app launch. `0x0C1E0000`–`0x0C4DFFFF` (3 MB) is zero-filled by the OS at launch, then left alone |
-| `0x0C160000`–`0x0C1DFFFF` | The add-in RAM: 512 KB, mapped at `0x08100000` for every add-in |
+| `0x0C160000`–`0x0C1DFFFF` | The add-in RAM: 512 KB, mapped at `0x08100000` for every add-in; also the OS's app stack, filled with `0x55` at every launch ([MMU and add-in launch](os/mmu-and-addins.md#what-a-launch-clears)) |
 | **`0x0C4E0000`–`0x0C7FFFFF`** | **Never written and never read** by the OS, any app, any add-in launch or the boot (3200 KB) |
 
 !!! success "Verified on hardware"
@@ -99,7 +101,7 @@ add-in.
 | `0xFD8018D4` | 32 bit | **Model code** the running OS checks: `0xCA02` on the fx-CG50. Read in 13 places, from `0x800200D6` in the OS startup on |
 | `0xFD8017DC` | 32 bit | Restart flag: set to 1 by the OS just before it restarts itself, so that boot skips the first-boot setup; 2 while the setup runs. An ordinary power-off leaves it alone ([Boot](os/boot.md#power-on-vs-cold-start)) |
 | `0x8C04CF0C` | table | **Add-in page table**: one word per 4 KB page of the running add-in, from virtual `0x00300000` on. Each word is the page's address in flash (only the low 29 bits are used; 0 = no page). The TLB-miss handler at `0x8002C918` reads it |
-| `0x8C0A1160` | 32 bit | How many bytes the storage memory driver programs per call to the flash routine in IL RAM (`0xFD800E00`) |
+| `0x8C0A1160` | 32 bit | How many bytes the storage memory driver programs per call to the flash routine in IL RAM (`0xFD800E00`): 512 on the calculator, 32 in the emulator ([Flash](flash.md#how-big-the-write-buffer-is)) |
 | `0x8C04CA24` | 32 bit | The **boot code's** model code (`0xCA00`/`0xCA01`/`0xCA02`, step 7 of [Boot](os/boot.md#from-reset)). Only the boot code (below `0x80020000`) uses it |
 
 !!! success "Verified on hardware"
@@ -164,7 +166,8 @@ When an add-in (`.g3a`) runs, the OS sets up the MMU so that:
 | `0x08100000`–`0x0817FFFF` | `0x0C160000`–`0x0C1DFFFF` | The add-in's RAM: 8 entries of 64 KB, the same physical RAM for every add-in |
 
 So an add-in's code is never copied into RAM. A TLB miss on `0x00300000` and above makes the
-OS look up which flash page holds that part of the file.
+OS look up which flash page holds that part of the file. How the OS builds these mappings at
+launch, and what it clears, is on [MMU and add-in launch](os/mmu-and-addins.md).
 
 ## Peripheral registers
 

@@ -69,32 +69,36 @@ probable backlight bit `0xA405012E` bit 5), Interrupts (`0x620`/`0x640` = IRQ1/I
 single-key check through port pins), Timers (idle path chosen by the USB pin `0xA4050162` bit 1,
 FRQCR decoded, the `0xA44C0000` unit), Verification (probe table: source, results, facts).
 
-Planned, not yet written (in suggested order; sources in brackets):
+**Written 2026-10-11** (office, one agent per page, facts checked in the 3.60 image and with
+new `-tags probe` tests):
 
-1. **MMU and add-in launch** — UTLB, `ldtlb`, TLB-miss handler `0x8002C918`, add-in code
-   paged in from flash, what the OS clears at each launch (RECON cont.18q, the RAM survey in
-   the cont.18z RESUME block; `emu_go/mmu.go`, `mmu_test.go`).
-2. **Flash and storage memory** — NOR command sequences, DQ7/DQ3 polling, why the flash
-   routines run from IL RAM, fls0, 32 MB layout, where fls0 starts (RECON cont.6/7, cont.18w;
-   `emu_go/memory.go` flash section, `flash_test.go`, `fls0_trace_test.go`).
-3. **Syscalls** — the 3.60 table and how to resolve a number; link WikiPrizm for the list
-   (`re/syscall360.py`).
-4. **Number format** — the BCD number representation (e.g. 98765 = `10 49 87 65`) and the
-   formatter chain to the screen (RECON cont.17b/18b/18c).
-5. **Writing probe add-ins** — fxSDK in Docker (`tools/fxsdk-docker/`), fxlink capture (the
-   macOS "data overrun" fix: use a named transfer), what is safe (memory note
-   `calc-probe-safety`), the probes in `tools/` and results in `os/devic_probes/`.
-6. **Open questions** — collect every "Unconfirmed" item worth a probe: size of `0xFE200000`,
-   where fls0 starts, FPU or not, what `0xFF000024` reads at reset, `0xFF2F0004`, KEYSC
-   latching, `+0x12`/`+0x1E`, ADC conversion time in sleep, R64CNT rate, the `0xA44A0000`
-   unit's clock, devices behind INTEVT `0x620/0x640/0xA20/0xC00/0xF00`.
-7. Maybe: **UBC** as its own page (now a section of CPU), **DMAC**, **CPG/clocks**, **PFC**.
-8. User's call: a **firmware** page (how the 3.80 updater is packed). Not written on purpose:
+- **MMU and add-in launch** (`os/mmu-and-addins.md`): the MMU syscalls `0x0006`–`0x0028`, the
+  launch step by step (slot 0 code page, RAM in slots 55–62, slot 63), the add-in RAM is
+  filled with `0x55` (the app stack), not zeroed, pages on demand and "TLB ERROR", leaving an
+  add-in, DASM's page redirect. Probe `emu_go/mmuwiki_probe_test.go`.
+- **Flash and storage memory** (`flash.md`): the AMD command set as the OS writes it, DQ7/DQ5/
+  DQ3/DQ1 polling, the IL RAM copy (syscall `0x11C9`) and why, the storage driver, the
+  translation layer's outline, CASIOMEMDATA. Probe `emu_go/flashwiki_probe_test.go`, script
+  `re/flash_routines360.py`.
+- **Syscalls** (`os/syscalls.md`): the call routine `0x80020070`, the add-in stub, the
+  8,040-entry table, 3.60 vs 3.80, the syscalls this site mentions. Script `re/syscalls_wiki.py`.
+- **Number format** (`os/number-format.md`): the 12-byte BCD real, complex, fractions, syscall
+  `0x0160`, the four three-word ALU helpers, the formatter chain. Probe
+  `emu_go/numfmt_probe_test.go`.
+- **Writing probe add-ins** (`guides/probe-addins.md`): fxSDK in Docker, the gint world switch,
+  three ways to get results off, the probes so far, what is safe.
+- **Open questions** (`about/open-questions.md`): every Unconfirmed item, grouped, with the
+  probe or tracing that would settle it. Keep it in step when a page gains or loses one.
+
+Still planned:
+
+1. Maybe: **UBC** as its own page (now a section of CPU), **DMAC**, **CPG/clocks**, **PFC**.
+2. User's call: a **firmware** page (how the 3.80 updater is packed). Not written on purpose:
    it is effectively instructions for extracting Casio's firmware.
 
-Still open in existing pages (needs hardware, or more tracing):
+Still open in existing pages (needs hardware, or more tracing; the full, current list is the
+site's Open questions page):
 
-- BCD ALU: link to the Number format page once it exists.
 - Memory map: what the `CASIOMEMDATA` blocks at `0xB80000` hold (code near `0x802AF800`); the
   real size of the `0xFE200000` blocks (a read-only stepped dump).
 - Boot: what power-off writes to flash `0xB80000`-`0xB9FFFF`; what triggers the three restart
@@ -154,6 +158,8 @@ boot golden unchanged; tests in `emu_go/fidelity_test.go`):
   modelled.
 - Battery ADC: `+0x88`/`+0x8A` merged (separate on hardware), no `+0x90` mirror, `+0x8E` not
   modelled.
+- Flash ID/CFI reads are not modelled, so the OS's chip check picks 32-byte writes (calculator:
+  512); unlock-bypass programming is not modelled (found 2026-10-11, `flash.md`).
 - The emulator's FRC region at `0xA4130000` (64 KB, also covers the RTC page) is a
   leftover from the 3.80 bring-up.
 - Found 2026-10-10/11 by the add-in work (Wolf3D, FastGraph, CodeView):

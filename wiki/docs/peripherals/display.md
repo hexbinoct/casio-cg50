@@ -40,7 +40,7 @@ into GRAM.
 | Row length | 768 bytes (384 pixels, no padding) |
 | Size | 165,888 bytes (`0x28800`) |
 
-The syscall `GetVRAMAddress` (`0x01E6`, at `0x8004F6A2`) simply returns `0xAC000000`.
+The [syscall](../os/syscalls.md) `GetVRAMAddress` (`0x01E6`, at `0x8004F6A2`) simply returns `0xAC000000`.
 
 !!! info "Verified in the emulator"
     The OS draws through the uncached address `0xAC000000`; the emulator only showed a picture
