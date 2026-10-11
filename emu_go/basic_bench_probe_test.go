@@ -159,9 +159,26 @@ func cbasicStart(t *testing.T) (*Emulator, []string) {
 		t.Skip("BENCH_CBASIC: ", err)
 	}
 	e := installState(t)
-	names := benchPrograms(t, e)
+	var names []string
+	if os.Getenv("BENCH_NOMCS") == "" { // BENCH_NOMCS=1: leave main memory alone (test C.Basic's own import)
+		names = benchPrograms(t, e)
+	}
 	if err := e.InstallAddin(filepath.Base(path), g3a); err != nil {
 		t.Fatal(err)
+	}
+	// BENCH_TXT=<dir>: also put its *.txt files into the storage memory root (as on the calculator)
+	if d := os.Getenv("BENCH_TXT"); d != "" {
+		txts, _ := filepath.Glob(filepath.Join(d, "*.txt"))
+		e.mu.Lock()
+		for _, f := range txts {
+			b, _ := os.ReadFile(f)
+			if err := e.writeFile(filepath.Base(f), b); err != nil {
+				e.mu.Unlock()
+				t.Fatal(err)
+			}
+		}
+		e.mu.Unlock()
+		t.Logf("wrote %d .txt files into \\\\fls0", len(txts))
 	}
 	benchKey(t, e, 2, 8, 30_000_000) // LEFT: the last icon
 	e.InjectKey(2, 1)                // EXE
