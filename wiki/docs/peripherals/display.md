@@ -360,11 +360,10 @@ with R111 ← 1). After the first redraw the display is switched on with R007 = 
     again before the panel is initialised. That R100 bit 2 is
     a standby bit, and what R111 does, has not been checked against the controller.
 
-**In the emulator the screen does not go dark.** The panel model stores R007, R100 and R111
-but always shows GRAM, and it ignores `0xA405012E`. Since the OS's last push before switching
-off is an all-white frame (`0xFFFF` everywhere, frame included), the emulator shows a white
-screen while the calculator is off, where the real one is dark. Modelling R007 = 0 (and the
-backlight bit) as a dark panel would fix it.
+**In the emulator the panel is dark** while R007 bit 8 is clear or bit 5 of `0xA405012E` is
+clear, as on the calculator. Before 2026-10-09 the model always showed GRAM, and since the
+OS's last push before switching off is an all-white frame, the emulator showed a white screen
+while "off". Test: `TestPanelDarkWhenOff`.
 
 ## In the emulator
 

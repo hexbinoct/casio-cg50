@@ -9,13 +9,35 @@
   pending, so the next session can continue without being reminded.
 ============================================================================= -->
 
-> ## ⏯ RESUME HERE (last session end: 2026-10-11, cont.19d = trapa + DASM debugger stage 3 probes)
+> ## ⏯ RESUME HERE (last session end: 2026-10-11, cont.19e = emulator differences fixed, office)
+>
+> **Merged with the Mac's cont.19c/19d.** Both machines had implemented `trapa`: the Mac's
+> `cpu.go` `trapa()` and its conformance case `trapa` stay, but `trapa()` now goes through
+> `generalException` (EXPEVT, LDST cleared, BL=1 halts), and a `trapa` in a delay slot is a
+> slot illegal instruction. The Python oracle uses `_general_exception` the same way.
+>
+> **Emulator differences fixed** (done 2026-10-09 in the office, committed 2026-10-11; list + what's
+> still open in `wiki/README.md` → "TODO: emulator issues"). CPU, both cores: real general exceptions
+> (illegal 0x180, slot illegal 0x1A0 at the branch, trapa 0x160 + TRA; BL=1 still halts);
+> `movca.l` + GBR byte ops (were silent NOPs!), `mac.w`, `movua.l`, `movli/movco` added; banks
+> follow RB only with MD=1. Devices: IL RAM mirrored /16 KB; INTREQ00 0xA4140024 reads 0 (was
+> 0x40 — the OS's standby loop 0x801dff06 = syscall 0x11ED reads it as "USB cable woke us");
+> FRQCR reset 0x0F011112, KICK reads 0; KEYSC +0x1A/+0x1C column/row enables (1/1 = AC/ON only)
+> and +0x12 reads 2; LCD dark when R007 bit 8 or PFC 0xA405012E bit 5 clear (power-off showed
+> white) — `lcd.frameGen()` feeds `Emulator.FrameGen`, LCD state version 2 (v1 → R007 on).
+> Conformance 86/86 (13 new cases + the Mac's `trapa`), boot golden byte-identical, keysc transcript +0x12 only;
+> `emu_go/fidelity_test.go`; full suite green; TestPowerOffTrace: off frame black, AC/ON → menu.
+> New `re/sr_writes360.py`. Open: DSP F-ops, SR bit 12, single-key check mapping, USB pin level.
+>
+> **Next:** the Mac's two open bugs (PLLCR without FLLE, partial `PutDisp_DD_stripe`), the new
+> pages (MMU and add-in launch first), or probes for SR bit 12 / USB pin / single-key check.
+
+> ## ⏯ RESUME HERE (previous: 2026-10-11, cont.19d = trapa + DASM debugger stage 3 probes)
 >
 > **Emulator change:** the CPU takes `trapa #imm` (was an illegal-instruction panic): EXPEVT 0x160,
 > TRA (0xFF000020) = imm << 2, SSR/SPC (= the next instruction)/SGR saved, SR.MD/RB/BL = 1, PC =
 > VBR+0x100 (`cpu.go` `trapa`, mirrored in `emu/cpu.py`, conformance case `trapa`; goldens
-> regenerated, boot golden unchanged). Not modelled: trapa in a delay slot (slot illegal).
-> Commit 5d027f1 (local, not pushed).
+> regenerated, boot golden unchanged). Commit 5d027f1. (A trapa in a delay slot: cont.19e.)
 > **Probes** (`monitor_dasm_probe_test.go`, 1d85850, local): DASM's debugger stage 3 — software
 > breakpoints (the monitor copies a code page to RAM 0x8C700000+, redirects the OS's page table
 > 0x8C04CF0C, patches `trapa #0xC3`; the trap comes through a hook block at 0x8C7F0000 or gint's

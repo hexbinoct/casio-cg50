@@ -415,9 +415,9 @@ polling every device before every instruction.
   `SetInstrPerSecond`; `etmu`, a stub for `0xA44A0000` whose `+0x60` always reads `0x8000`,
   so every one-shot delay ends at once; `freeCounter`, the catch-all at `0xA4130000` that
   rises on every read; `cpg`, the clock generator as plain registers, except that
-  `0xA4150060` reads 0 so the OS's wait after a FRQCR write ends. FRQCR therefore reads back
-  what software last wrote, KICK bit included, not the calculator's `0x0F011112`.
-  Nothing models the unit at `0xA44C0000`.
+  `0xA4150060` reads 0 so the OS's wait after a FRQCR write ends, and FRQCR starts at
+  `0x0F011112` with KICK reading 0, so after the OS's own write it reads the calculator's
+  `0x0F011112` (`TestFRQCR`). Nothing models the unit at `0xA44C0000`.
 - The idle routine's choice of `sleep` depends on the pin-function block (plain memory), so
   the emulator always takes the deeper path through `0x80020880`.
 - [`emu_go/schedule_test.go`](https://github.com/hexbinoct/casio-cg50/blob/main/emu_go/schedule_test.go):

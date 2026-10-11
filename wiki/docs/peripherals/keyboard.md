@@ -382,11 +382,15 @@ settings.
   `InjectKey` (a tap: held for 3 scans, then a gap of 3 scans before the next queued key). A tap
   shorter than 3 scans is stretched to 3 so the OS always sees it.
 - Save-states store the control, mode and interrupt-enable registers.
+- `+0x1A` and `+0x1C` act as column and row enables: a key outside them is neither reported
+  nor detected, so the `0x0001`, `0x0001` setting leaves only AC/ON, (0, 0)
+  (`TestKeyscEnables`). This reading of the two registers is the emulator's working guess
+  (see [above](#registers)). `+0x12` reads 2, like the calculator.
 - Known differences from the calculator: the key-data words are live, not latched at the last
-  scan, and `+0x12` reads 0 (the calculator reads 2; the OS's busy test looks only at bit 0).
-  `+0x0E` and `+0x16`–`+0x1C` are stored but have no effect, so a `0x0001`, `0x0001` setting
-  does not limit the keys. The port pins are not wired to the keypad, so the
-  [single-key check](#checking-one-key-without-the-unit) never sees a key.
+  scan. `+0x0E`, `+0x16` and `+0x18` are stored but have no effect. The port pins are not
+  wired to the keypad, so the [single-key check](#checking-one-key-without-the-unit) never
+  sees a key: modelling it needs the mapping from its 12 port columns to keys, which is not
+  known yet.
 - Tests in
   [`emu_go/keysc_test.go`](https://github.com/hexbinoct/casio-cg50/blob/main/emu_go/keysc_test.go):
   `TestKeyscProtocol` (the register protocol as the OS drives it), `TestKeyscMatrixLayout`,

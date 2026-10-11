@@ -114,39 +114,48 @@ Left for a later session on purpose (user, 2026-10-08). Fixing any of them means
 `emu_go/` (and `emu/` where the oracle has it): regenerate goldens and keep `go -C emu_go test .`
 green, per CLAUDE.md. Then update the matching wiki page's "In the emulator" section.
 
-- Stale comments: `emu_go/lcd.go` and `emu/mmio.py` say DMA channel 2 (it is 0);
-  `emu_go/keysc.go` header gives "120 scans, then every 5" as the repeat (that is a separate
-  throttle; the normal repeat is 20, then every scan).
+**Fixed 2026-10-09** (both cores where the oracle has it; conformance 86/86, goldens regenerated,
+boot golden unchanged; tests in `emu_go/fidelity_test.go`):
+
+- Exceptions: undefined opcode → EXPEVT `0x180`, slot illegal → `0x1A0` (SPC = branch),
+  `trapa` → `0x160` + TRA; with SR.BL = 1 still a halt (the chip resets).
+- Missing instructions: `movca.l` and the GBR byte ops `tst.b/and.b/xor.b/or.b` were silent
+  no-ops; `mac.w` (S = 1 saturation per the manual, unverified), `movua.l`, `movli.l`/`movco.l`.
+- `setSR` banks follow RB only with MD = 1.
+- IL RAM mirrored every 16 KB.
+- INTREQ00 (`0xA4140024`) reads 0 (was `0x40`, "key-scan ready" = a misreading), writes 0-clear.
+- FRQCR starts at `0x0F011112`, KICK reads 0.
+- KEYSC `+0x1A`/`+0x1C` column/row enables (1/1 = AC/ON only, as while off); `+0x12` reads 2.
+- Panel dark when R007 bit 8 or PFC `0xA405012E` bit 5 is clear (power-off was white).
+- Stale comments: DMA channel 0 (`lcd.go`, `mmio.py`), key repeat (`keysc.go`), fls0 start
+  (`memory.go`, `tools/flash_dump/dump.c`); `0xA44C0000` labelled "A44C" (was "PORTL").
+
+**Still open:**
+
+- `F…` (DSP) opcodes counted and skipped in both cores: an add-in using them computes wrong
+  results silently. Modelling the SH4AL-DSP instruction set is its own project.
+- SR bit 12: the calculator shows it set in an add-in; the emulator never sets it. Unknown
+  whether it is fixed at 1 or set by some routine (the OS start-up loads SR = `0x500000F0`).
+  Settle with an add-in probe: `ldc` a value with bit 12 clear, `stc` it back (safe).
+- KEYSC single-key check (syscall `0x127E`, port pins `0xA4050136/38` → rows `0xA405016C`):
+  needs the port-column → key mapping; a probe reading `0xA405016C` while driving one column
+  with a key held would give it.
+- The USB pin (`0xA4050162` bit 1) reads 0, so the OS always takes the deeper sleep path.
+  The real level without a cable is unknown (read it from an add-in, with and without cable).
+- Nothing models `0xA44C0000` (unknown unit); IRQ pins / USB / SCIF raise no interrupts
+  (correct with nothing plugged in).
+- All 2 MB from `0xFE200000` is RAM (the six blocks' real sizes need a stepped dump).
 - A stripe push with y1 > 0 sets DAR = `0x14000000` + 1536·y1; `mmio.go` streams to the LCD
   only when DAR == `0x14000000`, so such pushes would bypass the panel. Unknown whether the
   OS ever does it.
 - Interrupt levels: the emulator raises `0x560` at 8 (OS programs 12) and the RTC `0xAA0` at
   9 (OS programs 8).
-- KEYSC: `+0x12` reads 0 (hardware 2); key-data words are live, the hardware seems to latch
-  the last scan; `+0x1E` not modelled.
+- KEYSC: key-data words are live, the hardware seems to latch the last scan; `+0x1E` not
+  modelled.
 - Battery ADC: `+0x88`/`+0x8A` merged (separate on hardware), no `+0x90` mirror, `+0x8E` not
   modelled.
 - The emulator's FRC region at `0xA4130000` (64 KB, also covers the RTC page) is a
   leftover from the 3.80 bring-up.
-- Found 2026-10-09 while completing the pages:
-    - `F…` (DSP) opcodes are counted and skipped in both cores: an add-in using them computes
-      wrong results silently.
-    - Illegal instruction / `trapa` halt the emulator instead of raising EXPEVT `0x180`/`0x160`
-      (the OS's System ERROR screen never appears); no slot-illegal exception.
-    - `setSR` switches banks on RB even with MD = 0 (harmless: always MD = 1).
-    - Is SR bit 12 set for an add-in in the emulator? Hardware reads `0x40001101`.
-    - IL RAM is 64 KB flat (hardware mirrors every 16 KB); all 2 MB from `0xFE200000` is RAM.
-    - Stale comments: `emu_go/memory.go:377` and `tools/flash_dump/dump.c` say fls0 is at
-      `0x01000000`+ (it starts at `0xC80000`).
-    - `0xA4140024` always reads `0x40`, commented "key-scan ready": it is INTREQ00 bit 6 (IRQ1).
-    - CPG is plain registers: FRQCR reads back the KICK bit, not the hardware's `0x0F011112`.
-    - KEYSC `+0x1A`/`+0x1C` have no effect; the single-key check (syscall `0x127E`) never
-      sees a key.
-    - Nothing models `0xA44C0000` (`scanWatched` calls it "PORTL"); IRQ pins, USB, SCIF raise
-      no interrupts.
-    - The USB pin (`0xA4050162` bit 1) reads 0, so the OS always takes the deeper sleep path.
-    - Power-off: the panel model ignores R007 = 0 and the backlight bit `0xA405012E` bit 5, so
-      "off" shows the all-white frame the OS pushes before switching off (real calc is dark).
 - Found 2026-10-10/11 by the add-in work (Wolf3D, FastGraph, CodeView):
     - CPG `PLLCR` (`0xA4150024`) reads `0x4000`: PLLE but no FLLE (bit 12). On the calculator
       the FLL always runs, and gint's `clock_freq()` computes Pφ = 29.49 MHz there. In the

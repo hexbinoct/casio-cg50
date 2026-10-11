@@ -325,11 +325,12 @@ the 3.80 updater, describe these as the OS's. They are present at the same addre
   as their level.
 - The Python reference emulator (`emu/mmio.py`, `INTCStub`) does not gate requests. The
   OS's boot does not depend on it.
-- The IRQ pins, USB and the serial port raise no interrupts. The block at `0xA4140000` is a
-  stub (`intx` in `mmio.go`, `INTX` in `emu/mmio.py`) whose byte `+0x24` always reads `0x40`.
-  Its comment calls that bit "key-scan ready", but it is INTREQ00 bit 6, IRQ1's request flag.
-  The pin-function block is plain memory that reads back what was written, and in practice
-  the "USB" pin bit at `0xA4050162` reads 0.
+- The IRQ pins, USB and the serial port raise no interrupts: nothing is ever plugged in. In
+  the block at `0xA4140000` (`intx` in `mmio.go`, `INTX` in `emu/mmio.py`), INTREQ00
+  (`+0x24`) therefore reads 0, and writing 0 clears a flag (`TestIRQPinFlagsClear`). Until
+  2026-10-09 it always read `0x40`, which the OS's standby loop would take as "woken by the
+  USB cable". The pin-function block is plain memory that reads back what was written, and
+  in practice the "USB" pin bit at `0xA4050162` reads 0.
 - Tests: `emu_go/intc_test.go` (`TestINTCGate`, `TestINTCGateAtAcceptance`,
   `TestCPUOPMIntmuSetsIMASK`), `TestSleepWakesOnRequest` in `emu_go/rtc_test.go`; probe
   `emu_go/intc_dump_test.go` logs the OS's INTC writes.

@@ -215,5 +215,6 @@ address, see [Timers](peripherals/timers.md#no-counter-at-0xa4130000).)
   `TestAddinRunsThroughMMU` (`mmu_test.go`), `TestWarmBoot`, `TestSaveStateRoundtrip`. The
   DRAM usage table above comes from the probe `TestRamFree` (`ramfree_probe_test.go`).
 
-Differences from the hardware: the emulator's IL RAM is 64 KB without the 16 KB mirroring,
-and it treats all 2 MB from `0xFE200000` as RAM.
+IL RAM is 16 KB, mirrored every 16 KB through its 64 KB window, as the real dump shows
+(`TestILRAMMirror`). Difference from the hardware: the emulator treats all 2 MB from
+`0xFE200000` as RAM.

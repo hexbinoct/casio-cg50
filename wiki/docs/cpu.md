@@ -243,19 +243,22 @@ The UBC never matches while SR.BL = 1, and the instructions `ldc`/`stc` for **DB
   [`ubc.go`](https://github.com/hexbinoct/casio-cg50/blob/main/emu_go/ubc.go) is the user
   break controller.
 - `emu/cpu.py` is the Python reference emulator that the Go core is checked against.
+- Exceptions: an undefined opcode raises EXPEVT `0x180`, a forbidden instruction or an
+  undefined one in a delay slot `0x1A0` (SPC = the branch), and `trapa` `0x160` with TRA =
+  imm × 4 (SPC = the next instruction), all through VBR + `0x100`, so the OS shows its
+  "System ERROR" screen as the calculator would. One taken with SR.BL = 1 halts the emulator
+  (the chip resets). Before 2026-10-09 all of these halted the emulator.
+- Also implemented on 2026-10-09: `movca.l`, `tst.b`/`and.b`/`xor.b`/`or.b #imm,@(R0,GBR)`
+  (they did nothing before), `mac.w`, `movua.l` and `movli.l`/`movco.l` (they halted). The
+  `mac.w` saturation (S = 1) follows the manual and has not been checked on the calculator.
 - What the emulator does **not** do like the chip:
     - An `F…` opcode is counted and otherwise skipped, in both emulators, so an add-in using
       DSP instructions would compute wrong results without any error.
-    - An illegal instruction or a `trapa` **halts** the emulator with a fault instead of
-      raising EXPEVT `0x180`/`0x160`, so the OS's "System ERROR" screen never appears.
-    - A branch in a delay slot is simply executed; there is no slot illegal exception.
-    - The banks switch whenever SR.RB changes, even with SR.MD = 0, where the chip always
-      uses bank 0. That never matters here, because the OS and add-ins always run with
-      MD = 1.
+    - SR bit 12 stays 0 (the OS never sets it); the calculator shows it set in an add-in.
 - Tests:
-    - `emu_go/conformance_test.go` runs the 72 cases in `emu/conformance.json` (made by
+    - `emu_go/conformance_test.go` runs the 86 cases in `emu/conformance.json` (made by
       `emu/conformance_gen.py` from the Python core), including the bank, delay-slot,
-      `div0u` and MMU cases named above.
+      `div0u`, MMU and exception cases named above.
     - `TestGoldenBoot` (`emu_go/golden_test.go`) compares the full CPU state with the Python
       core every 1,000 instructions over a 2-million-instruction boot.
     - `re/validate_silicon.py` checks the core against the 202 hardware results.
