@@ -9,7 +9,23 @@
   pending, so the next session can continue without being reminded.
 ============================================================================= -->
 
-> ## ⏯ RESUME HERE (last session end: 2026-10-11, cont.19c = add-in work on the Mac, emulator unchanged)
+> ## ⏯ RESUME HERE (last session end: 2026-10-11, cont.19d = trapa + DASM debugger stage 3 probes)
+>
+> **Emulator change:** the CPU takes `trapa #imm` (was an illegal-instruction panic): EXPEVT 0x160,
+> TRA (0xFF000020) = imm << 2, SSR/SPC (= the next instruction)/SGR saved, SR.MD/RB/BL = 1, PC =
+> VBR+0x100 (`cpu.go` `trapa`, mirrored in `emu/cpu.py`, conformance case `trapa`; goldens
+> regenerated, boot golden unchanged). Not modelled: trapa in a delay slot (slot illegal).
+> Commit 5d027f1 (local, not pushed).
+> **Probes** (`monitor_dasm_probe_test.go`, 1d85850, local): DASM's debugger stage 3 — software
+> breakpoints (the monitor copies a code page to RAM 0x8C700000+, redirects the OS's page table
+> 0x8C04CF0C, patches `trapa #0xC3`; the trap comes through a hook block at 0x8C7F0000 or gint's
+> patched exception entry), TestMonitorDasmWatch (operand watchpoint). `addinCode` reads through
+> memory now (pages can live in RAM). Details: cg50_addons `notes/debugger.md` stage 3.
+> Noted on the way: the ITLB arrays (0xF2/0xF3000000) aren't modelled (unmapped: reads 0) and there
+> is no I-cache, so the monitor's ITLB/ICI code only runs for real on the calculator.
+> **Next:** unchanged (cont.19c / 19b below).
+
+> ## ⏯ RESUME HERE (previous: 2026-10-11, cont.19c = add-in work on the Mac, emulator unchanged)
 >
 > **No emulator code changed.** This session used the emulator as the test device for four add-in
 > projects outside this repo (each has its own `notes/` under `~/main/casio/`): `wolf3d_cg50` (an
