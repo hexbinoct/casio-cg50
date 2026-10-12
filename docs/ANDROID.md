@@ -22,8 +22,9 @@ provisioned save-state) at runtime.
    CPU + MMU + Memory + SH7305 peripherals — the validated core
 ```
 
-The same facade drives the desktop web UI (`go -C emu_go run ./cmd/cg50emu 0 30000 web`) and the
-`rtbench` real-time loop, so both hosts exercise identical code.
+The same facade drives the desktop app CG50 Studio (`app/`), the command line's plain web UI
+(`go -C emu_go run ./cmd/cg50emu 0 30000 web`) and the `rtbench` real-time loop, so every host
+exercises identical code.
 
 ## The host API (C ABI)
 

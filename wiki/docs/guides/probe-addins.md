@@ -273,9 +273,12 @@ crashes, hangs and wrong addresses before the real run.
 - **Installing.** `Emulator.InstallAddin` (`emu_go/install.go`) has the emulated OS write the
   `.g3a` to `\\fls0\` with its own file calls, as a USB copy would, then rebuilds the MAIN
   MENU. `TestInstallAddin` and `TestInstallAddinRejects` (`emu_go/install_test.go`) cover it.
-  The Android app uses the same call ("Install add-in…").
-- **Add-ins already on the calculator** run in the interactive emulator too
-  (`go -C emu_go run ./cmd/cg50emu 0 30000 web`): they are in the flash dump.
+  The desktop app CG50 Studio (drop the `.g3a` on its window, or "Install add-in") and the
+  Android app ("Install add-in…") use the same call.
+- **Trying a probe by hand:** CG50 Studio (`app/` in the repository) runs your flash dump with
+  a clickable keypad, save states and screenshots. Add-ins already on the calculator are
+  there too: they are in the flash dump. The command line's plain web UI
+  (`go -C emu_go run ./cmd/cg50emu 0 30000 web`) also works.
 
 Where the emulator and the calculator differ in ways that matter to probes:
 

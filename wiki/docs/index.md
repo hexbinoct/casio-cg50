@@ -4,7 +4,8 @@ Notes on how the **Casio fx-CG50** works, seen from software: the memory map, th
 core and its quirks, the on-chip peripherals, and the internals of the calculator's OS (3.60).
 
 It grew out of [casio-cg50](https://github.com/hexbinoct/casio-cg50), an emulator that boots
-the real OS from reset and runs the built-in apps and add-ins. Building it meant pinning down
+the real OS from reset and runs the built-in apps and add-ins, on the desktop (the app CG50
+Studio) and on Android. Building it meant pinning down
 exactly how the hardware behaves; this site is where those findings are written down.
 
 !!! note "Software only"

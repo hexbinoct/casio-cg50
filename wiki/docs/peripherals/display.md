@@ -375,7 +375,7 @@ while "off". Test: `TestPanelDarkWhenOff`.
   [`emu_go/mmio.go`](https://github.com/hexbinoct/casio-cg50/blob/main/emu_go/mmio.go).
 - Native replacement of the bitmap routine:
   [`emu_go/hle.go`](https://github.com/hexbinoct/casio-cg50/blob/main/emu_go/hle.go)
-  (off by default; the Android app turns it on).
+  (off by default; the Android app and the desktop app CG50 Studio turn it on).
 - Tests: [`emu_go/lcd_test.go`](https://github.com/hexbinoct/casio-cg50/blob/main/emu_go/lcd_test.go),
   [`emu_go/present_test.go`](https://github.com/hexbinoct/casio-cg50/blob/main/emu_go/present_test.go),
   [`emu_go/hle_test.go`](https://github.com/hexbinoct/casio-cg50/blob/main/emu_go/hle_test.go),

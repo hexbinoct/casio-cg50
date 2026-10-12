@@ -31,6 +31,7 @@ Target experience:
 | Core (CPU, MMU, INTC, timers, DMAC, LCD, KEYSC, RTC, NOR flash) | `emu_go/` | pure Go, 64–85 M instr/s native |
 | Warm boot from a full dump, own save-state | `CG50_FLASH`, `CG50_STATE`, `CG50_WARM` | done (cont.18w) |
 | Browser UI | `emu_go/webui.go`, `go -C emu_go run ./cmd/cg50emu 0 30000 web` | works but plain: stdlib server, PNG frames polled, keyboard only |
+| **Desktop app (2026-10-12)** | `app/`, CG50 Studio (Wails) | milestone 1 done: skin, keypad, speeds, states, install by drop, screenshots (`app/README.md`) |
 | Calculator skin + keypad + haptics + save-state on pause | `android/` (`KeypadView.kt`, `KeyMap.kt`) | done on the phone; the layout data can be reused |
 | Running a fresh `.g3a` | probes `dasm_swap_test.go` / `dasm_real_test.go` | a hack: swap code pages into an add-in that is already installed |
 | WASM build | `GOOS=js GOARCH=wasm go build` in `emu_go/` | **compiles as-is** (checked 2026-09-30, 11 MB before trimming); the cgo part is Android-only |

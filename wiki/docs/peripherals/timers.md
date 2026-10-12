@@ -392,8 +392,9 @@ The emulator counts executed instructions (plus time spent in `sleep`) and turns
 time with one setting, instructions per emulated second (`SetInstrPerSecond`). The RTC, the
 ETMU and TMU counters, the key scan and the battery converter all derive their timing from
 it. It defaults to 70 million; the Android app uses 45 million ("Original hardware") or 100
-million ("Fast"); the frozen boot goldens use 1 million so the start-up's R64CNT waits stay
-short.
+million ("Fast"); the desktop app CG50 Studio starts at 45 million and then follows the rate it
+measures, so the calculator's clock keeps real time at any speed setting; the frozen boot
+goldens use 1 million so the start-up's R64CNT waits stay short.
 
 Counters are computed when read, from the instruction count at which they started; device
 events are scheduled instead of polled every instruction, and a sleeping CPU skips ahead to
