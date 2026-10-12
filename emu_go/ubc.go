@@ -1,4 +1,4 @@
-package main
+package cg50emu
 
 // ubc.go — the SH7305's User Break Controller (UBC, SH-4A) at 0xFF200000 and its use of the
 // debug base register DBR (cpu.go), for the on-device debugger (cg50_addons notes/debugger.md).

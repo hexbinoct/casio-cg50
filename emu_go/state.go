@@ -1,4 +1,4 @@
-package main
+package cg50emu
 
 // Machine save-state: a full snapshot of the volatile machine (CPU registers + DRAM,
 // ILRAM, OCRAM + the flash delta) so a later launch RESUMES at the exact instant it was

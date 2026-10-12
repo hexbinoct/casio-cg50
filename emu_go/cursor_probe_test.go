@@ -1,6 +1,6 @@
 //go:build probe
 
-package main
+package cg50emu
 
 // Investigation probes used to find the cursor blink (cont.18o); not part of the normal
 // suite. Run with

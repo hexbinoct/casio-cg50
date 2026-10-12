@@ -1,4 +1,4 @@
-package main
+package cg50emu
 
 // Host calls into the OS: the emulator runs an OS function (a syscall such as Bfile_WriteFile_OS
 // or sys_malloc) the way an add-in would call it, and gets its r0 back. This is how files get

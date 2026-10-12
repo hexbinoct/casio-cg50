@@ -1,4 +1,4 @@
-package main
+package cg50emu
 
 // Installing an add-in: the host hands over a .g3a file and the OS itself writes it to
 // \\fls0\NAME.g3a with its own Bfile_* syscalls (oscall.go), exactly as when a file is copied

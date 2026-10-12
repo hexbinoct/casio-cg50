@@ -1,6 +1,6 @@
 //go:build probe
 
-package main
+package cg50emu
 
 // Probe (2026-10-09, for the wiki's CPU page): single-step OS 3.60 through a warm boot of the
 // 16 MB image and a short Run-Matrix session (1÷7, 2^10) and record what the CPU actually does:

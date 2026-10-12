@@ -1,10 +1,10 @@
-package main
+package cg50emu
 
 // Interactive web UI for the emulator: runs the SH7305 core, auto-drives first-boot
 // setup to the MAIN MENU, then serves the live framebuffer to a browser and injects
 // the keys you press (mapped to the real fx-CG50 matrix; see re/KEYMAP.md).
 //
-//   go -C emu_go run . 0 30000 web
+//   go -C emu_go run ./cmd/cg50emu 0 30000 web
 //   -> open http://127.0.0.1:8080 , click the page, and type.
 //
 // Zero external deps: net/http + image/png from the stdlib; the browser is the window.
@@ -169,7 +169,7 @@ func runWeb(cpu *CPU, mem *Memory, mmio *MMIOBus, resumed bool) {
 	mux.HandleFunc("/save", ssHandler(saveCh))
 	mux.HandleFunc("/load", ssHandler(loadCh))
 	// Bind a listener: try the preferred port (override with a 5th CLI arg, e.g.
-	// `run . 0 30000 web 9000`), then a few alternates, then let the OS pick any free
+	// `run ./cmd/cg50emu 0 30000 web 9000`), then a few alternates, then let the OS pick any free
 	// port (Windows reserves/excludes some ranges -> "forbidden" bind errors).
 	webAddr := "127.0.0.1:8080"
 	if len(os.Args) > 4 {

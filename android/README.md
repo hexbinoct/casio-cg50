@@ -12,7 +12,7 @@ MainActivity / CalcSurfaceView / KeypadView + KeyMap   (Kotlin)
  libcg50.so      native-lib.cpp  — JNI shim
         │ links
         ▼
- libcg50core.so  emu_go/android_bridge.go (cgo c-shared)  — the emulator
+ libcg50core.so  emu_go/android/bridge.go (cgo c-shared)  — the emulator
 ```
 
 No Casio firmware ships here. You supply your own dump at runtime (see below).
@@ -57,7 +57,7 @@ No Casio firmware ships here. You supply your own dump at runtime (see below).
    - `cg50_state.bin` — a save-state provisioned to the MAIN MENU, so the app resumes there
      instantly instead of cold-booting into first-boot setup. Generate it on the desktop:
      ```sh
-     go -C emu_go run . 450000000 30000 provision   # writes os/flash_dump/cg50_state.bin
+     go -C emu_go run ./cmd/cg50emu 450000000 30000 provision   # writes os/flash_dump/cg50_state.bin
      ```
      then push that file. (Without it the app cold-boots; on ARM that takes a while and lands
      in the language wizard.) The app creates the files dir on first launch — start it once

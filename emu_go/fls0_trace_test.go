@@ -1,6 +1,6 @@
 //go:build probe
 
-package main
+package cg50emu
 
 // Probe (2026-09-28): why does fls0_open (FUN_80358b1e) return -6 when the emulator boots a
 // FULL 32 MB flash dump (whole fls0 storage present) from reset? Boots the image, waits for

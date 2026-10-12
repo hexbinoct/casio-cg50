@@ -1,6 +1,6 @@
 //go:build probe
 
-package main
+package cg50emu
 
 // Probe (2026-10-08): the fx-CG50 build of FlowCE (~/main/casio/flowce_cg50/cg50), installed on
 // the 32 MB image and launched. Frames go to $TMPDIR.

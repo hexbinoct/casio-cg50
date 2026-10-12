@@ -1,6 +1,6 @@
 //go:build probe
 
-package main
+package cg50emu
 
 // Probe (2026-09-28): run the sibling project's DASM.g3a (september/cg50_addons/dasm) on
 // the emulator WITHOUT a Fugue filesystem writer, by hot-swapping the add-in that is

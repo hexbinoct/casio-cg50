@@ -275,7 +275,7 @@ crashes, hangs and wrong addresses before the real run.
   MENU. `TestInstallAddin` and `TestInstallAddinRejects` (`emu_go/install_test.go`) cover it.
   The Android app uses the same call ("Install add-in…").
 - **Add-ins already on the calculator** run in the interactive emulator too
-  (`go -C emu_go run . 0 30000 web`): they are in the flash dump.
+  (`go -C emu_go run ./cmd/cg50emu 0 30000 web`): they are in the flash dump.
 
 Where the emulator and the calculator differ in ways that matter to probes:
 

@@ -1,6 +1,6 @@
 //go:build probe
 
-package main
+package cg50emu
 
 // Facts for the wiki page os/mmu-and-addins.md. Run with
 //   go -C emu_go test -tags probe -run TestMMUWikiLaunch -count=1 -v .

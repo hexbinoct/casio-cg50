@@ -1,11 +1,11 @@
 //go:build probe
 
-package main
+package cg50emu
 
 // Probe (2026-09-28): run DASM.g3a as it is really installed in fls0, on the full 32 MB dump
 // resumed from its warm-boot save-state (see warm_boot_test.go / CG50_WARM in main.go):
 //   CG50_FLASH=../os/flash_dump/flash_full_32mb.bin CG50_STATE=../os/flash_dump/cg50_state_32mb.bin \
-//     CG50_WARM=1 go -C emu_go run . 600000000 30000 provision none
+//     CG50_WARM=1 go -C emu_go run ./cmd/cg50emu 600000000 30000 provision none
 // DASM_KEYS is a comma list of row-col keys to press, one screenshot each (cg50_real_NN.png).
 //
 // DASM_LAUNCH=1 first starts DASM from its menu icon (Z: 8x DOWN, 2x RIGHT, EXE). With

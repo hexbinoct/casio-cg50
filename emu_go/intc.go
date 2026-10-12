@@ -1,4 +1,4 @@
-package main
+package cg50emu
 
 // intc.go — SH7305 interrupt controller (0xA4080000): priority registers IPRA..IPRL at
 // +0x00..+0x2C (16-bit, four 4-bit fields each), mask registers IMR0..IMR12 at +0x80..+0xB0

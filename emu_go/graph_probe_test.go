@@ -1,6 +1,6 @@
 //go:build probe
 
-package main
+package cg50emu
 
 // Probe (2026-10-10): ~/main/casio/graph_cg50 (FastGraph.g3a, a gint function grapher).
 // Installs it on the 32 MB image, launches it, plays GRAPH_KEYS and saves the add-in's frames.

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Cross-compile the Go emulator core (emu_go/) into libcg50core.so for Android, one per ABI,
 into app/src/main/jniLibs/<abi>/ where Gradle packages them. The cgo C ABI lives in
-emu_go/android_bridge.go (build tag `android`, set by GOOS=android). Run it whenever the Go
+emu_go/android/bridge.go (build tag `android`, set by GOOS=android). Run it whenever the Go
 core changes, then build the APK (re/phone.py apk, or Android Studio).
 
     python3 android/build_go_lib.py
@@ -17,7 +17,7 @@ import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-EMU = os.path.join(HERE, "..", "emu_go")
+EMU = os.path.join(HERE, "..", "emu_go", "android")
 JNI = os.path.join(HERE, "app", "src", "main", "jniLibs")
 API = 30  # must be <= the app's minSdk (30)
 TARGETS = [("arm64-v8a", "arm64", "aarch64"), ("x86_64", "amd64", "x86_64")]

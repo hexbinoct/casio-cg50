@@ -1,6 +1,6 @@
 //go:build probe
 
-package main
+package cg50emu
 
 // Host-speed benchmarks (probe tag): go -C emu_go test -tags probe -run XXX -bench MenuHold
 // Holding RIGHT on the MAIN MENU for 3 emulated s at 22M instr/s, with the old per-instruction

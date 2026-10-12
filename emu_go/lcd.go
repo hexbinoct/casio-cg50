@@ -1,4 +1,4 @@
-package main
+package cg50emu
 
 // R61524 LCD controller on bus area 5 (0xB4000000; P0 alias 0x14000000) — cont.18o.
 //

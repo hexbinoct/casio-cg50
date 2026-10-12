@@ -1,6 +1,6 @@
 //go:build probe
 
-package main
+package cg50emu
 
 // Probe (2026-10-11, wiki flash.md): the OS's flash driver set-up as the emulator sees it.
 //

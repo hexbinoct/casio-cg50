@@ -1,6 +1,6 @@
 //go:build probe
 
-package main
+package cg50emu
 
 // Why does a save-state ignore keys? (cont.18u: the phone's snapshot in the Graph Y= editor
 // took no key at any speed, on the phone and on the desktop.) Prints the CPU/KEYSC state,

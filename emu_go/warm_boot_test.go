@@ -1,6 +1,6 @@
 //go:build probe
 
-package main
+package cg50emu
 
 // Probe (2026-09-28): boot a flash image the way a real power-on from "off" does. The OS's
 // power-off paths (FUN_801dfe4a, FUN_801504e0) set the IL RAM word 0xFD8017DC to 1 (unless it

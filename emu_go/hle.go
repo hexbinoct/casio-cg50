@@ -1,4 +1,4 @@
-package main
+package cg50emu
 
 // High-level emulation of the OS's generic bitmap blitter (3.60: 0x80056900), which is ~75%
 // of the instructions of a MAIN MENU cursor move (~85 interpreted instructions per pixel, see

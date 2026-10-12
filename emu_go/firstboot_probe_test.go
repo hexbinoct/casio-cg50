@@ -1,6 +1,6 @@
 //go:build probe
 
-package main
+package cg50emu
 
 // Probe (2026-10-09, wiki os/boot.md): a cold boot of the 16 MB image (IL RAM zeroed, so the
 // warm flag 0xFD8017DC is 0) through the first-boot setup. Logs entries into the boot check

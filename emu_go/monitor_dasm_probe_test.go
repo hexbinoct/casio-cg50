@@ -1,6 +1,6 @@
 //go:build probe
 
-package main
+package cg50emu
 
 // Probe (2026-10-04, on-device debugger stage 2): DASM's resident monitor debugging another
 // add-in, end to end on the 32 MB dump resumed at the real MAIN MENU.

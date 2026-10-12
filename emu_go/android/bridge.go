@@ -6,7 +6,7 @@ package main
 //
 //	CGO_ENABLED=1 GOOS=android GOARCH=arm64 \
 //	CC=$NDK/toolchains/llvm/prebuilt/<host>/bin/aarch64-linux-android24-clang \
-//	go build -buildmode=c-shared -o libcg50.so .
+//	go build -C emu_go/android -buildmode=c-shared -o libcg50.so .
 //
 // (Repeat per ABI: arm64-v8a, armeabi-v7a, x86_64.) The generated libcg50.h declares the
 // exported symbols below; load the .so via System.loadLibrary and call them through JNI.
@@ -22,36 +22,40 @@ package main
 */
 import "C"
 
-import "unsafe"
+import (
+	"unsafe"
+
+	"cg50emu"
+)
 
 // gEmu is the single process-wide machine the host drives (one calculator per app).
-var gEmu *Emulator
+var gEmu *cg50emu.Emulator
 
 // keyTag is the logcat tag for key-path diagnostics (allocated once, lives for process life).
 var keyTag = C.CString("cg50-key")
 
 //export EmuInit
 func EmuInit(flash *C.uint8_t, n C.int) {
-	gEmu = NewEmulator(C.GoBytes(unsafe.Pointer(flash), n))
+	gEmu = cg50emu.NewEmulator(C.GoBytes(unsafe.Pointer(flash), n))
 	if n > 16<<20 {
 		// the whole 32 MB flash (real storage memory): a cold boot is a power-on from "off",
 		// not a dead battery, so the OS skips first-boot setup (CG50_WARM, cont.18w)
-		gEmu.mem.W32(warmFlagAddr, 1)
+		gEmu.SetWarmBoot()
 	}
 	gEmu.EnableHLE(true) // native OS blitter (hle.go): ~4x less work per menu move
 	// Route the key state-machine diagnostics to Android logcat (tag cg50-key).
-	gEmu.dbg = func(s string) {
+	gEmu.SetDebugLog(func(s string) {
 		cs := C.CString(s)
 		C.__android_log_write(C.ANDROID_LOG_INFO, keyTag, cs)
 		C.free(unsafe.Pointer(cs))
-	}
+	})
 }
 
 //export EmuWidth
-func EmuWidth() C.int { return C.int(PanelWidth) }
+func EmuWidth() C.int { return C.int(cg50emu.PanelWidth) }
 
 //export EmuHeight
-func EmuHeight() C.int { return C.int(PanelHeight) }
+func EmuHeight() C.int { return C.int(cg50emu.PanelHeight) }
 
 // EmuResume restores a save-state blob (e.g. one provisioned to the MAIN MENU). 0 = ok.
 //
@@ -203,7 +207,7 @@ func EmuSetKeyScanPeriod(instr C.longlong) {
 //
 //export EmuFramebufferRGBA
 func EmuFramebufferRGBA(dst *C.uint8_t, capacity C.int) C.int {
-	need := PanelWidth * PanelHeight * 4
+	need := cg50emu.PanelWidth * cg50emu.PanelHeight * 4
 	if gEmu == nil || int(capacity) < need {
 		return -1
 	}
@@ -247,3 +251,6 @@ func EmuInstallAddin(name *C.char, data *C.uint8_t, n C.int) *C.char {
 	}
 	return nil
 }
+
+// main is required by -buildmode=c-shared and never runs.
+func main() {}

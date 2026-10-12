@@ -15,19 +15,19 @@ provisioned save-state) at runtime.
  libcg50.so       android/app/src/main/cpp/native-lib.cpp — JNI shim, forwards to Emu*
         │  links
         ▼
- libcg50core.so   emu_go/android_bridge.go (cgo, -buildmode=c-shared)
+ libcg50core.so   emu_go/android/bridge.go (cgo, -buildmode=c-shared)
         │
    Emulator facade (emu_go/emulator.go) — Step / keys / framebuffer / snapshot, thread-safe
         │
    CPU + MMU + Memory + SH7305 peripherals — the validated core
 ```
 
-The same facade drives the desktop web UI (`go -C emu_go run . 0 30000 web`) and the
+The same facade drives the desktop web UI (`go -C emu_go run ./cmd/cg50emu 0 30000 web`) and the
 `rtbench` real-time loop, so both hosts exercise identical code.
 
 ## The host API (C ABI)
 
-`emu_go/android_bridge.go` (build tag `android`) exports these via cgo `//export`:
+`emu_go/android/bridge.go` (build tag `android`) exports these via cgo `//export`:
 
 | Symbol | Purpose |
 |--------|---------|
@@ -63,7 +63,7 @@ A fresh boot lands in the language/setup wizard. Provision once and push the res
 save-state so the app resumes instantly at the MAIN MENU:
 
 ```sh
-go -C emu_go run . 450000000 30000 provision   # writes os/flash_dump/cg50_state.bin
+go -C emu_go run ./cmd/cg50emu 450000000 30000 provision   # writes os/flash_dump/cg50_state.bin
 ```
 
 The app does `EmuInit(flash)` then `EmuResume(stateBlob)`, and re-snapshots (`EmuSnapshot`) on

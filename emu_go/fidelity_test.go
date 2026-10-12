@@ -1,4 +1,4 @@
-package main
+package cg50emu
 
 import (
 	"strings"

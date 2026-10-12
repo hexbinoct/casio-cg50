@@ -172,7 +172,7 @@ We do **not** model the KEYSC IRQ + matrix-data-reg format. Instead the harness 
 own scan-enqueue routine `FUN_801e684c` as a subroutine (`cpu.callInject`) with a `{row,col}`
 2-byte arg, landing the key in the exact queue the UI consumes — identical to a real keypress.
 
-- Harness: `go -C emu_go run . <maxIns> <timerPeriod> seq "<r-c,r-c,...>" <pressAt> <interval>`
+- Harness: `go -C emu_go run ./cmd/cg50emu <maxIns> <timerPeriod> seq "<r-c,r-c,...>" <pressAt> <interval>`
 - `seq` injects each key starting at `pressAt`, dumping a PNG per key. Token forms:
   - `r-c`        — press, then wait the default `interval` before the next key.
   - `r-c*GAP`    — press, then wait a fixed `GAP` instructions (decimal) before the next key.

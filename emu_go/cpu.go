@@ -1,4 +1,4 @@
-package main
+package cg50emu
 
 // SH-4 / SH-4A integer + system core. Faithful port of emu/cpu.py.
 // The SH7305 has no FPU: the F... opcodes are SH4AL-DSP instructions, not modelled (counted

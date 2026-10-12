@@ -1,6 +1,6 @@
 # Cross-compiles the Go emulator core (emu_go/) into libcg50core.so for Android, one per
 # ABI, dropping them into app/src/main/jniLibs/<abi>/ where Gradle packages them. The cgo
-# C ABI lives in emu_go/android_bridge.go (build tag `android`, auto-set by GOOS=android).
+# C ABI lives in emu_go/android/bridge.go (build tag `android`, auto-set by GOOS=android).
 # Run this whenever the Go core changes; then build the APK in Android Studio.
 #
 #   pwsh -File android/build_go_lib.ps1
@@ -11,7 +11,7 @@ $ErrorActionPreference = "Stop"
 
 $ndkBin = "D:/files/Android_SDK/ndk/28.2.13676358/toolchains/llvm/prebuilt/windows-x86_64/bin"
 $api    = 30                                   # must be <= app minSdk (30)
-$emu    = Join-Path $PSScriptRoot "../emu_go"  # the Go package dir
+$emu    = Join-Path $PSScriptRoot "../emu_go/android"  # the Go package dir
 $jni    = Join-Path $PSScriptRoot "app/src/main/jniLibs"
 
 $targets = @(

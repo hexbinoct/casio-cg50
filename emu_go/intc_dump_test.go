@@ -1,6 +1,6 @@
 //go:build probe
 
-package main
+package cg50emu
 
 import (
 	"fmt"

@@ -141,7 +141,7 @@ an old snapshot with new peripherals; `probe_wait.py <addr>` characterizes any s
 ## Go port (emu_go/) — 2026-06-02, ~1000x faster, test-validated
 Python was the bottleneck (~45k instr/s). Ported the core to **Go** (emu_go/: memory.go,
 mmio.go, cpu.go, main.go) — faithful port of the Python core. Measured **~64 M instr/s**
-(40M-instr boot-to-alive in 0.62s vs ~10 min in Python). Run: `go -C emu_go run . [maxIns] [timerPeriod]`.
+(40M-instr boot-to-alive in 0.62s vs ~10 min in Python). Run: `go -C emu_go run ./cmd/cg50emu [maxIns] [timerPeriod]`.
 
 ### Test harness (Python = oracle; Go held to the same frozen contract)
 Goal: validate the Go port via `go test`, not ad-hoc runs. Two layers, both generated

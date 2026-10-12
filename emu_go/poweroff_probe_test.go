@@ -1,6 +1,6 @@
 //go:build probe
 
-package main
+package cg50emu
 
 // Probe (2026-10-09, wiki os/boot.md): SHIFT+AC/ON at the MAIN MENU (the OS's power-off), then
 // AC/ON to switch back on. Single-steps from the AC/ON press and logs, in order: entries into

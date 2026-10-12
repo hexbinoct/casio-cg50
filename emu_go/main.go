@@ -1,4 +1,4 @@
-package main
+package cg50emu
 
 import (
 	"bufio"
@@ -89,8 +89,10 @@ func dumpFB(mem *Memory, cached uint32, path string) {
 }
 
 // Runner: boot the 3.60 full flash and run, optionally with the periodic timer.
-// Usage: go run . [maxIns] [timerPeriod]   (timerPeriod 0 = no interrupts)
-func main() {
+// Usage: go -C emu_go run ./cmd/cg50emu [maxIns] [timerPeriod]   (timerPeriod 0 = no interrupts)
+// Main is the command-line entry point (cmd/cg50emu): the RE/diagnostic modes and the plain
+// web UI. The core itself is the Emulator API (emulator.go).
+func Main() {
 	maxIns := uint64(2_000_000)
 	var timerPeriod uint64 = 0
 	if len(os.Args) > 1 {

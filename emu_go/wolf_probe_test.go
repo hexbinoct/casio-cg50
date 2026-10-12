@@ -1,6 +1,6 @@
 //go:build probe
 
-package main
+package cg50emu
 
 // Probe (2026-10-10): ~/main/casio/wolf3d_cg50 runs Kelli's fx-9860 Wolfenstein 3D (.g1a) on the
 // CG50 through a shim (the game's code unchanged at 0x00300200, its syscalls and LCD routine

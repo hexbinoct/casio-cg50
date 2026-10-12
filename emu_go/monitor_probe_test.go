@@ -1,6 +1,6 @@
 //go:build probe
 
-package main
+package cg50emu
 
 // Probe (2026-10-04, on-device debugger stage 2): can a UBC breakpoint armed while the OS sits
 // in the MAIN MENU stop an add-in at its first instruction? The harness powers the UBC on,

@@ -1,6 +1,6 @@
 //go:build probe
 
-package main
+package cg50emu
 
 // Probe (2026-10-11) for ~/main/casio/codeview_cg50 (a source viewer for the PRGM app):
 // what the OS's own detokenizer returns and what main memory holds.

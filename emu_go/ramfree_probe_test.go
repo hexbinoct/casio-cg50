@@ -1,6 +1,6 @@
 //go:build probe
 
-package main
+package cg50emu
 
 // Probe (2026-10-04, on-device debugger stage 0): which physical RAM stays free (never written,
 // ideally never read) while the OS and gint add-ins run — the place for a resident debugger

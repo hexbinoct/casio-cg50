@@ -1,4 +1,4 @@
-package main
+package cg50emu
 
 // SH7305 RTC at 0xA413FEC0 (SH7724-compatible layout) — the OS's coarse time base.
 // RE'd cont.18m: the OS idle path (0x802ae742) sets RCR2.PES = 1/2 s right before `sleep`

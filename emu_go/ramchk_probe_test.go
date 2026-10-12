@@ -1,6 +1,6 @@
 //go:build probe
 
-package main
+package cg50emu
 
 // Probe (2026-10-04, on-device debugger stage 2a): cg50_addons/ramchk (RAMCHK.g3a) checks on the
 // real calculator that physical DRAM 0x0C4E0000-0x0C7FFFFF stays untouched while it is used

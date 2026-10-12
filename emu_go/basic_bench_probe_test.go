@@ -1,6 +1,6 @@
 //go:build probe
 
-package main
+package cg50emu
 
 // Probe (2026-10-11, ~/main/casio/basic_cg50): Casio BASIC speed on the 32 MB dump — the OS's
 // own PRGM app, and later C.Basic, running the same benchmark programs.

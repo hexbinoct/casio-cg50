@@ -1,4 +1,4 @@
-package main
+package cg50emu
 
 // gtimer.go — the SH7305 timer units as an add-in kernel (gint) drives them (2026-09-28,
 // cg50_addons/dasm). The OS never needed them modelled: it keeps its own tick on the

@@ -1,6 +1,6 @@
 //go:build probe
 
-package main
+package cg50emu
 
 // Investigation probe for the HLE of the OS bitmap blitter 0x80056900 (cont.18u): logs every
 // call's descriptor (0x2c bytes at r4) and writer mode (r5) over a few workloads, with the

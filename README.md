@@ -93,10 +93,10 @@ instruction **conformance** test needs neither and runs standalone.
 # from the repo root, with your own flash_full.bin in os/flash_dump/
 
 # provision ONCE: boot fresh, drive first-boot setup to the MAIN MENU, snapshot a save-state
-go -C emu_go run . 450000000 30000 provision   # writes os/flash_dump/cg50_state.bin
+go -C emu_go run ./cmd/cg50emu 450000000 30000 provision   # writes os/flash_dump/cg50_state.bin
 
 # interactive: the calculator in your browser (screen + keyboard), resumes from the save-state
-go -C emu_go run . 0 30000 web                 # prints the http://127.0.0.1:<port> URL
+go -C emu_go run ./cmd/cg50emu 0 30000 web                 # prints the http://127.0.0.1:<port> URL
 ```
 
 **Warm boot — start at *your* calculator's MAIN MENU instead of first-boot setup.** A cold
@@ -106,8 +106,8 @@ skips the setup wizard only if that word is 1. `CG50_WARM=1` seeds it, so with a
 dump the emulator comes up exactly where your calculator was, add-ins and files included:
 
 ```sh
-CG50_WARM=1 go -C emu_go run . 600000000 30000 provision none   # no setup keys, just snapshot
-go -C emu_go run . 0 30000 web
+CG50_WARM=1 go -C emu_go run ./cmd/cg50emu 600000000 30000 provision none   # no setup keys, just snapshot
+go -C emu_go run ./cmd/cg50emu 0 30000 web
 ```
 
 `CG50_FLASH=<image>` and `CG50_STATE=<save-state>` point the emulator at another flash image

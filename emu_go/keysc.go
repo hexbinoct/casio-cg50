@@ -1,4 +1,4 @@
-package main
+package cg50emu
 
 // SH7305 key-scan unit (Casio "KIU", SH7724-style KEYSC) at 0xA44B0000 — the real path a
 // keypress takes into the OS. Reverse-engineered (cont.18l) from the 3.60 keyboard ISR

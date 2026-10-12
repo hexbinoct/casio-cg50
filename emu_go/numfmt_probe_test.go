@@ -1,6 +1,6 @@
 //go:build probe
 
-package main
+package cg50emu
 
 // Probe (2026-10-11, for the wiki's Number format page): type numbers into Run-Matrix and
 // record the BCD values the OS hands to the result formatter (0x800FC5A4) and to the BCD

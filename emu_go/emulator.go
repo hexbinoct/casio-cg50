@@ -1,4 +1,4 @@
-package main
+package cg50emu
 
 // Emulator is a self-contained facade over the SH7305 core (CPU + memory + MMIO) with a
 // thread-safe key interface, framebuffer access, save-state, and a real-time paced run loop.
@@ -62,6 +62,9 @@ type Emulator struct {
 	// host process (on Android that closed the app). Resume clears it.
 	fault     string
 	pendingUp []pendingRelease // KeyUp releases deferred until the minimum hold elapses
+	// pendingDown: KeyDowns that arrived while an earlier key's release was still deferred,
+	// queued so presses never overlap (see KeyDown).
+	pendingDown []pendingPress
 
 	// What the user sees is the LCD controller's GRAM (mmio.lcd, lcd.go): the OS updates it
 	// by DMA-pushing VRAM (whole frames, so a redraw in progress — the "no graphics driver"
@@ -93,6 +96,22 @@ func NewEmulator(flash []byte) *Emulator {
 	return e
 }
 
+// SetWarmBoot sets the IL RAM restart flag (0xFD8017DC = 1) so a cold boot skips first-boot
+// setup, as the OS's own restart does (CG50_WARM; wiki os/boot.md). Call before the first Step.
+func (e *Emulator) SetWarmBoot() { e.mu.Lock(); defer e.mu.Unlock(); e.mem.W32(warmFlagAddr, 1) }
+
+// FlashImage returns a copy of the whole writable flash (32 MB): the image the machine was
+// built from plus everything the OS has written since (installed files, settings). A new
+// Emulator built from it is the calculator after its RESTART button: storage kept, RAM lost.
+func (e *Emulator) FlashImage() []byte {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return append([]byte(nil), e.mem.flash...)
+}
+
+// SetDebugLog routes one-line key-path diagnostics to f (nil turns them off).
+func (e *Emulator) SetDebugLog(f func(string)) { e.mu.Lock(); defer e.mu.Unlock(); e.dbg = f }
+
 // presentFrame counts a VRAM->LCD DMA push (the DMAC has already streamed it into GRAM).
 // Called from the bus while Step holds mu.
 func (e *Emulator) presentFrame(sar uint32) { e.pushes++ }
@@ -122,10 +141,29 @@ func (e *Emulator) InjectKey(row, col uint32) {
 // the host's up arrives sooner (a fast tap can deliver down+up while Step holds the mutex
 // for a whole slice, i.e. before a single instruction runs in between), the release is
 // deferred so the OS ISR still sees the key.
+//
+// Fast typing: a host can deliver a whole burst (down, up, down, up, ...) faster than one
+// minimum hold. Pressing the next key while the previous one is still held for its minimum
+// would show the OS two keys at once, and it takes neither. So a KeyDown that arrives while
+// another key's release is deferred (or while presses are already queued) is queued itself:
+// it goes down tapGapScans scans after that release, as when a person types.
 func (e *Emulator) KeyDown(row, col uint32) {
 	e.mu.Lock()
-	e.mmio.keysc.press(row, col)
-	e.downAt[[2]uint32{row, col}] = e.cpu.cycles
+	key := [2]uint32{row, col}
+	if len(e.pendingUp) != 0 || len(e.pendingDown) != 0 {
+		minHold := tapHoldScans * e.mmio.keysc.scanPeriod
+		at := e.cpu.cycles
+		for _, p := range e.pendingUp {
+			at = max(at, p.at)
+		}
+		for _, p := range e.pendingDown {
+			at = max(at, p.at+minHold)
+		}
+		e.pendingDown = append(e.pendingDown, pendingPress{key: key, at: at + tapGapScans*e.mmio.keysc.scanPeriod})
+	} else {
+		e.mmio.keysc.press(row, col)
+		e.downAt[key] = e.cpu.cycles
+	}
 	cyc := e.cpu.cycles
 	e.mu.Unlock()
 	if e.dbg != nil {
@@ -139,7 +177,16 @@ func (e *Emulator) KeyUp(row, col uint32) {
 	minHold := tapHoldScans * e.mmio.keysc.scanPeriod
 	at, ok := e.downAt[key]
 	deferred := false
-	if ok && e.cpu.cycles-at < minHold {
+	queued := false
+	for i := range e.pendingDown { // not pressed yet: release it after its minimum hold
+		if p := &e.pendingDown[i]; p.key == key && !p.up {
+			p.up, queued = true, true
+			break
+		}
+	}
+	if queued {
+		deferred = true
+	} else if ok && e.cpu.cycles-at < minHold {
 		e.pendingUp = append(e.pendingUp, pendingRelease{key, at + minHold})
 		deferred = true
 	} else {
@@ -158,9 +205,26 @@ type pendingRelease struct {
 	at  uint64
 }
 
-// flushReleases applies deferred KeyUp releases whose minimum hold has elapsed. Caller holds mu.
+type pendingPress struct {
+	key [2]uint32
+	at  uint64 // cycle at which it goes down
+	up  bool   // the host already released it: release after the minimum hold
+}
+
+// flushReleases applies deferred KeyUp releases whose minimum hold has elapsed, and presses
+// queued KeyDowns whose time has come. Caller holds mu.
 func (e *Emulator) flushReleases() {
 	now := e.cpu.cycles
+	for len(e.pendingDown) != 0 && now >= e.pendingDown[0].at {
+		p := e.pendingDown[0]
+		e.pendingDown = e.pendingDown[1:]
+		e.mmio.keysc.press(p.key[0], p.key[1])
+		if p.up {
+			e.pendingUp = append(e.pendingUp, pendingRelease{p.key, now + tapHoldScans*e.mmio.keysc.scanPeriod})
+		} else {
+			e.downAt[p.key] = now
+		}
+	}
 	kept := e.pendingUp[:0]
 	for _, p := range e.pendingUp {
 		if now >= p.at {
@@ -207,6 +271,7 @@ func (e *Emulator) ReleaseAllKeys() {
 	e.mmio.keysc.releaseAll()
 	e.tap = keyTapper{}
 	e.pendingUp = nil
+	e.pendingDown = nil
 	for k := range e.downAt {
 		delete(e.downAt, k)
 	}
@@ -235,21 +300,21 @@ func (e *Emulator) stepLocked(n int) {
 		}
 	}()
 	// Devices only act at scheduled cycles (KEYSC scan, periodic timer, RTC periodic IRQ, key
-	// tapper press/release), so polling them before every instruction is wasted work. The slow
-	// path below is exactly the old per-instruction loop body; it runs whenever something may
-	// be due: at/after `due`, after any MMIO write (event times may have moved), with deferred
-	// key releases pending, or at the first iteration (host calls happen between Steps). In
+	// tapper press/release, deferred KeyUp/KeyDown), so polling them before every instruction
+	// is wasted work. The slow path below is exactly the old per-instruction loop body; it runs
+	// whenever something may be due: at/after `due`, after any MMIO write (event times may have
+	// moved), or at the first iteration (host calls happen between Steps). In
 	// between, the CPU runs alone — and while it sleeps with nothing pending, time jumps
 	// straight to the next event (the old loop only incremented cycles there).
 	end := e.cpu.cycles + uint64(n)
 	e.mmio.dirty = true
 	for e.cpu.cycles < end {
-		if e.mmio.dirty || e.cpu.cycles >= e.due || e.exactTick || len(e.pendingUp) != 0 {
+		if e.mmio.dirty || e.cpu.cycles >= e.due || e.exactTick {
 			e.mmio.dirty = false
 			e.mmio.tick(e.cpu)
 			e.cpu.step()
 			e.tap.drive(e.mmio.keysc, e.cpu.cycles)
-			if len(e.pendingUp) != 0 {
+			if len(e.pendingUp) != 0 || len(e.pendingDown) != 0 {
 				e.flushReleases()
 			}
 			e.due = e.nextDue()
@@ -293,6 +358,13 @@ func (e *Emulator) nextDue() uint64 {
 			d = min(d, m.rtc.nextPeriodic)
 		}
 		d = min(d, m.etmu2.next(), m.tmu.next()) // gint's timers (gtimer.go)
+	}
+	// deferred key releases and queued presses (KeyUp/KeyDown) are events like any other
+	for _, p := range e.pendingUp {
+		d = min(d, p.at)
+	}
+	if len(e.pendingDown) != 0 {
+		d = min(d, e.pendingDown[0].at)
 	}
 	tapAt := uint64(0)
 	switch {
@@ -385,6 +457,7 @@ func (e *Emulator) Resume(blob []byte) error {
 	e.cpu.pending = nil
 	e.tap = keyTapper{}
 	e.pendingUp = nil
+	e.pendingDown = nil
 	for k := range e.downAt {
 		delete(e.downAt, k)
 	}
