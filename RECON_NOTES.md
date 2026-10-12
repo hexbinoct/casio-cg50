@@ -9,7 +9,35 @@
   pending, so the next session can continue without being reminded.
 ============================================================================= -->
 
-> ## ⏯ RESUME HERE (last session end: 2026-10-11, cont.19f = six new wiki pages, office)
+> ## ⏯ RESUME HERE (last session end: 2026-10-12, cont.19g = CG50 Studio desktop app, office)
+>
+> **New: CG50 Studio** (`app/`, Wails v2, a CEmu-like app for experimenting and add-in
+> development; `app/README.md`). Milestone 1 works, checked end to end in the dev page: open a
+> dump (16 MB or 32 MB; first-run welcome card), skin + clickable keypad + keyboard (held keys,
+> ALPHA+letter), speeds 1×/2×/4×/Max (1× = 45 M/s, wall-clock paced; Max never below 1× and only
+> races while the CPU works), quick slot + state files tied to the dump hash, session saved on
+> quit / every 2 min and resumed, install `.g3a` by dialog or drop (needs the 32 MB dump — NOT
+> tested at the office, the 32 MB dump is only on the Mac), Restart (storage kept), screenshots.
+> Colours: OKLCH tokens + rationale at the top of `app/frontend/css/app.css` (user asked for a
+> colour-theory design, not the usual themes; it can change later).
+> **Core changes:** `emu_go/` is now the library package `cg50emu`: CLI = `go -C emu_go run
+> ./cmd/cg50emu …` (all docs updated), Android bridge moved to `emu_go/android/bridge.go`
+> (needs an empty `main()` for c-shared; `android/build_go_lib.py` builds it, checked). New
+> host API `FlashImage`, `SetWarmBoot`, `SetDebugLog`. **Key bursts fixed:** a KeyDown arriving
+> while an earlier key's release is still deferred is now queued (pressed tapGapScans after it),
+> so fast typing no longer shows the OS two keys at once (it drops both); pending key events are
+> scheduled through `nextDue` instead of forcing the per-instruction slow path (that had dropped
+> the speed to 5% while keys were queued). `TestKeyBurstNoOverlap`, `hostapi_test.go`; full
+> suite green.
+> **Ideas the user asked to keep (2026-10-12):** (1) a separate repo for SH-4 things alone —
+> the disassembler, the CPU emulator core, conformance tests — for people working with SH-4 who
+> have nothing to do with the CG50; (2) CG50 Studio may move to its own repo later (only
+> `app/go.mod`'s `replace` ties it here).
+> **Next:** milestone 2, the debugger (debug API in the core with tests: pause/step/over/out,
+> breakpoints/watchpoints, registers, a Go disassembler with syscall names, memory view);
+> try install + the 32 MB dump on the Mac.
+
+> ## ⏯ RESUME HERE (previous: 2026-10-11, cont.19f = six new wiki pages, office)
 >
 > **Wiki: all six planned pages written** (one agent per page, facts checked in the 3.60 image and
 > with new `-tags probe` tests; list + what's left in `wiki/README.md` → "Pages"): MMU and add-in

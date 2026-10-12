@@ -47,8 +47,16 @@ The **Python emulator (`emu/`) is the reference oracle**, not dead code.
   any new/edge instruction behaviour; (2) prove the Go port still matches with `go -C emu_go test .`
   (conformance 68/68 incl. MMU cases, 2M-instr golden boot, the three device transcripts, and the
   scheduled-vs-exact equivalence test). Never validate the port by ad-hoc running and eyeballing.
-- Run the Go emulator: `go -C "F:/ru/myprojects/may/cg50/emu_go" run . [maxIns] [timerPeriod] [mode]`
+- `emu_go/` is the **library package `cg50emu`** (since 2026-10-12; tests stay in it, so
+  `go -C emu_go test .` is unchanged). Its users: the command line `emu_go/cmd/cg50emu`, the
+  Android C bridge `emu_go/android/` (built by `android/build_go_lib.py`), and the desktop app.
+- Run the Go emulator: `go -C "F:/ru/myprojects/may/cg50/emu_go" run ./cmd/cg50emu [maxIns] [timerPeriod] [mode]`
   (no leading `cd`; the `-C` flag keeps the allowlist token = `go`). `mode=ftl` probes flash-FTL returns.
+- **The desktop app, CG50 Studio** (`app/`, Wails v2, its own module with
+  `replace cg50emu => ../emu_go`): `python app/dev.py` (dev window + http://localhost:34115,
+  where the Go bindings work too, so the page can be inspected in Chrome) and
+  `python app/dev.py build`. Plain HTML/CSS/JS in `app/frontend/`, no npm. `app/README.md`.
+  **When testing, launch it with `--hidden` (or `--min`)**: a window popping up takes the user's focus.
 - Boots the real **3.60** flash. Two images in `os/flash_dump/`: `flash_full.bin` (the June 16 MB dump:
   the goldens, the suite and `cg50_state.bin` are built on it — keep it) and `flash_full_32mb.bin` (the
   whole 32 MB flash, incl. all of the storage memory fls0) with its own `cg50_state_32mb.bin`, booted

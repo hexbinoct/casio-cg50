@@ -1,6 +1,8 @@
 # Plan: the emulator as the everyday test device (desktop app + web via WASM)
 
-*Written 2026-09-30. Status: idea, agreed direction, nothing built yet.*
+*Written 2026-09-30. Status (2026-10-12): the installer (1) is done; the desktop app (2) is
+built as **CG50 Studio** in `app/` with Wails (Go + the system web view) rather than a Go web
+server, milestone 1 working (see `app/README.md`); next its debugger, then the WASM build (3).*
 
 ## Why
 
@@ -28,7 +30,7 @@ Target experience:
 |---|---|---|
 | Core (CPU, MMU, INTC, timers, DMAC, LCD, KEYSC, RTC, NOR flash) | `emu_go/` | pure Go, 64–85 M instr/s native |
 | Warm boot from a full dump, own save-state | `CG50_FLASH`, `CG50_STATE`, `CG50_WARM` | done (cont.18w) |
-| Browser UI | `emu_go/webui.go`, `go -C emu_go run . 0 30000 web` | works but plain: stdlib server, PNG frames polled, keyboard only |
+| Browser UI | `emu_go/webui.go`, `go -C emu_go run ./cmd/cg50emu 0 30000 web` | works but plain: stdlib server, PNG frames polled, keyboard only |
 | Calculator skin + keypad + haptics + save-state on pause | `android/` (`KeypadView.kt`, `KeyMap.kt`) | done on the phone; the layout data can be reused |
 | Running a fresh `.g3a` | probes `dasm_swap_test.go` / `dasm_real_test.go` | a hack: swap code pages into an add-in that is already installed |
 | WASM build | `GOOS=js GOARCH=wasm go build` in `emu_go/` | **compiles as-is** (checked 2026-09-30, 11 MB before trimming); the cgo part is Android-only |
@@ -56,6 +58,10 @@ options:
 - (c) The swap trick as the product: fragile, and the add-in never really exists as a file.
 
 ### 2. One front-end for desktop and web
+
+> **Built (2026-10-12):** `app/`, CG50 Studio, with Wails v2: the window is a web page
+> (`app/frontend/`, plain HTML/CSS/JS) and the Go side serves frames at `/frame`. The same page
+> is meant to run in the browser over the WASM core later.
 
 A single HTML/JS/canvas front-end used by both builds:
 
