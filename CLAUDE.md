@@ -45,7 +45,7 @@ The **Python emulator (`emu/`) is the reference oracle**, not dead code.
   `python emu/conformance_gen.py && python emu/gen_golden.py`, plus `python emu/keysc_selftest.py`,
   `emu/lcd_selftest.py`, `emu/adc_selftest.py` for those devices — and add new conformance cases for
   any new/edge instruction behaviour; (2) prove the Go port still matches with `go -C emu_go test .`
-  (conformance 68/68 incl. MMU cases, 2M-instr golden boot, the three device transcripts, and the
+  (conformance 86/86 incl. MMU and exception cases, 2M-instr golden boot, the three device transcripts, and the
   scheduled-vs-exact equivalence test). Never validate the port by ad-hoc running and eyeballing.
 - `emu_go/` is the **library package `cg50emu`** (since 2026-10-12; tests stay in it, so
   `go -C emu_go test .` is unchanged). Its users: the command line `emu_go/cmd/cg50emu`, the

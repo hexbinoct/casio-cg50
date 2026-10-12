@@ -4,6 +4,8 @@ A desktop app around the fx-CG50 emulator in [`../emu_go`](../emu_go): the real 
 running in a window, for trying things out and developing add-ins. Windows, macOS and Linux,
 built with [Wails](https://wails.io) (Go + the system's web view).
 
+![CG50 Studio showing the MAIN MENU](../docs/images/cg50-studio.jpeg)
+
 It ships no Casio software. You open a dump of your own calculator's flash (16 MB, or the
 whole 32 MB with the storage memory, which is what installing add-ins needs).
 

@@ -6,8 +6,9 @@
 </p>
 
 A from-scratch **hardware emulator and reverse-engineering toolkit for the Casio
-fx-CG50** (Prizm-family graphing calculator, Renesas **SH7305 / SH-4A** core), with an
-**Android app** that runs it on a phone.
+fx-CG50** (Prizm-family graphing calculator, Renesas **SH7305 / SH-4A** core), with a
+**desktop app, CG50 Studio** (Windows, macOS, Linux), and an **Android app** that runs it on a
+phone.
 
 The emulator boots the **real fx-CG50 OS (3.60) from reset** — PLL/clock bring-up, interrupt
 setup, the battery ADC, the NOR-flash (`fls0`) filesystem mount — to the MAIN MENU, and from
@@ -22,7 +23,8 @@ blinking cursor, and **third-party add-ins (`.g3a`)**.
 
 | Path | What |
 |------|------|
-| `emu_go/` | **The emulator (Go)** — the primary implementation. SH-4A core, the SH7305 memory map + MMU, and models of the peripherals the OS needs (below). Devices run only at their scheduled events and an idle CPU fast-forwards, so waiting is nearly free; a mid-range phone executes ~28 M instr/s of real work (the real calculator ~100 M). Also the desktop web UI and the cgo bridge for Android. |
+| `emu_go/` | **The emulator (Go)** — the primary implementation, the library package `cg50emu`. SH-4A core, the SH7305 memory map + MMU, and models of the peripherals the OS needs (below). Devices run only at their scheduled events and an idle CPU fast-forwards, so waiting is nearly free. Also the command line (`cmd/cg50emu`: diagnostic modes and a plain web UI) and the C bridge for Android (`android/`). |
+| `app/` | **CG50 Studio**, the desktop app ([Wails](https://wails.io): Go + the system's web view). See [CG50 Studio](#cg50-studio-the-desktop-app) below and [`app/README.md`](app/README.md). |
 | `emu/` | **The Python reference emulator** — the *oracle*. Slower, but the authoritative model the Go port is validated against; every CPU-visible behaviour exists in both. |
 | `emu/conformance.json` | Cross-language, curated SH-4 instruction conformance suite (synthetic — not derived from any OS). Both cores replay the same frozen cases. |
 | `android/` | **The Android app** (Kotlin + JNI over the Go core): the screen, a keypad drawn in the real fx-CG50 layout, save-state resume. See [`android/README.md`](android/README.md). |
@@ -63,13 +65,17 @@ blinking cursor, and **third-party add-ins (`.g3a`)**.
   pushes them (no half-drawn redraws).
 - ✅ **Android app** on a real phone: calculator-style keypad (F1–F6, D-pad, SHIFT/ALPHA
   legends), haptics, multi-touch, save-state on pause.
-- ✅ Go core validated against the Python oracle: **68-case** instruction/MMU conformance suite,
+- ✅ **CG50 Studio**, the desktop app: open your dump, a clickable keypad and the keyboard,
+  speeds from the real calculator's pace to as fast as the computer allows, save states,
+  install add-ins by dropping `.g3a` files, screenshots; it resumes where you left off.
+- ✅ Go core validated against the Python oracle: **86-case** instruction/MMU conformance suite,
   a 2000-checkpoint golden boot trace, and transcript parity for the KEYSC and LCD models.
 - ✅ All keys behave like the real calculator (checked by hand on the phone, and every label
   audited against the codes the OS produces).
-- ⏳ Planned: the emulator as the everyday test device — a good-looking desktop app that
-  installs and runs any `.g3a` you drop on it, and the same app in the browser via WebAssembly
-  (the core already compiles to WASM). Plan: [`docs/DESKTOP_AND_WEB.md`](docs/DESKTOP_AND_WEB.md).
+- ⏳ Next for CG50 Studio: a debugger (pause and step, breakpoints and watchpoints, registers,
+  disassembly with syscall names, a memory view), then developer comforts (reinstall on
+  rebuild, GIF recording, a profiler), then the same app in the browser via WebAssembly (the
+  core already compiles to WASM). Plan: [`docs/DESKTOP_AND_WEB.md`](docs/DESKTOP_AND_WEB.md).
 - ⏳ Next: speed — held-key menu scrolling on a phone is still ~⅔ of the real calculator (ask
   Android for CPU clocks via performance hints; run the OS's bitmap blitter natively), then skin
   polish (S/A annunciator state on the keys).
@@ -87,7 +93,49 @@ This repo intentionally ships **no** Casio code. Dump your own fx-CG50:
 Tests that need the flash image or a save-state self-skip when they are absent. The
 instruction **conformance** test needs neither and runs standalone.
 
-## Build & run (desktop)
+## CG50 Studio, the desktop app
+
+The easiest way to use the emulator: the calculator in a window, with a keypad you can click,
+your keyboard, save states, and add-in installs by drag and drop.
+
+<p align="center">
+  <img src="docs/images/cg50-studio.jpeg" width="760"
+       alt="CG50 Studio on Windows: the fx-CG50 MAIN MENU on a large screen beside a clickable keypad, with run, speed, save, load, screenshot and install buttons above and the running speed below">
+</p>
+
+**Build it** (needs Go and, once, the Wails CLI; on Windows the WebView2 runtime, which
+Windows 10/11 already has; on Linux WebKitGTK):
+
+```sh
+go install github.com/wailsapp/wails/v2/cmd/wails@latest
+python app/dev.py build        # -> app/build/bin/cg50studio(.exe)
+python app/dev.py              # or: development mode with live reload
+```
+
+**Use it:**
+
+1. Start `cg50studio` and click **Open flash dump…** (or drop the `.bin` on the window). It
+   checks that the file is a 16 MB or 32 MB fx-CG50 dump. With the whole 32 MB it starts at
+   your calculator's own MAIN MENU; a 16 MB dump starts in first-boot setup.
+2. Use the calculator: click the keys, or type. Enter = EXE, Backspace = DEL, Esc = EXIT,
+   Home = MENU, End = AC/ON, arrows, F1–F6, Tab = SHIFT, `` ` `` = ALPHA, a–z = ALPHA + that
+   letter, Page Up/Down = OPTN/VARS. Keys you hold stay held, so games work. ⋯ → Keyboard
+   shortcuts lists them all.
+3. **Install add-ins:** drop `.g3a` files on the window (or **Install add-in**). The OS itself
+   writes them to the storage memory, and they appear in the MAIN MENU. This needs the 32 MB dump.
+4. **Speed:** 1× is the real calculator's pace; 2×, 4×, and **Max** (as fast as the computer
+   allows while the calculator computes; an idle calculator stays at 1×).
+5. **States:** **Save** / **Load** (Ctrl+S / Ctrl+L) is a quick slot; ⋯ → Save state as… /
+   Open state… use files. Closing the app saves where you were, and the next start resumes
+   there.
+6. **Screenshot** (Ctrl+P, or ⋯ for 2× and 3×), **Run/Pause** (F8), **Restart** (Ctrl+R: the
+   calculator's RESTART, storage kept), and ⋯ → **Back to the dump as saved** to forget
+   everything stored since.
+
+Its settings and saved sessions live in the user's config folder under `CG50 Studio/`. More:
+[`app/README.md`](app/README.md).
+
+## Command line (diagnostics and the plain web UI)
 
 ```sh
 # from the repo root, with your own flash_full.bin in os/flash_dump/
@@ -131,7 +179,7 @@ See [`android/README.md`](android/README.md): cross-compile the Go core with
 ## Tests
 
 ```sh
-go -C emu_go test .                  # conformance (68) + golden boot + device/e2e tests
+go -C emu_go test .                  # conformance (86) + golden boot + device/e2e tests
 python emu/conformance_gen.py        # regenerate the frozen conformance cases (oracle)
 python emu/gen_golden.py             # regenerate the golden boot trace (oracle)
 python emu/test_cpu.py               # replay the conformance cases on the Python core
