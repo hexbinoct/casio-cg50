@@ -1,0 +1,17 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "CG50 Studio",
+  "outputfilename": "cg50studio",
+  "frontend:dir": "frontend",
+  "frontend:install": "",
+  "frontend:build": "",
+  "assetdir": "frontend",
+  "reloaddirs": "frontend",
+  "author": {
+    "name": "hexbinoct"
+  },
+  "info": {
+    "productName": "CG50 Studio",
+    "comments": "An fx-CG50 emulator for experimenting and developing add-ins"
+  }
+}

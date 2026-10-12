@@ -1,0 +1,4 @@
+build/bin/
+frontend/wailsjs/
+# the repo ignores *.png (probe screenshots); the icon is source
+!build/appicon.png

@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CG50 Studio</title>
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5z" fill="currentColor"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24"><rect x="6.5" y="5" width="4" height="14" rx="1" fill="currentColor"/><rect x="13.5" y="5" width="4" height="14" rx="1" fill="currentColor"/></symbol>
+    <symbol id="i-save" viewBox="0 0 24 24"><path d="M5 4h11l3 3v13H5z M8 4v5h7V4 M8 20v-6h8v6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></symbol>
+    <symbol id="i-load" viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.4-5.7M4 4.5v4h4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-camera" viewBox="0 0 24 24"><path d="M4 8h3.5L9 5.5h6L16.5 8H20v11H4z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><circle cx="12" cy="13.5" r="3.3" fill="none" stroke="currentColor" stroke-width="1.7"/></symbol>
+    <symbol id="i-add" viewBox="0 0 24 24"><path d="M12 3.5l7.5 4.2v8.6L12 20.5l-7.5-4.2V7.7z M12 9v6 M9 12h6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round"/></symbol>
+    <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5.5" cy="12" r="1.8" fill="currentColor"/><circle cx="12" cy="12" r="1.8" fill="currentColor"/><circle cx="18.5" cy="12" r="1.8" fill="currentColor"/></symbol>
+    <symbol id="i-chip" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M9 3v3M15 3v3M9 18v3M15 18v3M3 9h3M3 15h3M18 9h3M18 15h3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol>
+  </defs>
+</svg>
+
+<header class="bar">
+  <div class="brand"><div class="brand-mark"></div>CG50 Studio</div>
+  <button class="chip" id="dumpChip" title="Open a flash dump (Ctrl+O)">
+    <svg width="15" height="15"><use href="#i-chip"/></svg><span class="name" id="dumpName">No flash dump</span>
+  </button>
+  <div class="spacer"></div>
+
+  <div class="group">
+    <button class="btn primary run" id="runBtn" title="Run / pause (F8)"><svg><use href="#i-pause"/></svg><span>Pause</span></button>
+    <div class="seg" id="speedSeg" title="Speed: 1× is the real calculator's pace">
+      <button data-speed="1x">1×</button><button data-speed="2x">2×</button><button data-speed="4x">4×</button><button data-speed="max">Max</button>
+    </div>
+  </div>
+  <div class="sep"></div>
+  <div class="group">
+    <button class="btn" id="saveBtn" title="Save state to slot 1 (Ctrl+S)"><svg><use href="#i-save"/></svg>Save</button>
+    <button class="btn" id="loadBtn" title="Load state from slot 1 (Ctrl+L)"><svg><use href="#i-load"/></svg>Load</button>
+  </div>
+  <div class="sep"></div>
+  <div class="group">
+    <button class="btn icon" id="shotBtn" title="Screenshot (Ctrl+P)"><svg><use href="#i-camera"/></svg></button>
+    <button class="btn" id="installBtn" title="Install add-ins (Ctrl+I), or drop .g3a files on the window"><svg><use href="#i-add"/></svg>Install add-in</button>
+    <div class="menu" id="menu">
+      <button class="btn icon" id="menuBtn" title="More"><svg><use href="#i-more"/></svg></button>
+      <div class="menu-list">
+        <button data-act="openDump">Open flash dump…<kbd>Ctrl+O</kbd></button>
+        <hr>
+        <button data-act="saveAs">Save state as…</button>
+        <button data-act="openState">Open state…</button>
+        <hr>
+        <button data-act="shot2">Screenshot at 2×</button>
+        <button data-act="shot3">Screenshot at 3×</button>
+        <hr>
+        <button data-act="restart">Restart the calculator<kbd>Ctrl+R</kbd></button>
+        <button data-act="forget" class="danger">Back to the dump as saved…</button>
+        <hr>
+        <button data-act="help">Keyboard shortcuts</button>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main class="stage" id="stage">
+  <div class="device" id="device">
+    <div class="screen-col">
+      <div class="screen-well"><canvas id="screen" width="396" height="224"></canvas></div>
+      <div class="engrave">CG50 Studio</div>
+    </div>
+    <div class="keypad" id="keypad"></div>
+  </div>
+
+  <div class="welcome" id="welcome" hidden>
+    <div class="card">
+      <h1>Start with your own calculator</h1>
+      <p>CG50 Studio runs the real fx-CG50 operating system, from a copy of your own calculator's
+        flash. It ships no Casio software.</p>
+      <ol class="steps">
+        <li><span class="n">1</span><span>Make a dump of your calculator's flash with a dumper add-in.<br><span class="sub">The whole 32 MB, storage memory included, is best: your files and add-ins come along, and installing works.</span></span></li>
+        <li><span class="n">2</span><span>Copy the <span class="mono">.bin</span> file to this computer.</span></li>
+        <li><span class="n">3</span><span>Open it here. Next time CG50 Studio resumes right where you left it.</span></li>
+      </ol>
+      <div class="actions">
+        <button class="btn primary" id="welcomeOpen">Open flash dump…</button>
+        <span>or drop the file on this window</span>
+      </div>
+    </div>
+  </div>
+</main>
+
+<footer class="status">
+  <div class="state"><span class="dot" id="dot"></span><span id="stateText">No dump</span></div>
+  <span id="speedText" class="mono"></span>
+  <span id="mipsText" class="mono"></span>
+  <span id="pcText" class="mono"></span>
+  <span id="faultText" class="fault-text"></span>
+  <span class="hint">Drop .g3a files anywhere to install · Esc = EXIT · Home = MENU</span>
+</footer>
+
+<div class="toasts" id="toasts"></div>
+
+<dialog id="help">
+  <h2>Keyboard</h2>
+  <p>Click the window first. Keys you hold stay held on the calculator, so games work.</p>
+  <div class="keys-table" id="keysTable"></div>
+  <button class="btn close" id="helpClose">Close</button>
+</dialog>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
