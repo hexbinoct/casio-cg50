@@ -50,11 +50,41 @@ func (e *Emulator) InstallAddin(name string, g3a []byte) error {
 	return nil
 }
 
+// InstallFile writes any file to \\fls0\<name> (replacing a file of that name) through the
+// OS's own Bfile calls, as a USB copy to the calculator would: data files an add-in reads,
+// such as a ROM image. name is a plain file name such as "TI84CE.rom". Like InstallAddin it
+// works at the MAIN MENU and in the built-in apps (it steps into Run-Matrix and back from the
+// MAIN MENU); while an add-in runs it returns errNotIdle.
+func (e *Emulator) InstallFile(name string, data []byte) error {
+	if err := checkFileName(name); err != nil {
+		return err
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	for i := 0; i < 50 && !e.cpu.sleeping; i++ {
+		e.stepLocked(1_000_000)
+	}
+	if e.atMainMenu() {
+		e.tapAndSettle(6, 2, 0) // 1: Run-Matrix
+		defer e.tapAndSettle(3, 8, 1)
+	}
+	if !e.osIdle() {
+		return errNotIdle
+	}
+	return e.writeFileBudget(name, data, installBudget+1000*uint64(len(data)))
+}
+
 // writeFile creates \\fls0\<name> with data through the OS's Bfile syscalls. Caller holds
 // e.mu and has checked osIdle.
 func (e *Emulator) writeFile(name string, data []byte) error {
+	return e.writeFileBudget(name, data, installBudget)
+}
+
+// writeFileBudget is writeFile with a per-call instruction budget: creating a big file costs
+// the OS about 0.6 G instructions per MB (a 4 MB file takes ~2.8 G).
+func (e *Emulator) writeFileBudget(name string, data []byte, budget uint64) error {
 	call := func(what string, n uint32, args ...uint32) (int32, error) {
-		r, err := e.syscall(n, installBudget, args...)
+		r, err := e.syscall(n, budget, args...)
 		if err != nil {
 			return 0, fmt.Errorf("%s: %w", what, err)
 		}
@@ -134,12 +164,18 @@ func checkAddin(name string, g3a []byte) error {
 	switch {
 	case !strings.HasSuffix(strings.ToLower(name), ".g3a"):
 		return fmt.Errorf("install: %q is not a .g3a file name", name)
-	case len(name) > 40 || strings.ContainsAny(name, `\/:*?"<>|`):
-		return fmt.Errorf("install: bad file name %q", name)
 	case len(g3a) < 0x7000 || !bytes.Equal(g3a[:8], invertBytes([]byte("USBPower"))):
 		return fmt.Errorf("install: %s is not a .g3a add-in", name)
 	case len(g3a) > maxAddinSize:
 		return fmt.Errorf("install: %s is %d bytes; the OS lists add-ins up to %d", name, len(g3a), maxAddinSize)
+	}
+	return checkFileName(name)
+}
+
+// checkFileName rejects names that aren't a plain file in the storage memory root.
+func checkFileName(name string) error {
+	if name == "" || len(name) > 40 || strings.ContainsAny(name, `\/:*?"<>|`) {
+		return fmt.Errorf("install: bad file name %q", name)
 	}
 	for _, ch := range name {
 		if ch < 0x20 || ch > 0x7e {

@@ -218,3 +218,38 @@ func TestInstallAddinOverSuspendedAddin(t *testing.T) {
 		t.Fatalf("MENU after the install: fault %q, mmu %v", f, e.mem.mmuAt)
 	}
 }
+
+// InstallFile: any data file (odd size, not a .g3a) lands in \\fls0 byte for byte, replacing
+// an older file of that name, and the MAIN MENU comes back without a new icon.
+func TestInstallFile(t *testing.T) {
+	e := installState(t)
+	icons := menuIcons(t, e)
+	data := make([]byte, 100_001)
+	for i := range data {
+		data[i] = byte(i*7 + i>>9)
+	}
+	if err := e.InstallFile("DATA.bin", data); err != nil {
+		t.Fatal(err)
+	}
+	if got := readFile(t, e, "DATA.bin", len(data)); !bytes.Equal(got, data) {
+		t.Fatal("the file read back differs from what was installed")
+	}
+	small := []byte("replaced\n")
+	if err := e.InstallFile("DATA.bin", small); err != nil {
+		t.Fatal(err)
+	}
+	if got := readFile(t, e, "DATA.bin", len(small)); !bytes.Equal(got, small) {
+		t.Fatalf("after replacing: %q", got)
+	}
+	if n := menuIcons(t, e); n != icons {
+		t.Fatalf("menu icons %d -> %d, want unchanged", icons, n)
+	}
+	if e.mem.R8(osInMainMenu) != 1 || !e.osIdle() {
+		t.Fatal("not back at the MAIN MENU")
+	}
+	for _, name := range []string{"", `a\b.bin`, "x/y", "é.bin", "a*.rom"} {
+		if err := e.InstallFile(name, small); err == nil {
+			t.Errorf("name %q accepted", name)
+		}
+	}
+}

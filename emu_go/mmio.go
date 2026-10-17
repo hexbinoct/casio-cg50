@@ -115,10 +115,22 @@ func (d *dmac) write(va, size, val uint32) {
 		ch = 5
 	}
 	if (off&0xF) == 0xC && ch >= 0 && val&1 != 0 && val&2 == 0 {
+		if u := dmaUnit(val); d.regs[off-0xC]%u != 0 || d.regs[off-0xC+4]%u != 0 {
+			// an address not aligned to the transfer unit: the DMAC flags an address error
+			// (DMAOR.AE, bit 2) and transfers nothing, so TE never sets (gint's waits hang)
+			d.regs[0x60] |= 0x4
+			return
+		}
 		d.regs[off] = val | 0x2 // completes instantly
 		if d.regs[off-0xC+4]&0x1FFFFFFF == 0x14000000 {
 			sar := d.regs[off-0xC]
-			n := min(d.regs[off-0xC+8]*dmaUnit(val), 1<<20)
+			// TCR = 0 means 2^24 units on the SH7305 (a real calculator then streams whatever
+			// memory follows to the LCD for seconds: garbage on screen, then a hang)
+			count := d.regs[off-0xC+8] & 0xFFFFFF
+			if count == 0 {
+				count = 1 << 24
+			}
+			n := min(count*dmaUnit(val), 1<<20)
 			fixed := (val>>12)&3 == 0 // SM=00: the same source unit every time
 			if d.bus != nil && d.bus.lcd != nil && d.bus.cpu != nil {
 				if fixed {
