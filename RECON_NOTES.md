@@ -1969,102 +1969,9 @@
 >
 > ## ⏯ (prev session: 2026-05-31)
 >
-> ### Where we are in one line
-> **OS PACKER SOLVED — plain fx-CG50 OS 3.80 image extracted.** Path 1 (reverse the
-> updater's unpacker) succeeded end-to-end. Next: load the plain OS into Ghidra as SH-4A
-> big-endian @ 0x80000000 and begin the comprehensive study (memory map, MMIO, syscalls…).
->
-> ### ✅ PACKER CRACKED (2026-05-31) — it was gzip all along
-> Reversed `cg50_updater.exe` (SetupFile2) via GhidraMCP. The unpacker is `FUN_10004580(id)`:
-> it loads RT_RCDATA(0xa) id, **rebuilds a gzip stream**, and calls `FUN_100018d0` =
-> a thin **zlib 1.2.3** wrapper (`inflateInit2_(strm,windowBits=0x1f,"1.2.3",0x38)` →
-> `inflate(Z_FINISH)` → `inflateEnd`). windowBits 0x1f=31 ⇒ gzip.
-> Casio tampered the stored blob so it doesn't look like gzip:
->   1. the **10-byte gzip header is stripped** (updater restores it from DAT_101263a4 =
->      canonical `1F 8B 08 00 00 00 00 00 00 00`);
->   2. **one byte at compressed-stream offset 0x2ff6 is removed**, restored per-image as
->      **0x02** for the OS (3070/3071) or **0x1f** for the bootloader (3069).
-> Reconstruct + inflate:  `gziphdr(10) + res[:0x2ff6] + flag + res[0x2ff6:]`, wbits=31.
-> → script `re/unpack_os.py`. Output sizes match the updater's own malloc EXACTLY
->   (proof): OS = 0xb60000 (11,927,552 B), bootloader = 0x1077f (67,455 B).
->
-> ### ✅ Plain images written to `os/os_image/`
-> - **`cg50_os_3.80.plain.bin`** (0xb60000) = **fx-CG50 OS 3.80** ← OUR TARGET.
-> - `graph90_os_3.80.plain.bin` (0xb60000) = Graph 90+E (FR) OS.
-> - `bootloader_3.80.plain.bin` (0x1077f) = bootloader/preloader (3069).
-> Verified real (probe `re/probe_plain.py`): signatures **`CASIOABS/`** @0x338 and
-> **`CASIOWIN`**, version string **`3.80`** @0x20021, `GETKEY`/`VER` strings; entropy is
-> dense code (~7.0–7.4) for first ~8 MB then flat 0.0 padding (flash tail) — textbook firmware.
-> ⚠️ The OLD `os/os_image/cg50_os_3.80.bin` is the mislabeled Physium add-in — ignore; the
-> new `.plain.bin` is the genuine OS.
->
-> ### ⏭ NEXT — load into Ghidra & start the study
-> New flat-binary load: processor **SH-4A**, **big-endian**, base **0x80000000** (mirror
-> 0xA0000000). Then produce the deliverables below (memory map → MMIO inventory → syscalls
-> → boot/IRQ → display+keyboard). Cross-check against Heath123/casio-emu `os` branch.
-> (The x86 updater stays in Ghidra too if we want the USB-flash protocol later.)
->
-> ### (archived) Path-1 working state that got us here
-> - Updater binary in Ghidra: `os/msi_files/cg50_updater.exe` (clean copy of SetupFile2;
->   PE32 x86, base 0x10000000, entry 0x10101ae4). Staged by `re/prep_unpacker.py`.
-> - GhidraMCP registered as `ghidra` for this project in `C:\Users\ab\.claude.json`; live on
->   :8080. Key addrs: unpacker `FUN_10004580`, zlib-inflate wrapper `FUN_100018d0`,
->   gzip-header const `DAT_101263a4`, FindResourceW IAT slot `0x10125210`.
->
-> ### (prev) Where we are in one line
-> Officially-downloaded fx-CG50 OS 3.80 fully unwrapped. Add-ins extracted & decoded.
-> **Main OS located but PACKED** (custom-compressed inside the x86 updater). Next step is
-> to get a *plain* OS image, then load it into Ghidra and start the RE study.
->
-> ### ✅ DONE / SOLVED
-> 1. **Strategy set**: build a real hardware emulator (SH7305 / SH-4A, big-endian) of the
->    CG50 and run it on Android. **Ghidra-first**: reverse the OS into a hardware spec
->    BEFORE writing the emulator. (Unlike hp39gii, no host OS to shim — see body below.)
-> 2. **OS acquisition — DONE**: downloaded official OS 3.80 updater (public URL in body),
->    unwrapped `zip → InstallShield exe → MSI → ISSetupFile streams` (all under `os/`).
-> 3. **USBPower container format — SOLVED** (scripts in `re/`): header `[0x00:0x40]` plain,
->    payload `[0x40:]` bitwise-inverted. The 5 USBPower segments are the bundled **add-ins**
->    (Geometry, Physium, Picture Plot, 3D Graph, Prob Sim) — extractable cleanly.
-> 4. **Main OS — LOCATED**: embedded in `SetupFile2` (12 MB x86 PE) as `.rsrc` RCDATA blobs
->    (extracted to `os/pe2_rsrc/.rsrc/1033/RCDATA/`):
->    - `3070` (4.65 MB) = **fx-CG50 OS** ← our target.  `3071` = Graph 90+E (FR) OS.  `3069`
->      (43 KB) = bootloader.  All **compressed/encrypted** (entropy 7.99, custom packer).
-> 5. **Toolchain confirmed reusable** from hp39gii: Ghidra 12.0.4 + GhidraMCP (paths below),
->    7-Zip. New working rule: **drive multi-step work via one `python <script>` run** (see
->    `CLAUDE.md`) to avoid per-command approval prompts.
->
-> ### ⏭ NEXT ACTION — a DECISION is pending (was mid-question when session ended)
-> How to get past the OS packer to a plain image. User wanted to *clarify* before choosing.
-> Two routes (I recommended **Path 1**, possibly both in parallel):
->  - **Path 1 (no hardware): reverse the updater's unpacker.** Load `SetupFile2` (x86 PE)
->    into Ghidra, find the routine that decompresses RCDATA/3070, reimplement it in Python to
->    unpack the OS blob. Self-contained; reuses our x86 Ghidra workflow.
->  - **Path 2 (hardware): dump the physical CG50 over USB** (gint flash dump) for the live,
->    already-unpacked OS + boot ROM. Authoritative; worth doing eventually as a cross-check.
->
-> Clarifications the user may want first: compression-vs-encryption confidence & effort;
-> exact/safe dump procedure; whether community (casio-emu `os` branch, Simon Lothar, Cemetech
-> "Dumping/Finding Syscalls from a CG-50") already documented this packer / OS load layout.
->
-> ### After we have a plain OS image
-> Load it into Ghidra: flat binary, processor **SH-4A**, **big-endian**, base **0x80000000**
-> (mirror 0xA0000000). Then produce the study deliverables (memory map, MMIO register
-> inventory, syscall table, interrupt/boot sequence, display+keyboard drivers) = emulator spec.
->
-> ### Files & scripts produced this session (all under `F:\ru\myprojects\may\cg50\`)
-> - `os/update_380.zip`, `os/extracted/…` — the downloaded updater.
-> - `os/exe_unpacked/` — 7-Zip dump of the outer InstallShield exe.
-> - `os/msi_files/ISSetupFile.SetupFile1..7` — raw MSI streams (1,2 = PEs; 3–7 = add-ins).
-> - `os/decoded/fw3..fw7_*.bin` — whole-file NOT of the add-in streams (header-plain).
-> - `os/os_image/cg50_os_3.80.bin` — ⚠️ MISLABELED: this is actually the **Physium add-in**
->   (fw4), not the OS. Ignore/delete; real OS is the packed RCDATA/3070.
-> - `os/pe2_rsrc/.rsrc/1033/RCDATA/3069,3070,3071` — the packed OS/bootloader blobs.
-> - `re/parse_usbpower.py` — proves payload orientation, dumps container structure.
-> - `re/extract_os.py` — extracts a USBPower payload (used on fw4 → Physium).
-> - `re/find_os.py` — scans all streams for USBPower magic + OS markers (found OS in PE2).
-> - `re/dissect_pe.py` — PE section/overlay parse of SetupFile2.
-> - `re/extract_rsrc.py` — 7-Zip-extracts PE2 resources, ranks blobs (found RCDATA 3070/3071).
-> - `re/probe_rcdata.py` — entropy + codec probe of the RCDATA blobs (→ custom packer).
+> The first OS image studied (OS 3.80) came from Casio's public OS update before we had the
+> calculator at hand; the 2026-06-02 physical flash dump replaced it as the source of truth
+> (see above), and all later work runs from dumps of our own fx-CG50.
 
 Goal: run the Casio fx-CG50 (SH7305 / SuperH SH-4A) firmware on Android via a
 from-scratch-ish hardware emulator. Strategy decided with the user: **Ghidra-first**
@@ -2106,57 +2013,11 @@ the SH7305.
   Code after `claude mcp add`).
 - 7-Zip at `C:\Program Files\7-Zip\7z.exe`.
 
-## OS acquisition — DONE (official update route)
-Downloaded official **fx-CG50 OS 3.80** Windows updater (public, no hardware needed):
-`https://education.casio.co.uk/app/uploads/2023/05/fx-cg50_G90_series_update_380_2b.zip`
-
-Unwrap chain (all under `F:\ru\myprojects\may\cg50\os\`):
-1. `update_380.zip` (20 MB) → `extracted/.../*.exe` (InstallShield self-extractor).
-2. Running the `.exe` self-extracts its MSI to `%TEMP%\{GUID}\fx-CG50 Series OS Update.msi`
-   (it just waits for a calculator at the "connect" screen — can't flash anything with no
-   device; we killed it after grabbing the MSI). 7-Zip can also list the exe (`[0]` blob =
-   `InstallShield\0` archive, can't open directly — the run-and-grab-MSI route is the one
-   that worked).
-3. `7z e <msi> "ISSetupFile.SetupFile*"` → `os/msi_files/`. The MSI's ISSetupFile streams:
-   - SetupFile1 (64 KB) + SetupFile2 (12 MB) = **PE/MZ Windows exes** (the updater app) — ignore.
-   - **SetupFile3–7 = Casio firmware**, stored **bitwise-inverted**. Header `AA AC BD AF
-     90 88 9A 8D` == NOT("USBPower"). 5 segments, tags near 0xE0 (CGE1, …).
-4. `os/decoded/` = each firmware segment with whole-file bitwise-NOT applied:
-   - `fw3_770k.bin`, `fw4_1m8.bin` (largest, has a "VER$" string), `fw5_83k.bin`,
-     `fw6_329k.bin`, `fw7_406k.bin`. Each starts with clear-text `USBPower,` after NOT.
-   - Exactly ONE `USBPower` marker per file (single header, not repeating records).
-
-## USBPower container — SOLVED
-Format (learned empirically, scripts in `re/`):
-- `bytes[0x00:0x40]` = USBPower header, PLAIN text (`USBPower,` + fields, mostly 0xFF).
-- `bytes[0x40:]` = payload, stored **bitwise-inverted**. (The MSI additionally inverts the
-  whole file, so in the raw MSI stream the payload is already plain & the header inverted.)
-- To get plain payload: `raw_msi_stream[0x40:]`  ==  `NOT(decoded_file[0x40:])`.
-
-The 5 USBPower segments (fw3–fw7) are all **bundled ADD-INS**, not the OS:
-- fw3 = Geometry, fw4 = **Physium** (periodic table, biggest add-in), fw5 = Picture Plot,
-  fw6 = 3D Graph, fw7 = Prob Sim. (Each is a .g3a; payload begins with its name table.)
-
-## The main OS — LOCATED, but PACKED (current wall)
-The OS is NOT a USBPower file. It's embedded in **SetupFile2** (12 MB x86 PE updater), in
-its `.rsrc` (10.5 MB), as RCDATA resources (extracted to `os/pe2_rsrc/.rsrc/1033/RCDATA/`):
-- **RCDATA/3070** (4,654,493 B) and **RCDATA/3071** (4,654,460 B) = the OS for the two
-  models the "G90 series" updater serves (fx-CG50 intl + Graph 90+E FR). Identical first
-  32 bytes, diverging tails.
-- **RCDATA/3069** (42,889 B) = likely bootloader/preloader.
-- All three: **entropy ~7.99/8.0, all 256 byte values** → compressed or encrypted. Header
-  `EC BD 79 5C 5B 47 96 30 ...`. NOT standard zlib/gzip/xz/lz4/bzip2/lzma. Custom packer.
-
-### NEXT — two routes to a plain OS image (decision pending with user)
-1. **Reverse the updater's unpacker** (no hardware): load SetupFile2 (x86 PE) into Ghidra
-   — same toolchain we used on the hp39gii — find the routine that consumes RCDATA 3070/3069
-   and decompresses/decrypts it before USB-flashing; reimplement it to unpack the blobs.
-   Self-contained RE puzzle; gives the OS now.
-2. **Dump the physical CG50** (route B): gint USB flash dump → the live, already-unpacked OS
-   (plus boot ROM region the update lacks). Authoritative; needs the calculator + USB setup.
-   Recommended as a later cross-check regardless.
-
-Once unpacked: load plain OS @ 0x80000000, SH-4A, big-endian → begin the comprehensive study.
+## OS image
+The study started on OS 3.80 from Casio's public OS update (2026-05-31). Since 2026-06-02 the
+reference is the OS read straight out of our own calculator's flash (`os/flash_dump/`, then the
+whole 32 MB in `os/flash_dump_32mb/`): load it into Ghidra as a flat binary, SH-4A, big-endian,
+base 0x80000000.
 
 ## Comprehensive-study deliverables (the emulator's spec sheet)
 1. Memory map (RAM/flash/MMIO, P0–P4 regions, cached/uncached mirrors).
