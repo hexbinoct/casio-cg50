@@ -13,14 +13,19 @@ package cg50emu
 //   CE84_OUT  PNG folder (default ../../ce_cg50/out/ce84)
 //   CE84_SAV  if set, a copy of the state file saved at the first quit goes there
 //   go -C emu_go test -tags probe -run 'TestCE84$' -count=1 -timeout 60m -v .
+// TestCE84Send (2026-10-18): CE84's "Send file to CE..." menu: TI files from the storage memory
+// (made by ce_cg50/ce84/make_test_vars.py) into the CE, then run at the TI-OS home screen.
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"image"
 	"image/png"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -42,7 +47,8 @@ var (
 	c8Key = map[string][2]uint32{
 		"2": {5, 2}, "+": {3, 2}, "EXE": {2, 1}, "F1": {6, 9}, "F5": {2, 9}, "F6": {1, 9},
 		"sin": {3, 6}, "XOT": {6, 6}, ")": {3, 5}, "SHIFT": {6, 8}, "MENU": {3, 8},
-		"UP": {1, 8}, "DOWN": {2, 7}, "EXIT": {3, 7},
+		"UP": {1, 8}, "DOWN": {2, 7}, "EXIT": {3, 7}, "LEFT": {2, 8}, "RIGHT": {1, 7},
+		"0": {6, 1}, "1": {6, 2}, "3": {4, 2}, "4": {6, 3}, "5": {5, 3}, "SD": {5, 5}, "OPTN": {5, 8}, "ACON": {0, 0},
 	}
 )
 
@@ -332,17 +338,30 @@ func TestCE84(t *testing.T) {
 	s.secs(2)
 	s.stats("idle after restore")
 
-	// 6. the views and the key map, from the menu
+	// 6. the views and the key map, from the menu (Resume, Send file to CE..., View, ...)
 	for _, v := range []string{"11_view_top", "12_view_low"} {
 		s.openMenu()
-		s.tap("DOWN", "EXE", "EXIT")
+		s.tap("DOWN", "DOWN", "EXE", "EXIT")
 		s.secs(0.5)
 		s.shot(v)
 	}
 	s.openMenu()
-	s.tap("DOWN", "EXE", "DOWN", "DOWN", "EXE") // view back to Fit, then "Key map"
+	s.tap("DOWN", "DOWN", "EXE", "DOWN", "DOWN", "EXE") // view back to Fit, then "Key map"
 	s.shot("13_keymap")
 	s.tap("EXE", "EXIT")
+
+	// 7. "Send file to CE...": no TI files in this storage memory, a message, back to the menu
+	s.openMenu()
+	s.tap("DOWN", "EXE")
+	s.until("no TI files", 20, func() bool { return c8Word(e, c8Phase) == c8PhPick })
+	s.secs(0.5)
+	s.shot("14_send_no_files")
+	if n := c8Word(e, c8SendFiles); n != 0 {
+		t.Errorf("send: %d TI files listed, want 0", n)
+	}
+	s.tap("EXE")
+	s.until("menu", 10, func() bool { return c8Word(e, c8Phase) == c8PhMenu })
+	s.tap("EXIT")
 
 	s.openMenu()
 	s.quitSaving("second")
@@ -377,4 +396,382 @@ func TestCE84NoROM(t *testing.T) {
 	s.shot("00_no_rom")
 	s.tap("EXE")
 	s.until("MAIN MENU", 30, func() bool { return e.atMainMenu() })
+}
+
+// ---- "Send file to CE..." (2026-10-18) ----------------------------------------------------
+
+const (
+	c8SendResult, c8SendMs, c8SendFiles, c8SendCx, c8SendCount = 36, 37, 38, 39, 40 // after msg[64]
+	c8SendFlags                                                = 41
+	c8PhPick, c8PhSend, c8PhSent                               = 8, 9, 10
+	c8CERam                                                    = 0x0C600000 // CG50_RAM_ADDR: CE 0xD00000
+	c8PlotSScreen                                              = 0xD52C00
+)
+
+// c8CE returns n bytes of the emulated CE's RAM at CE address addr (0xD00000-0xD657FF).
+func c8CE(e *Emulator, addr, n int) []byte {
+	off := c8CERam - DramBase + addr - 0xD00000
+	return e.mem.dram[off : off+n]
+}
+
+// c8InstallIn writes data to \\fls0\<folder>\<name> through the OS's Bfile calls, creating the
+// folder first (InstallFile only writes to the root).
+func c8InstallIn(t *testing.T, e *Emulator, folder, name string, data []byte) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	for i := 0; i < 50 && !e.cpu.sleeping; i++ {
+		e.stepLocked(1_000_000)
+	}
+	if e.atMainMenu() {
+		e.tapAndSettle(6, 2, 0) // 1: Run-Matrix
+		defer e.tapAndSettle(3, 8, 1)
+	}
+	for i := 0; i < 200 && !e.osIdle(); i++ {
+		e.stepLocked(1_000_000)
+	}
+	if !e.osIdle() {
+		t.Fatal(errNotIdle)
+	}
+	p, err := e.syscall(sysMalloc, installBudget, 0x100)
+	if err != nil || p == 0 {
+		t.Fatalf("malloc: %v", err)
+	}
+	for i, ch := range `\\fls0\` + folder + "\x00" {
+		e.mem.W16(p+uint32(2*i), uint32(ch))
+	}
+	r, err := e.syscall(sysBfileCreate, installBudget, p, 5, 0) // 5 = a folder
+	e.syscall(sysFree, installBudget, p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf(`folder \\fls0\%s: Bfile_CreateEntry_OS = %d`, folder, int32(r))
+	if err := e.writeFile(folder+`\`+name, data); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// pickerTo opens CE84's menu and its "Send file to CE..." list.
+func (s *c8Session) pickerTo() {
+	s.openMenu()
+	s.tap("DOWN", "EXE")
+	s.until("file list", 20, func() bool { return c8Word(s.e, c8Phase) == c8PhPick })
+	s.secs(0.5)
+}
+
+// sendWait presses key (EXE in the list; "" = none, already pressed) and waits for the
+// transfer's result screen.
+func (s *c8Session) sendWait(what, key string) {
+	n := c8Word(s.e, c8SendCount)
+	if key == "" {
+		key = "EXE"
+		if c8Word(s.e, c8Phase) == c8PhSend {
+			key = ""
+		}
+	}
+	if key != "" {
+		c := c8Key[key]
+		s.e.InjectKey(c[0], c[1])
+	}
+	t0 := s.cycles()
+	s.until(what+": transfer", 180, func() bool { return c8Word(s.e, c8SendCount) != n })
+	s.until(what+": result", 10, func() bool { return c8Word(s.e, c8Phase) == c8PhSent })
+	s.secs(0.5)
+	s.t.Logf("%s: result %d in %d emulated ms, %.2f s CG50 time (cxCurApp %#x, IY+8 %#x), msg %q", what,
+		c8Word(s.e, c8SendResult), c8Word(s.e, c8SendMs), float64(s.cycles()-t0)/c8IPS,
+		c8Word(s.e, c8SendCx), c8Word(s.e, c8SendFlags), c8Message(s.e))
+}
+
+// homeText reports whether TI-OS's home screen text buffer (textShadow, 0xD006C0, 26x10)
+// holds str.
+func homeText(e *Emulator, str string) bool {
+	return bytes.Contains(c8CE(e, 0xD006C0, 260), []byte(str))
+}
+
+// band returns the most common colour in CG50 rows y0..y1, columns 0-319, and its share.
+func (s *c8Session) band(y0, y1 int) ([3]byte, float64) {
+	buf := make([]byte, PanelWidth*PanelHeight*4)
+	s.e.FramebufferRGBA(buf)
+	count := map[[3]byte]int{}
+	for y := y0; y <= y1; y++ {
+		for x := 0; x < 320; x++ {
+			p := buf[(y*PanelWidth+x)*4:]
+			count[[3]byte{p[0], p[1], p[2]}]++
+		}
+	}
+	var best [3]byte
+	for c, n := range count {
+		if n > count[best] {
+			best = c
+		}
+	}
+	return best, float64(count[best]) / float64((y1-y0+1)*320)
+}
+
+// TestCE84Send: TI files from the storage memory into the CE (CE84's "Send file to CE..."),
+// then run them at the TI-OS home screen. The files come from ce84/make_test_vars.py
+// (CE84_VARS, default ../../ce_cg50/out/ce84_vars; written by the test).
+func TestCE84Send(t *testing.T) {
+	g3aPath := os.Getenv("CE84_G3A")
+	if g3aPath == "" {
+		g3aPath = "../../ce_cg50/ce84/CE84.g3a"
+	}
+	romPath := os.Getenv("CE84_ROM")
+	if romPath == "" {
+		romPath = "../../ti/roms/ti-84ce.rom"
+	}
+	out := os.Getenv("CE84_OUT")
+	if out == "" {
+		out = "../../ce_cg50/out/ce84"
+	}
+	vars := os.Getenv("CE84_VARS")
+	if vars == "" {
+		vars = "../../ce_cg50/out/ce84_vars"
+	}
+	g3a, err := os.ReadFile(g3aPath)
+	if err != nil {
+		t.Skip("no CE84.g3a: ", err)
+	}
+	rom, err := os.ReadFile(romPath)
+	if err != nil {
+		t.Skip("no ROM: ", err)
+	}
+	if b, err := exec.Command("python3", "../../ce_cg50/ce84/make_test_vars.py", vars).CombinedOutput(); err != nil {
+		t.Skipf("make_test_vars.py: %v\n%s", err, b)
+	}
+	file := func(name string) []byte {
+		b, err := os.ReadFile(filepath.Join(vars, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return b
+	}
+	os.MkdirAll(out, 0o755)
+
+	e := installState(t)
+	e.SetInstrPerSecond(c8IPS)
+	s := &c8Session{t, e, out}
+	if err := e.InstallFile("TI84CE.rom", rom); err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range []string{"BROKEN.8xp", "LOOP.8xp", "TESTASM.8xp", "TESTBAS.8xp", "TESTVAR.8xv", "ZBIG.8xv"} {
+		e.Step(20_000_000) // back at the MAIN MENU
+		if err := e.InstallFile(n, file(n)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	e.Step(20_000_000)
+	c8InstallIn(t, e, "CE", "MULTI.8xp", file("MULTI.8xp"))
+	e.Step(20_000_000)
+	if err := e.InstallAddin("CE84.g3a", g3a); err != nil {
+		t.Fatal(err)
+	}
+	e.Step(20_000_000)
+
+	s.launch()
+	s.startup("start")
+	s.until("TI-OS boot", 120, func() bool { return c8Word(e, c8EmuMs) >= 4000 })
+	s.secs(1)
+	s.shot("s01_booted")
+
+	// 1. the list: BROKEN, LOOP, TESTASM, TESTBAS, TESTVAR, ZBIG (root, by name), CE\MULTI
+	//    (TI84CE.rom, CE84.g3a and CE84.sav are not TI files)
+	s.tap("F1") // the CE in its Y= editor: CE84 warns before a transfer
+	s.secs(0.5)
+	s.pickerTo()
+	s.shot("s02_list")
+	if n := c8Word(e, c8SendFiles); n != 7 {
+		t.Fatalf("the list has %d files, want 7", n)
+	}
+	// 2. a damaged file is refused
+	s.tap("EXE")
+	s.secs(0.5)
+	s.shot("s03_broken")
+	if m := c8Message(e); !strings.Contains(m, "checksum") {
+		t.Errorf("BROKEN.8xp: message %q, want a checksum error", m)
+	}
+	s.tap("EXE") // any key: back to the list
+	// 3. not at the home screen: a warning, EXIT goes back
+	s.tap("DOWN", "DOWN", "DOWN", "EXE") // TESTBAS
+	s.secs(0.5)
+	s.shot("s04_not_home")
+	if cx := c8Word(e, c8SendCx); cx == 0x40 || c8Word(e, c8SendCount) != 0 {
+		t.Errorf("Y= editor: cxCurApp %#x, transfers %d (want a warning, no transfer)", cx, c8Word(e, c8SendCount))
+	}
+	s.tap("EXIT", "EXIT", "EXIT") // warning, list, menu
+	s.tap("SHIFT", "F6")          // 2nd MODE = QUIT: the home screen
+	s.secs(0.5)
+
+	// 4. a transfer cancelled half-way (EXIT unplugs the virtual computer)
+	s.pickerTo()
+	s.tap("DOWN", "DOWN", "DOWN") // TESTBAS
+	c := c8Key["EXE"]
+	s.e.InjectKey(c[0], c[1])
+	s.until("transfer starts", 10, func() bool { return c8Word(e, c8Phase) == c8PhSend })
+	s.secs(0.6)
+	s.shot("s05_progress")
+	s.sendWait("cancelled", "EXIT")
+	s.shot("s06_cancelled")
+	if r := c8Word(e, c8SendResult); r != 3 {
+		t.Errorf("EXIT during a transfer: result %d, want 3 (cancelled)", r)
+	}
+
+	// 5. three files at once (TESTASM, TESTBAS, CE\MULTI = TESTM1 + TESTM2) into RAM
+	s.tap("EXIT")                                          // the result: back to the list (on TESTBAS)
+	s.tap("UP", "F1", "F1", "DOWN", "DOWN", "F1", "RIGHT") // mark 2, 3, 6; "Send to: RAM"
+	s.shot("s07_marked")
+	s.sendWait("3 files to RAM", "")
+	s.shot("s08_sent")
+	if r, m := c8Word(e, c8SendResult), c8Message(e); r != 1 || !strings.Contains(m, "TESTASM:R") ||
+		!strings.Contains(m, "TESTBAS:R") || !strings.Contains(m, "TESTM1:R") || !strings.Contains(m, "TESTM2:R") {
+		t.Fatalf("3 files: result %d, %q", r, m)
+	}
+	if cx := c8Word(e, c8SendCx); cx != 0x40 {
+		t.Errorf("home screen: cxCurApp %#x, want 0x40", cx)
+	}
+	// the appvar into the archive
+	s.tap("EXIT", "DOWN", "DOWN", "DOWN", "DOWN", "RIGHT") // back to the list; TESTVAR; "Send to: Archive"
+	s.shot("s09_appvar")
+	s.sendWait("appvar to the archive", "")
+	s.shot("s10_appvar_sent")
+	if r, m := c8Word(e, c8SendResult), c8Message(e); r != 1 || !strings.Contains(m, "TESTVAR:A") {
+		t.Fatalf("appvar: result %d, %q", r, m)
+	}
+	s.tap("EXE") // back to the CE
+	s.until("CE runs", 10, func() bool { return c8Word(e, c8Phase) == c8PhRun })
+	s.secs(0.5)
+
+	// 6. run them. PRGM lists the programs by name: this ROM's archive has a B, so
+	//    1 B, 2 TESTASM, 3 TESTBAS, 4 TESTM1, 5 TESTM2
+	s.tap("SD")
+	s.secs(0.5)
+	s.shot("s11_prgm_menu")
+	s.tap("3", "EXE") // prgmTESTBAS: ClrHome, Disp 12345*2
+	s.secs(2)
+	s.shot("s12_testbas")
+	if !homeText(e, "24690") {
+		t.Errorf("TESTBAS: 24690 not on the home screen")
+	}
+	before, _ := s.band(152, 220)
+	s.tap("EXIT", "SD", "2", "EXE") // CLEAR; prgmTESTASM
+	s.secs(2)
+	s.shot("s13_testasm")
+	if m := c8CE(e, c8PlotSScreen, 8); string(m) != "CE84ASM!" {
+		t.Errorf("TESTASM: plotSScreen holds %q, want CE84ASM!", m)
+	}
+	col, share := s.band(152, 220)
+	t.Logf("TESTASM: rows 152-220 were %v, now %.1f %% %v", before, 100*share, col)
+	if share < 0.95 || col == before {
+		t.Errorf("TESTASM: the bottom band is not filled (%.1f %% %v)", 100*share, col)
+	}
+	// Asm(prgmTESTASM) from the catalog (2nd 0; MATH = A in the alpha-locked catalog)
+	copy(c8CE(e, c8PlotSScreen, 8), "--------")
+	s.tap("EXIT", "SHIFT", "0")
+	s.secs(0.5)
+	s.tap("OPTN")
+	s.secs(0.5)
+	s.shot("s14_catalog_a")
+	for i := 0; i < 6; i++ {
+		s.tap("DOWN")
+	}
+	s.shot("s15_catalog_asm")
+	s.tap("EXE", "SD", "2")
+	s.secs(0.3)
+	s.shot("s16_asm_prgm")
+	s.tap("EXE")
+	s.secs(2)
+	s.shot("s17_asm_ran")
+	if m := c8CE(e, c8PlotSScreen, 8); string(m) != "CE84ASM!" {
+		t.Errorf("Asm(prgmTESTASM): plotSScreen holds %q, want CE84ASM!", m)
+	}
+	s.tap("EXIT", "SD", "5", "EXE") // prgmTESTM2: Disp 2 (from the two-program file in CE\)
+	s.secs(1.5)
+	s.shot("s18_testm2")
+
+	// 7. TI-OS busy in a BASIC loop: LOOP.8xp sent, run, then a transfer is tried while it runs
+	s.tap("EXIT")
+	s.pickerTo()
+	s.tap("DOWN") // LOOP (location still Archive: the archive works too)
+	s.sendWait("LOOP", "")
+	if r, m := c8Word(e, c8SendResult), c8Message(e); r != 1 || !strings.Contains(m, "LOOP:A") {
+		t.Fatalf("LOOP: result %d, %q", r, m)
+	}
+	s.tap("EXE")
+	s.until("CE runs", 10, func() bool { return c8Word(e, c8Phase) == c8PhRun })
+	s.tap("SD", "2", "EXE") // 1 B, 2 *LOOP, 3 TESTASM, ...: prgmLOOP runs until ON
+	s.secs(1)
+	s.shot("s19_loop_running")
+	s.pickerTo()
+	s.tap("DOWN", "DOWN", "DOWN") // TESTBAS
+	n := c8Word(e, c8SendCount)
+	s.tap("EXE")
+	s.secs(0.5)
+	s.shot("s20_loop_warning")
+	if c8Word(e, c8SendCount) != n || c8Word(e, c8Phase) != c8PhPick || c8Word(e, c8SendFlags)&2 == 0 {
+		t.Errorf("a program runs: no warning (phase %d, IY+8 %#x)", c8Word(e, c8Phase), c8Word(e, c8SendFlags))
+	}
+	s.sendWait("while LOOP runs", "EXE") // "EXE: send anyway"
+	s.shot("s21_loop_result")
+	r := c8Word(e, c8SendResult)
+	if r != 1 && r != 4 {
+		t.Errorf("transfer while a BASIC program runs: result %d, want 1 (ok) or 4 (timeout)", r)
+	}
+	if m := c8Message(e); r == 4 && !strings.Contains(m, "TESTBAS:old") {
+		t.Errorf("timeout: %q, want TESTBAS reported as an older copy", m)
+	}
+	s.tap("EXE") // back to the CE
+	s.until("CE runs", 10, func() bool { return c8Word(e, c8Phase) == c8PhRun })
+	s.tap("ACON") // ON: break the program
+	s.secs(1)
+	s.shot("s22_loop_break")
+	s.tap("EXE") // "1:Quit"
+	s.secs(0.5)
+	// the CE took files again after that
+	s.pickerTo()
+	s.tap("DOWN", "DOWN", "DOWN", "LEFT") // TESTBAS, "Send to: RAM"
+	s.sendWait("after the break", "")
+	if r, m := c8Word(e, c8SendResult), c8Message(e); r != 1 || !strings.Contains(m, "TESTBAS:R") {
+		t.Errorf("after the break: result %d, %q", r, m)
+	}
+	s.tap("EXE")
+	s.until("CE runs", 10, func() bool { return c8Word(e, c8Phase) == c8PhRun })
+	s.secs(0.5)
+
+	// a 50 KB appvar (CE84 reads it in 8 KB windows): byte for byte in the CE's RAM
+	s.pickerTo()
+	s.tap("DOWN", "DOWN", "DOWN", "DOWN", "DOWN") // ZBIG ("Send to: RAM" still)
+	s.sendWait("ZBIG (50 KB)", "")
+	s.shot("s24_zbig")
+	big := file("ZBIG.8xv")
+	data := big[55+17+2 : len(big)-2]
+	if r, m := c8Word(e, c8SendResult), c8Message(e); r != 1 || !strings.Contains(m, "ZBIG:R") {
+		t.Errorf("ZBIG: result %d, %q", r, m)
+	} else if !bytes.Contains(c8CE(e, 0xD00000, 0x65800), data) {
+		t.Errorf("ZBIG: its %d bytes are not in the CE's RAM", len(data))
+	}
+	s.tap("EXE")
+	s.until("CE runs", 10, func() bool { return c8Word(e, c8Phase) == c8PhRun })
+	s.secs(0.5)
+
+	// 8. the programs survive a quit and a restore
+	s.tap("EXIT")
+	s.openMenu()
+	s.quitSaving("send")
+	s.launch()
+	s.startup("restart")
+	if c8Word(e, c8Restored) != 1 {
+		t.Fatalf("state not restored (restored=%d, %q)", c8Word(e, c8Restored), c8Message(e))
+	}
+	s.secs(1)
+	ram := c8CE(e, 0xD00000, 0x65800)
+	for i := bytes.Index(ram, []byte("24690")); i >= 0; i = bytes.Index(ram, []byte("24690")) {
+		copy(ram[i:], "     ")
+	}
+	s.tap("SD", "4", "EXE") // 1 B, 2 *LOOP, 3 TESTASM, 4 TESTBAS
+	s.secs(2)
+	s.shot("s23_restored_testbas")
+	if !homeText(e, "24690") {
+		t.Errorf("TESTBAS after the restore: 24690 not on the home screen")
+	}
+	s.openMenu()
+	s.quitSaving("send end")
 }
