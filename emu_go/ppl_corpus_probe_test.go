@@ -11,6 +11,7 @@ package cg50emu
 //                              a "/" is a path to a .ppl file anywhere
 //   PPL_SECS=n                 seconds before the first screenshot (default 5)
 //   PPL_KEYS="T:12 EXE F6 W:2 S:result"  keys after it (see pplScript); PPL_OUT=dir, PPL_G3A=file
+//   PPL_PROF=1                 sample the PC during the first wait: <out>/prof_<file>.txt
 
 import (
 	"os"
@@ -112,7 +113,21 @@ func pplCorpusOne(t *testing.T, g3a []byte, out, file, fn string) string {
 	if w, err := strconv.ParseFloat(os.Getenv("PPL_SECS"), 64); err == nil {
 		wait = w
 	}
-	s.secs(wait)
+	if os.Getenv("PPL_PROF") != "" {
+		// sample the PC every 499 instructions while it runs: <out>/prof_<file>.txt
+		hist := map[uint32]int{}
+		for i := 0; i < int(wait*float64(pplIPS)/499); i++ {
+			e.Step(499)
+			hist[e.cpu.pc]++
+		}
+		var b strings.Builder
+		for pc, k := range hist {
+			b.WriteString(strconv.FormatUint(uint64(pc), 16) + " " + strconv.Itoa(k) + "\n")
+		}
+		os.WriteFile(filepath.Join(out, "prof_"+file+".txt"), []byte(b.String()), 0o644)
+	} else {
+		s.secs(wait)
+	}
 	s.shot(file + "_a")
 	ph := s.word(pplPhase)
 	if script := os.Getenv("PPL_KEYS"); script != "" {

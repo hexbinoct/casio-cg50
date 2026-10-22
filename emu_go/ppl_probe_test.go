@@ -609,6 +609,44 @@ func TestPPL(t *testing.T) {
 		s.word(pplArenaPeak)>>10, s.word(pplArenaSize)>>10, s.word(pplPolls))
 }
 
+// TestPPLSpeed: only the loop benchmarks of TestPPL (and the PC profile with PPL_PROF=1).
+//   go -C emu_go test -tags probe -run 'TestPPLSpeed' -count=1 -v .
+func TestPPLSpeed(t *testing.T) {
+	g3aPath := os.Getenv("PPL_G3A")
+	if g3aPath == "" {
+		g3aPath = "../../ppl_cg50/cg50/PPL.g3a"
+	}
+	out := os.Getenv("PPL_OUT")
+	if out == "" {
+		out = "../../ppl_cg50/build/probe"
+	}
+	g3a, err := os.ReadFile(g3aPath)
+	if err != nil {
+		t.Skip("no PPL.g3a: ", err)
+	}
+	os.MkdirAll(out, 0o755)
+	e := installState(t)
+	e.SetInstrPerSecond(pplIPS)
+	s := &pplSession{t, e, out}
+	pplInstallIn(t, e, "PPL", "DEMO.ppl", []byte(pplDemo))
+	if err := e.InstallAddin("PPL.g3a", g3a); err != nil {
+		t.Fatal(err)
+	}
+	e.Step(20_000_000)
+	rs := &rcSession{t, e}
+	rs.launch(-1)
+	for n := 0; e.cpu.pc != 0x00300000; n++ {
+		if n > 200_000_000 || e.Fault() != "" {
+			t.Fatalf("PPL never started (%s)", e.Fault())
+		}
+		e.Step(1)
+	}
+	s.until("magic", 30, func() bool { return s.word(0) == pplMagic })
+	s.home("start")
+	s.secs(0.5)
+	pplSpeed(s)
+}
+
 // pplSpeed runs the loop benchmarks and reports SH-4 instructions per PPL operation.
 func pplSpeed(s *pplSession) {
 	_, base := s.run("0", 30) // the cost of EXE, a Home evaluation and the redraws
