@@ -1986,7 +1986,7 @@ emulator. Unicorn can't help (no SuperH). QEMU has an SH-4 core but targets SH77
 the SH7305.
 
 ## Hardware facts (fx-CG50 / SH7305)
-- CPU: Renesas SH7305, SuperH **SH-4A** family (SH4AL-DSP), single-precision FPU.
+- CPU: Renesas SH7305, SuperH **SH-4A** family (SH4AL-DSP), **no FPU** (DSP unit instead; gint builds with `-m4-nofpu`, the OS runs no FPU instructions).
 - **Big-endian** (byte-order pin hard-wired BE on Casio calcs).
 - Screen 396×224, 16-bit color; display controller **R61524**.
 - Ghidra load (community-confirmed): flat binary, processor **SH-4A**, **big-endian**,
