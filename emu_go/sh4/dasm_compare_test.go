@@ -40,9 +40,29 @@ func dasmRef(t testing.TB) string {
 		if cc == "" {
 			cc = "cc"
 		}
+		// names.c reads the running OS's memory (rom16, rom32): read an OS image file instead.
+		names, err := os.ReadFile(filepath.Join(src, "names.c"))
+		if err != nil {
+			refErr = err
+			return
+		}
+		for _, w := range []string{"16", "32"} {
+			def := "static inline uint" + w + "_t rom" + w + "(uint32_t a) { return *(const volatile uint" + w + "_t *)a; }"
+			host := "uint" + w + "_t host_rom" + w + "(uint32_t a);\nstatic inline uint" + w + "_t rom" + w +
+				"(uint32_t a) { return host_rom" + w + "(a); }"
+			if !bytes.Contains(names, []byte(def)) {
+				refErr = fmt.Errorf("names.c: no %q to redirect", def)
+				return
+			}
+			names = bytes.Replace(names, []byte(def), []byte(host), 1)
+		}
+		namesHost := filepath.Join(dir, "names_host.c")
+		if refErr = os.WriteFile(namesHost, names, 0o644); refErr != nil {
+			return
+		}
 		refPath = filepath.Join(dir, "dasmref")
 		cmd := exec.Command(cc, "-O2", "-I", src, filepath.Join("testdata", "dasmref.c"),
-			filepath.Join(src, "sh4dec.c"), filepath.Join(src, "analysis.c"), "-o", refPath)
+			filepath.Join(src, "sh4dec.c"), filepath.Join(src, "analysis.c"), namesHost, "-o", refPath)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			refErr = fmt.Errorf("building dasmref: %v\n%s", err, out)
 		}
@@ -292,6 +312,96 @@ func TestDASMXrefs(t *testing.T) {
 			}
 			t.Logf("%s: %d targets, %d references identical to DASM; index == scan; %d targets "+
 				"where DASM's 64-pool limit adds data references", c.name, len(targets), total, capDiff)
+		})
+	}
+}
+
+// namesListing is the Go side of dasmref's "names" mode: the listing comment of every address
+// in [start,end), what ResolveIndirect says for every jmp/jsr/braf/bsrf, and every function's
+// name. kinds counts the indirect jumps per form (all, resolved, named); named counts the
+// functions with a name; handlers those named syscall_XXXX, which DASM leaves as sub_XXXXXXXX
+// (shown as DASM does).
+func namesListing(an *Analysis, img *Image, start, end uint32) (out []byte, kinds map[string][3]int, named, handlers int) {
+	var b bytes.Buffer
+	kinds = map[string][3]int{}
+	for pc := start; pc+2 <= end; pc += 2 {
+		in, ok := img.Decode(pc)
+		if !ok {
+			break
+		}
+		if c := an.Comment(&in); c != "" {
+			fmt.Fprintf(&b, "com %08x %s\n", pc, c)
+		}
+		if in.Kind != KindJumpReg && in.Kind != KindCallReg {
+			continue
+		}
+		r, ok := an.Resolve(&in)
+		k := map[uint16]string{0x400B: "jsr", 0x402B: "jmp", 0x0003: "bsrf", 0x0023: "braf"}[in.Op&0xF0FF]
+		n := kinds[k]
+		n[0]++
+		nm := "-"
+		if ok {
+			n[1]++
+			if r.Name != "" {
+				nm = r.Name
+				n[2]++
+			}
+		} else {
+			r.Target = 0
+		}
+		kinds[k] = n
+		fmt.Fprintf(&b, "ind %08x %d %08x %s\n", pc, b2i(ok), r.Target, nm)
+	}
+	for _, f := range an.Funcs() {
+		nm := an.FuncName(f.Addr)
+		if strings.HasPrefix(nm, "syscall_") {
+			nm = fmt.Sprintf("sub_%08x", f.Addr)
+			handlers++
+		} else if !strings.HasPrefix(nm, "sub_") && nm != "start" {
+			named++
+		}
+		fmt.Fprintf(&b, "func %08x %s\n", f.Addr, nm)
+	}
+	return b.Bytes(), kinds, named, handlers
+}
+
+// TestDASMNames: DASM's names.c and main.c's comment_for and func_name, over every address of
+// each image, against Comment, ResolveIndirect and FuncName. An add-in's syscalls come from the
+// first flash dump (none without one).
+func TestDASMNames(t *testing.T) {
+	dasmRef(t)
+	var osFile []byte
+	var sys *Syscalls
+	if os.Getenv("CG50_FLASH") != "" || fileExists(filepath.Join("..", "..", "os", "flash_dump", "flash_full.bin")) {
+		d := osDumps(t)[0]
+		osFile, sys = d.data, FindSyscalls(NewImage(ROMBase, d.data))
+	}
+	osPath := tempFile(t, osFile)
+	for _, c := range analysisCases(t) {
+		t.Run(c.name, func(t *testing.T) {
+			start, end := c.img.Base+G3AHeaderLen, c.img.End()
+			if c.opt.AllHandlers { // the OS
+				start, end = c.img.Base, c.img.Base+OSCodeSize
+			} else {
+				c.opt.Syscalls = sys
+			}
+			path := tempFile(t, c.file)
+			args := append([]string{"names", osPath, path}, c.args...)
+			if c.opt.AllHandlers {
+				args[1] = path
+			}
+			cOut := runRef(t, append(args, fmt.Sprint(start), fmt.Sprint(end))...)
+			an, err := Analyze(t.Context(), c.img, c.opt)
+			if err != nil {
+				t.Fatal(err)
+			}
+			g, kinds, named, handlers := namesListing(an, c.img, start, end)
+			if n := diffLines(t, "names", cOut, g); n != 0 {
+				t.Fatalf("%d lines differ", n)
+			}
+			t.Logf("%s: %d lines identical; indirect jumps (all, resolved, named) %v; %d functions, "+
+				"%d named (+%d handlers named syscall_XXXX here)", c.name, bytes.Count(g, []byte("\n")),
+				kinds, an.NumFuncs(), named, handlers)
 		})
 	}
 }

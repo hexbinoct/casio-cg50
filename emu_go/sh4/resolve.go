@@ -12,22 +12,60 @@ func decodeInfo(op uint16, pc uint32, read ReadFunc) Instr {
 	return in
 }
 
-// findRegValue scans back from pc (exclusive) up to max instructions for the last write of
-// register r by a mov.w/mov.l @(disp,pc) or mov #imm, stopping at a return or an unconditional
-// jump (a basic-block boundary, roughly) and at writers it cannot follow. The jump at self
-// (the one being resolved, whose delay slot the scan starts in) does not stop it: in DASM it
-// does, so a jmp @Rn or braf Rn is never resolved there (only jsr and bsrf are).
-func findRegValue(read ReadFunc, pc uint32, r, max int, self uint32) (uint32, bool) {
-	a := pc
+// writesReg reports whether op writes register r: every form that does (group 4 counts whole,
+// though a few of its forms only read Rn). The pc-relative loads and mov #imm are matched
+// before it. DASM's writes_reg.
+func writesReg(op uint32, r int) bool {
+	h, n, lo, hb := op>>12, int(op>>8)&15, op&15, op>>8
+	if h == 0xF {
+		return r < 8 // DSP transfers move r0-r7
+	}
+	if r == 0 && (hb == 0x84 || hb == 0x85 || // mov.b/w @(disp,Rm),r0
+		hb >= 0xC4 && hb <= 0xC7 || // gbr loads, mova
+		hb >= 0xC9 && hb <= 0xCB || // and/xor/or #imm,r0
+		op&0xF0FF == 0x0063) { // movli.l @Rm,r0
+		return true
+	}
+	if n != r {
+		return false
+	}
+	switch h {
+	case 0x0:
+		return lo == 0x2 || lo == 0xA || lo >= 0xC && lo <= 0xE || op&0xFF == 0x29
+	case 0x2:
+		return 0x2E70>>lo&1 != 0 // @-Rn, and or xor xtrct
+	case 0x3:
+		return 0xDD10>>lo&1 != 0 // div1 sub(c/v) add(c/v)
+	case 0x4:
+		return op&0xFF != 0x0B && op&0xFF != 0x2B // not jsr/jmp
+	case 0x5, 0x6, 0x7, 0x9, 0xD, 0xE:
+		return true
+	}
+	return false
+}
+
+// findRegValue scans back from the jump or call at jpc over the max instructions before it
+// for the last write of register r by a mov.w/mov.l @(disp,pc) or mov #imm. It stops at any
+// other writer of r, at a return and at an unconditional jump (a basic-block boundary,
+// roughly). slot: look at the delay slot first. The CPU reads the jump's own register before
+// the delay slot runs, so a load there does not count for it; a syscall's number in r0 is
+// read by the trampoline, after the slot. DASM's find_reg_value.
+func findRegValue(read ReadFunc, jpc uint32, r int, slot bool, max int) (uint32, bool) {
+	a := jpc
+	if slot {
+		a, max = jpc+4, max+1
+	}
 	for i := 0; i < max; i++ {
 		a -= 2
+		if a == jpc { // the jump itself
+			a -= 2
+		}
 		w, ok := read(a)
 		if !ok {
 			return 0, false
 		}
 		op := uint32(w)
 		in := decodeInfo(w, a, read)
-		n := int(op>>8) & 15
 		if in.Kind == KindLiteral && int(in.Reg) == r {
 			if !in.LitOK {
 				return 0, false
@@ -37,17 +75,14 @@ func findRegValue(read ReadFunc, pc uint32, r, max int, self uint32) (uint32, bo
 			}
 			return in.LitValue, true
 		}
-		if op&0xF000 == 0xE000 && n == r { // mov #imm,rN
+		if op&0xF000 == 0xE000 && int(op>>8)&15 == r { // mov #imm,rN
 			return uint32(int32(int8(op))), true
 		}
-		// other writers of rN we cannot follow: mov rM,rN / add / loads
-		if (op&0xF00F == 0x6003 || op&0xF000 == 0x7000 || op&0xF000 == 0x5000 || op&0xF00F == 0x6002) && n == r {
+		if writesReg(op, r) { // a writer we cannot follow
 			return 0, false
 		}
-		if in.Kind == KindReturn || in.Kind == KindRTE {
-			return 0, false
-		}
-		if i > 0 && a != self && (in.Kind == KindJumpReg || in.Kind == KindBranch) {
+		switch in.Kind {
+		case KindReturn, KindRTE, KindJumpReg, KindBranch:
 			return 0, false
 		}
 	}
@@ -140,7 +175,8 @@ type Indirect struct {
 }
 
 // ResolveIndirect resolves the target of a jmp @Rn / jsr @Rn / braf Rn / bsrf Rn by scanning
-// back (from its delay slot) for the instruction that loaded Rn. A jump to the syscall
+// back from it for the instruction that loaded Rn (not counting its delay slot, which runs after
+// Rn is read). A jump to the syscall
 // trampoline is resolved to the syscall when r0's load is found too; sys (may be nil) gives
 // the handler and its name.
 func ResolveIndirect(read ReadFunc, sys *Syscalls, in *Instr) (Indirect, bool) {
@@ -148,7 +184,7 @@ func ResolveIndirect(read ReadFunc, sys *Syscalls, in *Instr) (Indirect, bool) {
 		return Indirect{}, false
 	}
 	pc := in.Addr
-	v, ok := findRegValue(read, pc+4, int(in.Reg), 12, pc) // Rn may be loaded in the delay slot
+	v, ok := findRegValue(read, pc, int(in.Reg), false, 10)
 	if !ok {
 		return Indirect{}, false
 	}
@@ -157,7 +193,7 @@ func ResolveIndirect(read ReadFunc, sys *Syscalls, in *Instr) (Indirect, bool) {
 	}
 	r := Indirect{Target: v, Syscall: -1}
 	if v == SyscallTrampoline {
-		num, ok := findRegValue(read, pc+4, 0, 12, pc)
+		num, ok := findRegValue(read, pc, 0, true, 10) // r0 may be loaded in the delay slot
 		if !ok {
 			r.Name, r.Syscall = "syscall", -2
 			return r, true
@@ -174,7 +210,8 @@ func ResolveIndirect(read ReadFunc, sys *Syscalls, in *Instr) (Indirect, bool) {
 }
 
 // Comment is DASM's listing comment for an instruction: a literal's value (and the syscall
-// whose handler it is), a mova address, where an indirect jump goes, a branch target's name.
+// whose handler it is), a mova address, where an indirect jump goes (a syscall without a name:
+// its handler), a branch target's name.
 func Comment(read ReadFunc, sys *Syscalls, in *Instr) string {
 	switch in.Kind {
 	case KindLiteral:
@@ -192,13 +229,11 @@ func Comment(read ReadFunc, sys *Syscalls, in *Instr) string {
 		return fmt.Sprintf("&0x%08x", in.LitAddr)
 	case KindJumpReg, KindCallReg:
 		r, ok := ResolveIndirect(read, sys, in)
-		switch {
-		case !ok:
+		if !ok {
 			return ""
-		case r.Name != "":
+		}
+		if r.Name != "" {
 			return "-> " + r.Name
-		case r.Syscall >= 0:
-			return fmt.Sprintf("-> syscall 0x%04x", r.Syscall)
 		}
 		return fmt.Sprintf("-> 0x%08x", r.Target)
 	case KindBranch, KindCondBranch, KindCall:
@@ -215,9 +250,9 @@ func (an *Analysis) Resolve(in *Instr) (Indirect, bool) {
 	return ResolveIndirect(an.img.Word, an.opt.Syscalls, in)
 }
 
-// FuncName names the function at addr: the syscall it implements, "syscall_XXXX" for an
-// unnamed handler, "start" for an add-in's entry, the syscall an add-in stub forwards to
-// (loads, then jmp @Rn), else "sub_XXXXXXXX".
+// FuncName names the function at addr: in the OS, the syscall it implements, or
+// "syscall_XXXX" for an unnamed handler; in an add-in, "start" for its entry, or the syscall
+// that a stub (loads, then jmp @Rn) forwards to; else "sub_XXXXXXXX".
 func (an *Analysis) FuncName(addr uint32) string {
 	sys := an.opt.Syscalls
 	if nm := sys.Name(addr); nm != "" {
@@ -226,7 +261,10 @@ func (an *Analysis) FuncName(addr uint32) string {
 	if num, ok := sys.Number(addr); ok && an.opt.AllHandlers {
 		return fmt.Sprintf("syscall_%04x", num)
 	}
-	if !an.opt.AllHandlers && len(an.opt.Entries) > 0 && addr == an.opt.Entries[0] {
+	if an.opt.AllHandlers { // the OS: DASM looks for stubs only in an add-in
+		return fmt.Sprintf("sub_%08x", addr)
+	}
+	if len(an.opt.Entries) > 0 && addr == an.opt.Entries[0] {
 		return "start"
 	}
 	for p := addr; p < addr+8; p += 2 { // a stub: loads, then jmp @rN

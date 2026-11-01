@@ -19,7 +19,7 @@ is meant for CG50 Studio's disassembly, memory and debugger views.
 | `image.go` | `Image`: bytes at an address, big-endian reads; `G3AImage` maps an add-in the way the OS does (code at 0x00300000) |
 | `analysis.go` | `Analyze`: function detection from entry points, with progress and cancellation; queries `FuncAt`, `FuncContaining`, `FuncBefore`, `Classify` (code, literal pool, padding), and `AddFunction` for incremental use |
 | `xrefs.go` | an index of every cross-reference (calls, jumps, branches, literal loads, mova, pointers in data): `XrefsTo`, `XrefsFrom`, `Callers`, `Callees` |
-| `resolve.go` | `ResolveIndirect`: where a jmp/jsr/braf/bsrf goes, found by scanning back for the register load, with add-in calls through the syscall trampoline resolved to the syscall; `FuncName`; DASM's listing `Comment` |
+| `resolve.go` | `ResolveIndirect`: where a jmp/jsr/braf/bsrf goes, found by scanning back for the register load, with add-in calls through the syscall trampoline resolved to the syscall; `FuncName`; DASM's listing `Comment` (see "Indirect jumps" below) |
 | `syscalls.go`, `syscall_names.go` | `FindSyscalls` reads the running OS's own syscall table (via the trampoline at 0x80020070), so handler addresses fit whatever OS version it is; 273 syscall names |
 | `strings.go` | `FindStrings`: ASCII, Casio multibyte text and big-endian UTF-16, with a minimum length, an optional NUL terminator and a text test |
 
@@ -62,18 +62,40 @@ The OS image gets 12,043 functions this way, against DASM's 12,016. With these t
 off the result is DASM's exactly.
 
 Differences from DASM, on purpose:
-- `ResolveIndirect` resolves `jmp @Rn` and `braf Rn`. DASM's backward scan starts in the delay
-  slot, so the jump itself is its second step and trips the "stop at a jump" rule. As a result
-  DASM only resolves jsr and bsrf.
 - The reference index drops DASM's limit of 64 remembered pool words. In DASM a pool word read
   by more than 64 loads is listed again as a data reference.
 - It does not index data words holding 0 or 0xFFFFFFFF.
 - `FuncName` also names unnamed syscall handlers (`syscall_XXXX`).
 
+`ResolveIndirect` used to differ as well: DASM's scan started in the delay slot, so the jump
+itself was its second step and tripped the "stop at a jump" rule, and DASM resolved only jsr
+and bsrf. DASM now resolves `jmp @Rn` and `braf Rn` too, with the rules below, and the two
+agree on every indirect jump of the tested images.
+
+### Indirect jumps
+
+`ResolveIndirect` is DASM's `names_resolve_indirect`. From the jump or call it scans back over
+at most 10 instructions for the load of its register: a `mov.w`/`mov.l @(disp,pc)` (the
+literal's value) or a `mov #imm`. The scan stops without a result at
+- any other instruction that writes the register (moves, arithmetic, loads through a register,
+  `stc`/`sts`, a DSP transfer for r0-r7, and so on), so a gcc jump table
+  (`mov.w @(r0,Rm),Rn; add Rn,Rn; braf Rn`) is not given an older literal as its target;
+- a return, a `bra` or another jmp/jsr/braf/bsrf.
+
+The delay slot does not count for the jump's own register: the CPU reads Rn before the slot
+runs, so gcc's `mov.w L,r2; braf r2; mov #0,r2` goes to L + pc + 4. For a jump to the syscall
+trampoline (0x80020070), the scan for r0, the syscall number, starts in the delay slot, because
+the trampoline reads r0 after it. braf/bsrf add pc + 4.
+
+`Comment` shows `-> name` (the syscall, or the handler's name) or `-> 0x<target>`; a syscall
+without a name shows its handler. `FuncName` looks for add-in syscall stubs (loads, then
+`jmp @Rn`, in the first 8 bytes) only in an add-in, as DASM does.
+
 ## How it was verified
 
 The decoder and the analysis were compared with DASM's own C code, built on the host:
-`testdata/dasmref.c` is a small harness around DASM's `src/sh4dec.c` and `src/analysis.c`.
+`testdata/dasmref.c` is a small harness around DASM's `src/sh4dec.c`, `src/analysis.c` and
+`src/names.c` (whose two reads of the running OS's memory the test redirects to the dump).
 `dasm_compare_test.go` builds it and compares the output line by line, covering every field of
 every instruction (text, kind, delay slot, register, target, literal address, size, value and
 readability):
@@ -85,6 +107,21 @@ readability):
 | every even address of the 3.60 OS image (12 MB), 16 MB dump and 32 MB dump | 2 × 6,291,456 | 0 |
 | function table (address, size, pool) with DASM's options: the OS of both dumps; add-ins of 0.7 MB, 2.1 MB and 0.17 MB (DASM itself) | 12,016 / 12,016 / 1,114 / 4,165 / 317 | 0 |
 | cross-references to ~200 targets per image (spread function starts + the most referenced) | 29,298 / 29,293 / 4,969 / 62,455 / 4,230 | 0 |
+| `names.c` and main.c's `comment_for`/`func_name`: the comment of every address, `ResolveIndirect` of every jmp/jsr/braf/bsrf and every function's name (table below) | OS 12 MB ×2, five add-ins | 0 |
+
+The indirect jumps of that last comparison (all / resolved / named):
+
+| Image | jsr | jmp | bsrf | braf | named functions |
+|---|---|---|---|---|---|
+| OS 3.60 (12 MB) | 80,720 / 66,972 / 8,314 | 2,874 / 2,726 / 88 | 6,470 / 230 / 0 | 658 / 11 / 0 | 273 |
+| PPL (0.7 MB) | 7,874 / 5,629 / 0 | 263 / 189 / 28 | 523 / 23 / 0 | 150 / 70 / 0 | 20 |
+| FlowCE (2.1 MB) | 95,563 / 58,433 / 0 | 689 / 525 / 28 | 541 / 24 / 0 | 771 / 432 / 0 | 21 |
+| DASM (0.17 MB) | 2,161 / 1,339 / 0 | 125 / 84 / 28 | 28 / 1 / 0 | 155 / 102 / 0 | 18 |
+| CodeView | 1,029 / 619 / 0 | 77 / 59 / 28 | 22 / 1 / 0 | 27 / 0 / 0 | 21 |
+| FastGraph | 1,376 / 802 / 0 | 85 / 62 / 28 | 17 / 1 / 0 | 18 / 3 / 0 | 21 |
+
+(the 32 MB dump's OS part has 6,450 bsrf, otherwise the same). An add-in's syscalls come from
+the flash dump; the OS's 7,758 unnamed handlers, `syscall_XXXX` here, are `sub_` in DASM.
 
 The cross-reference index was also checked against a line-by-line port of DASM's per-target
 scan for the same targets, without the 64-word limit: identical.
