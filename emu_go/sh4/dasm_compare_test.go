@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -141,6 +142,156 @@ func TestDASMImage(t *testing.T) {
 			if diffs != 0 {
 				t.Fatalf("%d differences", diffs)
 			}
+		})
+	}
+}
+
+// analysisCase is an image for the analysis comparisons, with DASM's source arguments.
+type analysisCase struct {
+	name string
+	file []byte // what DASM opens (the whole dump or .g3a)
+	img  *Image
+	opt  Options
+	args []string // base entry rom
+}
+
+func analysisCases(t *testing.T) []analysisCase {
+	var cs []analysisCase
+	if os.Getenv("CG50_FLASH") != "" || fileExists(filepath.Join("..", "..", "os", "flash_dump", "flash_full.bin")) {
+		for _, d := range osDumps(t) {
+			img := NewImage(ROMBase, d.data)
+			opt := OSOptions(img, FindSyscalls(img))
+			opt.VBR, opt.P2Mirror = false, false // DASM does neither
+			cs = append(cs, analysisCase{d.name, d.data, img, opt,
+				[]string{fmt.Sprint(ROMBase), fmt.Sprint(ROMBase), "1"}})
+		}
+	}
+	if os.Getenv("SH4_ADDINS") != "" {
+		for _, d := range addinFiles(t) {
+			img, err := G3AImage(d.data)
+			if err != nil {
+				t.Fatalf("%s: %v", d.name, err)
+			}
+			cs = append(cs, analysisCase{d.name, d.data, img, AddinOptions(img, nil),
+				[]string{fmt.Sprint(AddinCode - G3AHeaderLen), fmt.Sprint(AddinCode), "0"}})
+		}
+	}
+	if len(cs) == 0 {
+		t.Skip("no flash dump and no SH4_ADDINS")
+	}
+	return cs
+}
+
+func fileExists(p string) bool { _, err := os.Stat(p); return err == nil }
+
+func tempFile(t *testing.T, data []byte) string {
+	f, err := os.CreateTemp("", "sh4img*.bin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Remove(f.Name()) })
+	f.Write(data)
+	f.Close()
+	return f.Name()
+}
+
+func funcTable(an *Analysis) []byte {
+	var b bytes.Buffer
+	for _, f := range an.Funcs() {
+		fmt.Fprintf(&b, "%08x %04x %04x\n", f.Addr, f.Size, f.Pool)
+	}
+	return b.Bytes()
+}
+
+// TestDASMFuncs: the function table of DASM's an_funcs_build and of Analyze.
+func TestDASMFuncs(t *testing.T) {
+	dasmRef(t)
+	for _, c := range analysisCases(t) {
+		t.Run(c.name, func(t *testing.T) {
+			path := tempFile(t, c.file)
+			cOut := runRef(t, append([]string{"funcs", path}, c.args...)...)
+			an, err := Analyze(t.Context(), c.img, c.opt)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if n := diffLines(t, "funcs", cOut, funcTable(an)); n != 0 {
+				t.Fatalf("%d functions differ", n)
+			}
+			t.Logf("%s: %d functions, identical", c.name, an.NumFuncs())
+		})
+	}
+}
+
+// xrefTargets: a spread of function starts and the most referenced addresses.
+func xrefTargets(an *Analysis) []uint32 {
+	fs := an.Funcs()
+	var ts []uint32
+	for i := 0; i < len(fs); i += len(fs)/150 + 1 {
+		ts = append(ts, fs[i].Addr)
+	}
+	count := map[uint32]int{}
+	for _, x := range an.index().e {
+		if x.kind != XrefData {
+			count[x.target]++
+		}
+	}
+	type tc struct {
+		t uint32
+		n int
+	}
+	var top []tc
+	for t, n := range count {
+		top = append(top, tc{t, n})
+	}
+	sort.Slice(top, func(i, j int) bool { return top[i].n > top[j].n || top[i].n == top[j].n && top[i].t < top[j].t })
+	for i := 0; i < len(top) && i < 50; i++ {
+		ts = append(ts, top[i].t)
+	}
+	return sortUniq(ts)
+}
+
+// TestDASMXrefs: DASM's an_xrefs for ~200 targets against the Go scan with DASM's limit of 64
+// remembered pool words, and the index against the scan without that limit.
+func TestDASMXrefs(t *testing.T) {
+	dasmRef(t)
+	for _, c := range analysisCases(t) {
+		t.Run(c.name, func(t *testing.T) {
+			an, err := Analyze(t.Context(), c.img, c.opt)
+			if err != nil {
+				t.Fatal(err)
+			}
+			targets := xrefTargets(an)
+			args := append([]string{"xrefs", tempFile(t, c.file)}, c.args...)
+			for _, x := range targets {
+				args = append(args, fmt.Sprint(x))
+			}
+			cOut := runRef(t, args...)
+			var g bytes.Buffer
+			total, capDiff := 0, 0
+			for _, x := range targets {
+				s := an.xrefsScan(x, 64)
+				fmt.Fprintf(&g, "target %08x %d\n", x, len(s))
+				for _, r := range s {
+					fmt.Fprintf(&g, "%08x %d\n", r.From, r.Kind)
+				}
+				total += len(s)
+				idx := an.XrefsTo(x)
+				if x == 0 || x == 0xFFFFFFFF {
+					continue
+				}
+				full := an.xrefsScan(x, -1)
+				if fmt.Sprint(idx) != fmt.Sprint(full) {
+					t.Errorf("target %08x: index %v\nscan %v", x, idx, full)
+				}
+				if len(full) != len(s) {
+					capDiff++
+				}
+			}
+			if n := diffLines(t, "xrefs", cOut, g.Bytes()); n != 0 {
+				t.Fatalf("%d xref lines differ", n)
+			}
+			t.Logf("%s: %d targets, %d references identical to DASM; index == scan; %d targets "+
+				"where DASM's 64-pool limit adds data references", c.name, len(targets), total, capDiff)
 		})
 	}
 }
