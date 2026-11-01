@@ -1,0 +1,149 @@
+# Emulator release builds: the desktop app CG50 Studio (app/) for Linux, Windows and macOS.
+#
+# Push a tag vX.Y.Z (e.g. v0.1.0) to build all three and attach the zips to that tag's GitHub
+# release; if the release doesn't exist yet it is created as a DRAFT. The Android APK is built
+# and signed on the maintainer's machine (the signing key never leaves it) and added to the same
+# release with `gh release upload vX.Y.Z cg50-emulator-X.Y.Z.apk` before publishing it by hand.
+# Run it by hand (Actions -> Emulator release -> Run workflow) to only build: the zips are then
+# workflow artifacts, unless a tag is given, in which case they go to that tag's release too.
+#
+# The builds contain no Casio software: users open a flash dump of their own calculator.
+name: Emulator release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Also upload to the release of this tag (e.g. v0.1.0); empty = build only"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+env:
+  WAILS_VERSION: v2.16.0 # same as app/go.mod
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux/amd64
+            name: linux-amd64
+            # Ubuntu 24.04 has only WebKitGTK 4.1 (wails' default is 4.0)
+            tags: webkit2_41
+          - os: windows-latest
+            platform: windows/amd64
+            name: windows-amd64
+            tags: ""
+          - os: macos-latest
+            platform: darwin/universal
+            name: macos-universal
+            tags: ""
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: app/go.mod
+          cache-dependency-path: app/go.sum
+
+      - name: Linux packages (GTK 3, WebKitGTK 4.1)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev pkg-config
+
+      - name: Wails CLI
+        run: go install "github.com/wailsapp/wails/v2/cmd/wails@${WAILS_VERSION}"
+
+      - name: Version
+        id: version
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          # v0.1.0 -> 0.1.0; a build without a tag uses wails.json's productVersion
+          tag="${INPUT_TAG:-}"
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then tag="$GITHUB_REF_NAME"; fi
+          if [[ -n "$tag" ]]; then
+            ver="${tag#v}"
+            jq --arg v "$ver" '.info.productVersion = $v' wails.json > wails.tmp && mv wails.tmp wails.json
+          else
+            ver="$(jq -r .info.productVersion wails.json)"
+          fi
+          echo "version=$ver" >> "$GITHUB_OUTPUT"
+          echo "Building CG50 Studio $ver"
+
+      - name: Build
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          PLATFORM: ${{ matrix.platform }}
+          TAGS: ${{ matrix.tags }}
+        run: |
+          args=(build -clean -platform "$PLATFORM" -ldflags "-X main.version=$VERSION")
+          if [[ -n "$TAGS" ]]; then args+=(-tags "$TAGS"); fi
+          wails "${args[@]}"
+          ls -la build/bin
+
+      - name: Zip
+        env:
+          ZIP: cg50-studio-${{ steps.version.outputs.version }}-${{ matrix.name }}.zip
+        run: |
+          mkdir -p ../dist
+          cd build/bin
+          case "$RUNNER_OS" in
+            macOS)   ditto -c -k --keepParent "CG50 Studio.app" "../../../dist/$ZIP" ;;
+            Windows) 7z a -tzip -mx=9 "../../../dist/$ZIP" cg50studio.exe ;;
+            *)       chmod +x cg50studio && zip -9 "../../../dist/$ZIP" cg50studio ;;
+          esac
+          ls -la ../../../dist
+
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: cg50-studio-${{ matrix.name }}
+          path: dist/*.zip
+          if-no-files-found: error
+
+  release:
+    needs: build
+    if: github.ref_type == 'tag' || inputs.tag != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          pattern: cg50-studio-*
+          path: dist
+          merge-multiple: true
+
+      - name: Upload to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_type == 'tag' && github.ref_name || inputs.tag }}
+        run: |
+          ls -la dist
+          if ! gh release view "$TAG" > /dev/null 2>&1; then
+            gh release create "$TAG" --draft --verify-tag \
+              --title "fx-CG50 emulator ${TAG#v}" \
+              --notes "The fx-CG50 emulator: the Android app (APK) and the desktop app CG50 Studio for Windows, Linux and macOS.
+
+          No Casio software is included: the apps ask for a flash dump of your own calculator when they first start (see the README's \"Getting a flash dump\").
+
+          - Android 11 or later: install cg50-emulator-*.apk (allow installing apps from your browser or file manager).
+          - Windows: unzip and run cg50studio.exe (needs the WebView2 runtime, which Windows 10 and 11 have).
+          - macOS (Apple Silicon and Intel): unzip and move CG50 Studio.app to Applications. It is not notarized: the first time, right-click it and choose Open.
+          - Linux (x86-64): unzip and run cg50studio. Needs GTK 3 and WebKitGTK 4.1 (libwebkit2gtk-4.1-0)."
+          fi
+          gh release upload "$TAG" dist/*.zip --clobber
