@@ -9,7 +9,54 @@
   pending, so the next session can continue without being reminded.
 ============================================================================= -->
 
-> ## ⏯ RESUME HERE (last session end: 2026-10-12, cont.19g = CG50 Studio desktop app, office)
+> ## ⏯ RESUME HERE (last session end: 2026-11-01, cont.20 = releases, Android dump picker, CG50 Studio debugger, Mac)
+>
+> **Releases.** v0.1.0 is out as a **pre-release** (tag on 907914d; built by a manual run of
+> `.github/workflows/release.yml` from 5554ed8, which only fixes the workflow): the Android APK
+> (release-signed; the keystore lives outside the repo, see the maintainer's notes) and CG50
+> Studio for Linux (built on ubuntu-24.04), Windows and macOS (universal, not notarized). A tag
+> `vX.Y.Z` runs the workflow; the APK is added to the same release by hand. Not yet tried: the
+> Windows build on a real PC, the APK on a real phone (it needs a fresh install over the old
+> debug-signed one). Drop the pre-release mark after that.
+>
+> **Android (`android/`).** First start asks for the user's own flash dump through the system
+> file picker (same check as the desktop: 16 or 32 MB and "CASIO" in the first 4 KB), copies it
+> into the app's storage; sessions per dump (`sessions/<hash>.state`, old `cg50_state*.bin`
+> migrated); Settings (hold the screen): speed, change dump, install add-in, **app icon**: three
+> launcher icons drawn for the app (Porcelain default, Pixel graph, Core) switched with
+> activity-aliases (switching closes the app; the session is saved first);
+> `android/tools/make_launcher_icons.py` generates them.
+>
+> **CG50 Studio is a development kit now** (all checked end to end in headless Chrome on the
+> 32 MB dump; `go -C app test .`):
+> - **Core debug API** (`emu_go/debug.go`, `docs/DEBUG_API.md`): Run/Pause/Continue, step
+>   into/over/out (a delayed branch + slot is one step; steps don't count calls/returns inside
+>   interrupt handlers: OS 3.60 rte's into C handlers whose rts has no matching call), RunTo,
+>   breakpoints (conditions, ignore counts), watchpoints (read/write/access, ranges, bus
+>   address, value match), breaks on syscalls (the OS routine at 0x80020070, table
+>   0x80687CD0), exceptions and interrupts, trace ring, a heuristic call stack, registers
+>   read/write, memory read/write with no device side effects (MMIO refused). Debugger off costs
+>   nothing measurable (174.2 vs 175.6 M instr/s).
+> - **`emu_go/sh4`**: the SH4AL-DSP decoder, function detection, cross-references, syscall
+>   names and string search, ported from DASM and identical to DASM's C code (every 16-bit word,
+>   every DSP pair, every OS address, the function/xref tables, every indirect jump: the
+>   comparisons are tests when `DASM_SRC` is set). The port found a DASM bug (`jmp @Rn`/`braf`
+>   never resolved), fixed in DASM too (cg50-dasm 58387e2).
+> - **The app** (`app/`): a docking workspace (dockview-core 8.5.1, MIT, vendored) with layouts
+>   Calculator (default, today's look) / Debugging / Reverse engineering, saved per user;
+>   windows Calculator, Disassembly, Memory (several), Registers, Breakpoints, Call stack,
+>   Strings, Syscalls, Trace, Console; the OS analysis is cached per dump in the settings folder
+>   (function table only), the running add-in is analysed through the OS page table.
+> - **Next:** user labels and comments (saved per dump/add-in), ELF symbols for add-ins, a
+>   watchpoint value field in the UI, search by instruction pattern, peripheral views (LCD,
+>   KEYSC, timers, DMA, the BCD unit), test the app on Windows (WebView2) and Linux (WebKitGTK).
+>   `sh4.XrefsTo` can list one site several times (the app dedupes).
+>
+> **Emulator glitch to watch:** one PPL corpus probe run (2026-11-01) captured the PRINT
+> terminal white-on-black while the add-in draws black-on-white; it did not reproduce in three
+> reruns. If it shows up again, compare gint's VRAM (`_gint_vram`) with the panel.
+
+> ## ⏯ (prev) RESUME HERE (last session end: 2026-10-12, cont.19g = CG50 Studio desktop app, office)
 >
 > **New: CG50 Studio** (`app/`, Wails v2, a CEmu-like app for experimenting and add-in
 > development; `app/README.md`). Milestone 1 works, checked end to end in the dev page: open a
