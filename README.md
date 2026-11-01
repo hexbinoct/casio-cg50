@@ -81,10 +81,15 @@ app isn't notarized, so the first time, right-click it and choose **Open**.
   a 2000-checkpoint golden boot trace, and transcript parity for the KEYSC and LCD models.
 - ✅ All keys behave like the real calculator (checked by hand on the phone, and every label
   audited against the codes the OS produces).
-- ⏳ Next for CG50 Studio: a debugger (pause and step, breakpoints and watchpoints, registers,
-  disassembly with syscall names, a memory view), then developer comforts (reinstall on
-  rebuild, GIF recording, a profiler), then the same app in the browser via WebAssembly (the
-  core already compiles to WASM). Plan: [`docs/DESKTOP_AND_WEB.md`](docs/DESKTOP_AND_WEB.md).
+- ✅ **CG50 Studio's debugger and analysis**: a workspace of windows you dock, resize and
+  arrange as you like; pause, step into/over/out, run to a line; breakpoints with conditions,
+  watchpoints, breaks on any OS syscall, exception or interrupt; registers and memory you can
+  edit; the disassembly of the OS and of the running add-in with the functions found, syscall
+  names and cross-references; a call stack, a trace, string and syscall search.
+- ⏳ Next for CG50 Studio: user labels and comments, add-in symbols, developer comforts
+  (reinstall on rebuild, GIF recording, a profiler), then the same app in the browser via
+  WebAssembly (the core already compiles to WASM). Plan:
+  [`docs/DESKTOP_AND_WEB.md`](docs/DESKTOP_AND_WEB.md).
 - ⏳ Next: speed — held-key menu scrolling on a phone is still ~⅔ of the real calculator (ask
   Android for CPU clocks via performance hints; run the OS's bitmap blitter natively), then skin
   polish (S/A annunciator state on the keys).
@@ -105,13 +110,23 @@ instruction **conformance** test needs neither and runs standalone.
 ## CG50 Studio, the desktop app
 
 The easiest way to use the emulator: the calculator in a window, with a keypad you can click,
-your keyboard, save states, and add-in installs by drag and drop.
+your keyboard, save states, and add-in installs by drag and drop. It is also a development kit
+for the fx-CG50: a debugger and a disassembler in windows you can dock, resize and arrange as
+you like, with layouts for plain use, debugging and reverse engineering.
 
 <p align="center">
-  <img src="docs/images/cg50-studio.png" width="760"
+  <img src="docs/images/cg50-studio-debugger.png" width="860"
+       alt="CG50 Studio in its Debugging layout, stopped at a breakpoint on the OS's GetKey: the calculator at its MAIN MENU, the disassembly with function and syscall names and the current line marked, the registers with SR's flags, a memory view, the call stack and the console">
+  <br>
+  <sub>The Debugging layout, stopped at a breakpoint on the OS's GetKey syscall: disassembly with
+  the functions and syscall names found, registers, memory, the call stack and the console.</sub>
+</p>
+
+<p align="center">
+  <img src="docs/images/cg50-studio.png" width="560"
        alt="CG50 Studio: the fx-CG50 MAIN MENU on a large screen beside a clickable keypad, with run, speed, save, load, screenshot and install buttons above and the running speed below">
   <br>
-  <sub>CG50 Studio running a 32 MB dump of a real fx-CG50, at its MAIN MENU.</sub>
+  <sub>The default layout: just the calculator, running a 32 MB dump of a real fx-CG50.</sub>
 </p>
 
 [Download it](#download), or **build it** (needs Go and, once, the Wails CLI; on Windows the WebView2 runtime, which
