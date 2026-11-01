@@ -14,6 +14,7 @@ import (
 // store keeps the app's files in the user's config folder:
 //
 //	settings.json            last dump, speed
+//	layout.json              the workspace's windows and where they are (layout.go)
 //	sessions/<hash>.state    where each dump was left (resumed on the next start)
 //	sessions/<hash>.slotN    quick save slots
 //

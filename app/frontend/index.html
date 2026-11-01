@@ -4,7 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>CG50 Studio</title>
+<link rel="stylesheet" href="vendor/dockview/dockview.css">
 <link rel="stylesheet" href="css/app.css">
+<link rel="stylesheet" href="css/workspace.css">
 </head>
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -17,31 +19,58 @@
     <symbol id="i-add" viewBox="0 0 24 24"><path d="M12 3.5l7.5 4.2v8.6L12 20.5l-7.5-4.2V7.7z M12 9v6 M9 12h6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round"/></symbol>
     <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5.5" cy="12" r="1.8" fill="currentColor"/><circle cx="12" cy="12" r="1.8" fill="currentColor"/><circle cx="18.5" cy="12" r="1.8" fill="currentColor"/></symbol>
     <symbol id="i-chip" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M9 3v3M15 3v3M9 18v3M15 18v3M3 9h3M3 15h3M18 9h3M18 15h3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol>
+    <!-- the workspace: tiles = the windows menu; the step icons are a dot (the current
+         instruction) and a path showing where the step goes -->
+    <symbol id="i-windows" viewBox="0 0 24 24"><rect x="4" y="4.5" width="7" height="15" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.7"/><rect x="13" y="4.5" width="7" height="6.5" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.7"/><rect x="13" y="13" width="7" height="6.5" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.7"/></symbol>
+    <symbol id="i-step-into" viewBox="0 0 24 24"><path d="M12 3.5v9.5M8 9.5l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="19" r="2.2" fill="currentColor"/></symbol>
+    <symbol id="i-step-over" viewBox="0 0 24 24"><path d="M4.5 14a7.5 7.5 0 0 1 14.2-3.2M19.5 6v5h-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="19" r="2.2" fill="currentColor"/></symbol>
+    <symbol id="i-step-out" viewBox="0 0 24 24"><path d="M12 14V4.5M8 8.5l4-4 4 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="19" r="2.2" fill="currentColor"/></symbol>
+    <symbol id="i-run-cursor" viewBox="0 0 24 24"><path d="M4 12h11M11 7.5l4.5 4.5-4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M19.5 5v14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+    <symbol id="i-maximize" viewBox="0 0 24 24"><path d="M5 9.5V5h4.5M19 9.5V5h-4.5M5 14.5V19h4.5M19 14.5V19h-4.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-restore" viewBox="0 0 24 24"><path d="M9.5 5v4.5H5M14.5 5v4.5H19M9.5 19v-4.5H5M14.5 19v-4.5H19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-float" viewBox="0 0 24 24"><rect x="4" y="8" width="12" height="11" rx="1.8" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M8.5 5h9.7A1.8 1.8 0 0 1 20 6.8v8.7" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol>
+    <symbol id="i-dock" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="1.8" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M4 14h16" stroke="currentColor" stroke-width="1.7"/></symbol>
+    <symbol id="i-back" viewBox="0 0 24 24"><path d="M14.5 6l-6 6 6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-fwd" viewBox="0 0 24 24"><path d="M9.5 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="6.5" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="12" cy="12" r="2" fill="currentColor"/></symbol>
+    <symbol id="i-keypad" viewBox="0 0 24 24"><rect x="5" y="3.5" width="14" height="17" rx="2.2" fill="none" stroke="currentColor" stroke-width="1.7"/><rect x="7.8" y="6.2" width="8.4" height="4.4" rx="0.8" fill="currentColor" opacity="0.55"/><path d="M8.5 14h1M11.5 14h1M14.5 14h1M8.5 17h1M11.5 17h1M14.5 17h1" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M5 7h14M10 4.5h4M7 7l.8 12h8.4L17 7" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M5.5 12.5l4 4 9-9" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   </defs>
 </svg>
 
 <header class="bar">
-  <div class="brand"><div class="brand-mark"></div>CG50 Studio</div>
+  <div class="brand"><div class="brand-mark"></div><span class="brand-name">CG50 Studio</span></div>
   <button class="chip" id="dumpChip" title="Open or change the flash dump (Ctrl+O)">
     <svg width="15" height="15"><use href="#i-chip"/></svg><span class="name" id="dumpName">No flash dump</span>
   </button>
+  <div class="menu" id="winMenu">
+    <button class="btn" id="winBtn" title="Open windows and choose a layout"><svg><use href="#i-windows"/></svg><span class="lbl">Windows</span></button>
+    <div class="menu-list left wide" id="winList"></div>
+  </div>
   <div class="spacer"></div>
 
   <div class="group">
     <button class="btn primary run" id="runBtn" title="Run / pause (F8)"><svg><use href="#i-pause"/></svg><span>Pause</span></button>
+    <div class="steps-group" id="stepGroup">
+      <button class="btn icon" data-dbg="stepInto" title="Step into (F11): one instruction, into calls"><svg><use href="#i-step-into"/></svg></button>
+      <button class="btn icon" data-dbg="stepOver" title="Step over (F10): one instruction, calls run through"><svg><use href="#i-step-over"/></svg></button>
+      <button class="btn icon" data-dbg="stepOut" title="Step out (Shift+F11): run until this function returns"><svg><use href="#i-step-out"/></svg></button>
+      <button class="btn icon" data-dbg="runToCursor" title="Run to the selected line of the disassembly (Ctrl+F10)"><svg><use href="#i-run-cursor"/></svg></button>
+    </div>
     <div class="seg" id="speedSeg" title="Speed: 1× is the real calculator's pace">
       <button data-speed="1x">1×</button><button data-speed="2x">2×</button><button data-speed="4x">4×</button><button data-speed="max">Max</button>
     </div>
   </div>
   <div class="sep"></div>
   <div class="group">
-    <button class="btn" id="saveBtn" title="Save state to slot 1 (Ctrl+S)"><svg><use href="#i-save"/></svg>Save</button>
-    <button class="btn" id="loadBtn" title="Load state from slot 1 (Ctrl+L)"><svg><use href="#i-load"/></svg>Load</button>
+    <button class="btn" id="saveBtn" title="Save state to slot 1 (Ctrl+S)"><svg><use href="#i-save"/></svg><span class="lbl">Save</span></button>
+    <button class="btn" id="loadBtn" title="Load state from slot 1 (Ctrl+L)"><svg><use href="#i-load"/></svg><span class="lbl">Load</span></button>
   </div>
   <div class="sep"></div>
   <div class="group">
     <button class="btn icon" id="shotBtn" title="Screenshot (Ctrl+P)"><svg><use href="#i-camera"/></svg></button>
-    <button class="btn" id="installBtn" title="Install add-ins (Ctrl+I), or drop .g3a files on the window"><svg><use href="#i-add"/></svg>Install add-in</button>
+    <button class="btn" id="installBtn" title="Install add-ins (Ctrl+I), or drop .g3a files on the window"><svg><use href="#i-add"/></svg><span class="lbl">Install add-in</span></button>
     <div class="menu" id="menu">
       <button class="btn icon" id="menuBtn" title="More"><svg><use href="#i-more"/></svg></button>
       <div class="menu-list">
@@ -63,13 +92,7 @@
 </header>
 
 <main class="stage" id="stage">
-  <div class="device" id="device">
-    <div class="screen-col">
-      <div class="screen-well"><canvas id="screen" width="396" height="224"></canvas></div>
-      <div class="engrave">CG50 Studio</div>
-    </div>
-    <div class="keypad" id="keypad"></div>
-  </div>
+  <div class="dock" id="dock"></div>
 
   <div class="welcome" id="welcome" hidden>
     <div class="card">
@@ -98,14 +121,14 @@
   <span id="mipsText" class="mono"></span>
   <span id="pcText" class="mono"></span>
   <span id="faultText" class="fault-text"></span>
-  <span class="hint">Drop .g3a files anywhere to install · Esc = EXIT · Home = MENU</span>
+  <span class="hint" id="keysHint">Drop .g3a files anywhere to install · Esc = EXIT · Home = MENU</span>
 </footer>
 
 <div class="toasts" id="toasts"></div>
 
 <dialog id="help">
   <h2>Keyboard</h2>
-  <p>Click the window first. Keys you hold stay held on the calculator, so games work.</p>
+  <p>Keys go to the window you clicked last. On the calculator, keys you hold stay held, so games work.</p>
   <div class="keys-table" id="keysTable"></div>
   <div class="help-foot"><span class="version" id="helpVersion"></span><button class="btn close" id="helpClose">Close</button></div>
 </dialog>

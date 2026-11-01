@@ -29,8 +29,10 @@ export function letter(key) {
   return at ? [ALPHA, at] : null;
 }
 
-// For the keyboard help dialog.
+// For the keyboard help dialog. Calculator keys go to the calculator when its window has
+// the focus (click it); the rest work everywhere.
 export const HELP = [
+  ["Calculator window", ""],
   ["0–9  .  + − × ÷  ^  ( )  ,", "the same keys"],
   ["Enter", "EXE"], ["Backspace / Delete", "DEL"],
   ["Esc", "EXIT"], ["Home", "MENU"],
@@ -41,4 +43,11 @@ export const HELP = [
   ["F8", "run / pause"], ["Ctrl+S / Ctrl+L", "save / load state (slot 1)"],
   ["Ctrl+O", "open a flash dump"], ["Ctrl+I", "install add-ins"],
   ["Ctrl+P", "screenshot"], ["Ctrl+R", "restart the calculator"],
+  ["Debugger (when paused)", ""],
+  ["F11", "step into"], ["F10", "step over"],
+  ["Shift+F11", "step out"], ["Ctrl+F10", "run to the selected line"],
+  ["Disassembly window", ""],
+  ["F9", "breakpoint on the line"], ["Enter / double-click", "follow the branch"],
+  ["Backspace, Alt+← / Alt+→", "back / forward"], ["Home", "go to the PC"],
+  ["G", "go to an address or name"], ["↑ ↓ PgUp PgDn", "move"],
 ];

@@ -1,9 +1,15 @@
-// CG50 Studio page: draws the screen, sends keys, and drives the Go side
-// (window.go.main.App, bound by Wails; events through window.runtime).
-import * as keypad from "./keypad.js";
-import { HOLD, HELP, letter } from "./keys.js";
+// CG50 Studio page: the top bar, the status bar, the workspace of windows (workspace.js),
+// and the keyboard: keys go to the window that has the focus (the Calculator presses
+// calculator keys; the others use them to move around), shortcuts work everywhere.
+// Go side: window.go.main.App (bound by Wails); events through window.runtime.
+import { HELP } from "./keys.js";
+import * as workspace from "./workspace.js";
+import * as calculator from "./panels/calculator.js";
+import { log } from "./panels/console.js";
+import { actions as debug } from "./debugger.js";
+import { installSample } from "./sample.js";
+import { nav } from "./nav.js";
 
-const W = 396, H = 224; // the whole panel (cg50emu.PanelWidth × PanelHeight)
 const $ = (id) => document.getElementById(id);
 const go = () => window.go.main.App;
 
@@ -18,100 +24,70 @@ function toast(kind, text) {
   t.textContent = text;
   $("toasts").append(t);
   setTimeout(() => t.remove(), kind === "error" ? 7000 : 3500);
+  log(kind === "error" ? "error" : "info", text);
 }
+nav.log = (kind, text) => log(kind, text);
 
-// ---- screen --------------------------------------------------------------------------
-const ctx = $("screen").getContext("2d");
-let gen = "";
-let fetching = false;
-
-async function pullFrame() {
-  if (fetching) return;
-  fetching = true;
-  try {
-    const r = await fetch("/frame?since=" + gen, { cache: "no-store" });
-    if (r.status === 200) {
-      const buf = await r.arrayBuffer();
-      if (buf.byteLength === W * H * 4) {
-        ctx.putImageData(new ImageData(new Uint8ClampedArray(buf), W, H), 0, 0);
-        gen = r.headers.get("X-Frame-Gen") || "";
-      }
-    }
-  } catch (_) { /* the app is starting or closing */ }
-  fetching = false;
-}
-(function loop() { pullFrame(); requestAnimationFrame(loop); })();
-
-// ---- fit the device to the window ----------------------------------------------------
-// Device size in screen-scale units (see app.css): 658 wide (28 + 414 screen well + 10 + 206
-// keypad), about 277 tall (the screen column 253 + 24 padding).
-function fit() {
-  const st = $("stage").getBoundingClientRect();
-  let s = Math.min((st.width - 40) / 658, (st.height - 36) / 280);
-  s = Math.max(1, s);
-  const i = Math.floor(s);
-  s = s - i < 0.3 ? i : Math.floor(s * 4) / 4; // whole-pixel scales when close: crisp pixels
-  document.documentElement.style.setProperty("--s", s);
-}
-window.addEventListener("resize", fit);
-fit();
-
-// ---- keypad and keyboard -------------------------------------------------------------
-// Key events go to Go strictly one after another: Wails runs each call on its own goroutine,
-// so a fast tap's KeyUp could otherwise overtake its KeyDown and leave the key held.
-let keyQueue = Promise.resolve();
-function sendKey(name, ...args) {
-  keyQueue = keyQueue.then(() => go()[name](...args)).catch(() => {});
-}
-
-const pad = $("keypad");
-keypad.build(pad, (r, c) => sendKey("KeyDown", r, c), (r, c) => sendKey("KeyUp", r, c));
-
-const held = new Map(); // computer key → [row, col]
+// ---- keyboard ------------------------------------------------------------------------
+// App shortcuts (Ctrl/⌘ + key) and the debugger's function keys work whatever has the
+// focus; everything else goes to the window that has it. Text fields keep their keys.
 const shortcuts = {
   s: () => call("SaveSlot", 1), l: () => call("LoadSlot", 1), o: () => call("OpenDump"),
   i: () => call("InstallAddin"), p: () => call("Screenshot", 1), r: () => call("Restart"),
 };
 
+const editable = (el) => el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable);
+
+function fkey(e) {
+  if (e.key === "F8" && !e.shiftKey) return togglePause;
+  if (e.key === "F10" && (e.ctrlKey || e.metaKey)) return stepping(debug.runToCursor);
+  if (e.key === "F10") return stepping(debug.stepOver);
+  if (e.key === "F11" && e.shiftKey) return stepping(debug.stepOut);
+  if (e.key === "F11") return stepping(debug.stepInto);
+  return null;
+}
+const stepping = (fn) => () => { if (canStep()) fn(); };
+
 document.addEventListener("keydown", (e) => {
   if ($("help").open) return;
+  const f = fkey(e);
+  if (f) { e.preventDefault(); if (!e.repeat) f(); return; }
   if (e.ctrlKey || e.metaKey) {
-    const f = shortcuts[e.key.toLowerCase()];
-    if (f) { e.preventDefault(); if (!e.repeat) f(); }
-    return;
+    const s = shortcuts[e.key.toLowerCase()];
+    if (s) { e.preventDefault(); if (!e.repeat) s(); return; } // none of them edits text
   }
-  if (e.key === "F8") { e.preventDefault(); if (!e.repeat) togglePause(); return; }
-  e.preventDefault();
-  if (e.repeat) return; // the calculator repeats held keys itself
-  const rc = HOLD[e.key];
-  if (rc) {
-    held.set(e.code, rc);
-    keypad.show(pad, rc[0], rc[1], true);
-    sendKey("KeyDown", rc[0], rc[1]);
-    return;
-  }
-  const seq = letter(e.key);
-  if (seq && !e.altKey) sendKey("Tap", seq);
+  if (editable(e.target)) return; // typing in a search box, the console, …
+  const owner = workspace.keyOwner();
+  if (!owner) return;
+  if (owner.kind === "calculator") { calculator.keydown(e); return; }
+  if (owner.inst.keydown?.(e)) e.preventDefault();
 });
 
-document.addEventListener("keyup", (e) => {
-  const rc = held.get(e.code);
-  if (!rc) return;
-  held.delete(e.code);
-  keypad.show(pad, rc[0], rc[1], false);
-  sendKey("KeyUp", rc[0], rc[1]);
+document.addEventListener("keyup", (e) => { calculator.keyup(e); });
+
+window.addEventListener("blur", () => calculator.releaseAll());
+
+workspace.onOwnerChange((o, was) => {
+  if (was === "calculator") calculator.releaseAll();
+  renderKeysHint(o);
 });
 
-window.addEventListener("blur", () => {
-  for (const rc of held.values()) keypad.show(pad, rc[0], rc[1], false);
-  held.clear();
-  sendKey("ReleaseAllKeys");
-});
+function renderKeysHint(o) {
+  const el = $("keysHint");
+  if (!o || o.kind === "calculator") {
+    el.textContent = "Drop .g3a files anywhere to install · Esc = EXIT · Home = MENU";
+    el.classList.remove("other");
+  } else {
+    el.textContent = `Keys go to ${o.api.title} · click the calculator to type on it`;
+    el.classList.add("other");
+  }
+}
 
 // ---- top bar -------------------------------------------------------------------------
 let status = { loaded: false, paused: false, speed: "1x" };
 
-function togglePause() { call("SetPaused", !status.paused); status.paused = !status.paused; render(); }
+function togglePause() { if (!status.loaded) return; call("SetPaused", !status.paused); status.paused = !status.paused; render(); }
+const canStep = () => status.loaded && status.paused && !status.fault;
 
 $("runBtn").onclick = togglePause;
 $("dumpChip").onclick = () => call("OpenDump");
@@ -125,10 +101,21 @@ $("installBtn").onclick = () => call("InstallAddin");
 document.querySelectorAll("#speedSeg button").forEach((b) => {
   b.onclick = () => { status.speed = b.dataset.speed; call("SetSpeed", b.dataset.speed); render(); };
 });
+document.querySelectorAll("[data-dbg]").forEach((b) => { b.onclick = () => { if (canStep()) debug[b.dataset.dbg](); }; });
 
-const menu = $("menu");
-$("menuBtn").onclick = (e) => { e.stopPropagation(); menu.classList.toggle("open"); };
-document.addEventListener("click", () => menu.classList.remove("open"));
+// menus: one open at a time, closed by a click elsewhere or Esc
+const menus = [$("menu"), $("winMenu")];
+function closeMenus() { menus.forEach((m) => m.classList.remove("open")); }
+$("menuBtn").onclick = (e) => { e.stopPropagation(); const o = $("menu").classList.contains("open"); closeMenus(); $("menu").classList.toggle("open", !o); };
+$("winBtn").onclick = (e) => {
+  e.stopPropagation();
+  const o = $("winMenu").classList.contains("open");
+  closeMenus();
+  if (!o) { workspace.fillMenu($("winList"), closeMenus); $("winMenu").classList.add("open"); }
+};
+$("winList").addEventListener("click", (e) => e.stopPropagation());
+document.addEventListener("click", closeMenus);
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && menus.some((m) => m.classList.contains("open"))) { closeMenus(); e.stopImmediatePropagation(); } }, true);
 const actions = {
   openDump: () => call("OpenDump"),
   saveAs: () => call("SaveStateAs"),
@@ -141,7 +128,7 @@ const actions = {
   },
   help: () => $("help").showModal(),
 };
-menu.querySelectorAll("[data-act]").forEach((b) => { b.onclick = () => actions[b.dataset.act](); });
+$("menu").querySelectorAll("[data-act]").forEach((b) => { b.onclick = () => actions[b.dataset.act](); });
 
 // A second click within 4 s confirms (no blocking browser dialogs inside the app).
 let forgetArmed = 0;
@@ -155,7 +142,7 @@ function confirmForget() {
 // keyboard help; on macOS the shortcuts are ⌘ (Ctrl works too)
 const mac = /Mac/.test(navigator.platform || navigator.userAgent);
 const mod = (t) => (mac ? t.replace(/Ctrl\+/g, "⌘") : t);
-$("keysTable").innerHTML = HELP.map(([k, v]) => `<div><kbd>${mod(k)}</kbd><span>${v}</span></div>`).join("");
+$("keysTable").innerHTML = HELP.map(([k, v]) => (v === "" ? `<h5>${k}</h5>` : `<div><kbd>${mod(k)}</kbd><span>${v}</span></div>`)).join("");
 if (mac) {
   document.querySelectorAll("[title], kbd").forEach((el) => {
     if (el.title) el.title = mod(el.title);
@@ -178,6 +165,7 @@ function render() {
   run.querySelector("span").textContent = showRun ? "Run" : "Pause";
   run.classList.toggle("primary", s.paused || !s.loaded);
   for (const id of ["runBtn", "saveBtn", "loadBtn", "shotBtn", "installBtn"]) $(id).disabled = !s.loaded;
+  document.querySelectorAll("[data-dbg]").forEach((b) => { b.disabled = !canStep(); });
   document.querySelectorAll("#speedSeg button").forEach((b) => b.classList.toggle("on", b.dataset.speed === s.speed));
 
   let state = s.loading ? "Opening the dump…" : "No dump", cls = s.loading ? "booting" : "";
@@ -198,15 +186,37 @@ function render() {
   $("faultText").title = s.fault || "";
 }
 
-function onStatus(s) { status = s; render(); }
+let lastFault = "";
+function onStatus(s) {
+  status = s;
+  if (s.fault && s.fault !== lastFault) log("error", "The calculator stopped: " + s.fault);
+  lastFault = s.fault || "";
+  render();
+}
 
-window.addEventListener("DOMContentLoaded", () => {});
-function boot() {
-  if (!window.go || !window.runtime) { setTimeout(boot, 30); return; }
+// ---- start ---------------------------------------------------------------------------
+// The workspace waits (briefly) for the Go bindings, so the saved layout comes from Go;
+// in a plain browser without them it starts from localStorage.
+function whenGo(ms) {
+  return new Promise((res) => {
+    const t0 = Date.now();
+    (function wait() { if (window.go?.main?.App && window.runtime) res(true); else if (Date.now() - t0 > ms) res(false); else setTimeout(wait, 30); })();
+  });
+}
+
+async function boot() {
+  installSample(); // SAMPLE data for the debugger windows until the engine is connected
+  const ok = await whenGo(3000);
+  await workspace.init($("dock"));
+  renderKeysHint(workspace.keyOwner());
+  if (!ok) { log("warn", "Not running inside CG50 Studio: the Go side is missing"); return; }
   window.runtime.EventsOn("status", onStatus);
   window.runtime.EventsOn("toast", (t) => toast(t.kind, t.text));
   go().GetStatus().then(onStatus);
-  go().Version().then((v) => { $("version").textContent = "v" + v; $("helpVersion").textContent = "CG50 Studio " + v; });
+  go().Version().then((v) => { $("version").textContent = "v" + v; $("helpVersion").textContent = "CG50 Studio " + v; log("info", "CG50 Studio " + v); });
 }
-boot();
 render();
+boot();
+
+// for the console of the web view, and for wiring the debug engine in
+window.studio = { workspace, nav, debug };

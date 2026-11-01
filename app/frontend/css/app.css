@@ -45,7 +45,7 @@
   --engrave:   oklch(0.650 0.018 80);
 
   --radius: 10px;
-  --s: 2; /* screen scale, set by app.js to fit the window */
+  --s: 2; /* screen scale, set by the Calculator window (js/panels/calculator.js) to fit */
   font-family: "Segoe UI Variable", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", sans-serif;
   color: var(--text);
   background: var(--room);
@@ -138,9 +138,39 @@ button:focus-visible { outline: 2px solid var(--aqua); outline-offset: 2px; }
 .menu-list kbd { color: var(--text-3); font: 12px "Cascadia Mono", Consolas, monospace; }
 .menu-list hr { border: none; border-top: 1px solid var(--line); margin: 5px 4px; }
 .menu-list .danger { color: var(--coral); }
+.menu-list.left { left: 0; right: auto; }
+.menu-list.wide { min-width: 270px; }
+.menu-list h6 { margin: 6px 10px 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-3); }
+.menu-list button .tick { width: 14px; height: 14px; flex: none; color: var(--aqua); visibility: hidden; }
+.menu-list button.on .tick { visibility: visible; }
+.menu-list button .grow { flex: 1; }
+.menu-list button { align-items: center; }
+.menu-list button:disabled { opacity: 0.4; cursor: default; background: none; }
+
+/* the debugger's step buttons: compact, next to Run / Pause */
+.steps-group { display: flex; gap: 2px; padding: 2px; border-radius: 9px; background: var(--raised); border: 1px solid var(--line); }
+.steps-group .btn { height: 26px; padding: 0 6px; border: none; background: none; color: var(--text-2); border-radius: 7px; }
+.steps-group .btn:hover:not(:disabled) { background: var(--raised-hi); color: var(--text); }
+.steps-group .btn svg { width: 17px; height: 17px; }
+
+/* narrower windows: buttons lose their words first, then the brand its name */
+@media (max-width: 1320px) {
+  .bar .lbl { display: none; }
+  .bar .btn:has(.lbl) { padding: 0 8px; }
+}
+@media (max-width: 1100px) {
+  .brand-name { display: none; }
+  .bar { gap: 6px; padding: 0 10px; }
+  .bar .sep { display: none; }
+  .chip { max-width: 190px; }
+  .seg button { min-width: 32px; padding: 0 7px; }
+  .btn.run { min-width: 80px; }
+}
 
 /* ---- stage and device --------------------------------------------------------------- */
-.stage { position: relative; display: grid; place-items: center; overflow: hidden; }
+/* the workspace fills the stage; each window is a dock panel (css/workspace.css) */
+.stage { position: relative; overflow: hidden; min-height: 0; }
+.dock { position: absolute; inset: 0; }
 .device {
   display: flex; align-items: center;
   gap: calc(var(--s) * 10px);
@@ -160,7 +190,7 @@ button:focus-visible { outline: 2px solid var(--aqua); outline-offset: 2px; }
   background: var(--glass);
   box-shadow: inset 0 2px 8px oklch(0 0 0 / 0.6), 0 1px 0 oklch(1 0 0 / 0.6);
 }
-#screen {
+.lcd {
   display: block;
   width: calc(var(--s) * 396px); height: calc(var(--s) * 224px);
   image-rendering: pixelated; image-rendering: crisp-edges;
