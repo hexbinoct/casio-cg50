@@ -6,20 +6,16 @@
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
-        android:icon="@mipmap/ic_launcher"
+        android:icon="@mipmap/ic_launcher_porcelain"
         android:label="@string/app_name"
-        android:roundIcon="@mipmap/ic_launcher_round"
+        android:roundIcon="@mipmap/ic_launcher_porcelain"
         android:supportsRtl="true"
         android:theme="@style/Theme.CasioCG50">
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTask">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
+            <!-- No LAUNCHER filter here: the launcher entry is one of the aliases below. -->
             <!-- Install an add-in: "Open with" / share a .g3a file (file managers and chat apps
                  hand it over as a generic binary; the core checks the .g3a header). -->
             <intent-filter>
@@ -37,6 +33,47 @@
                 <data android:mimeType="application/x-g3a" />
             </intent-filter>
         </activity>
+
+        <!-- Launcher icons (res/mipmap-anydpi/ic_launcher_*.xml, made by
+             android/tools/make_launcher_icons.py): one alias per icon, exactly one enabled.
+             Settings → App icon… switches them with PackageManager.setComponentEnabledSetting
+             (MainActivity.AppIcons); the enabled alias is the setting. Porcelain is the default. -->
+        <activity-alias
+            android:name=".LauncherPorcelain"
+            android:enabled="true"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_porcelain"
+            android:roundIcon="@mipmap/ic_launcher_porcelain"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".LauncherPixelGraph"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_pixelgraph"
+            android:roundIcon="@mipmap/ic_launcher_pixelgraph"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".LauncherCore"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_core"
+            android:roundIcon="@mipmap/ic_launcher_core"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
     </application>
 
 </manifest>

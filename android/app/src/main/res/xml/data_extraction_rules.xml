@@ -1,19 +1,20 @@
-<?xml version="1.0" encoding="utf-8"?><!--
-   Sample data extraction rules file; uncomment and customize as necessary.
-   See https://developer.android.com/about/versions/12/backup-restore#xml-changes
-   for details.
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+   Backup and device transfer (Android 12+); backup_rules.xml is the older equivalent.
+   The flash dumps stay out: they are Casio's firmware (the user's own copy) and, at
+   16-32 MB, also over the 25 MB cloud-backup quota. Sessions and settings are kept.
 -->
 <data-extraction-rules>
     <cloud-backup>
-        <!-- TODO: Use <include> and <exclude> to control what is backed up.
-        <include .../>
-        <exclude .../>
-        -->
+        <exclude domain="external" path="flash_dump.bin" />
+        <exclude domain="external" path="flash_dump.bin.part" />
+        <exclude domain="external" path="flash_full_32mb.bin" />
+        <exclude domain="external" path="flash_full.bin" />
     </cloud-backup>
-    <!--
     <device-transfer>
-        <include .../>
-        <exclude .../>
+        <exclude domain="external" path="flash_dump.bin" />
+        <exclude domain="external" path="flash_dump.bin.part" />
+        <exclude domain="external" path="flash_full_32mb.bin" />
+        <exclude domain="external" path="flash_full.bin" />
     </device-transfer>
-    -->
 </data-extraction-rules>

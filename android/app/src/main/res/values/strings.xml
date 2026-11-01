@@ -1,7 +1,23 @@
 <resources>
     <string name="app_name">Casio CG50</string>
     <string name="hint_settings">hold the screen for settings</string>
+    <string name="settings_title">Settings</string>
     <string name="settings_speed">Speed</string>
+    <string name="settings_dump">Flash dump</string>
+    <string name="settings_dump_in_use">In use: %1$s (%2$s)</string>
+    <string name="settings_addins">Add-ins</string>
+    <string name="settings_app_icon">App icon</string>
+    <string name="settings_done">Done</string>
+
+    <!-- launcher icon choice (AppIcons, MainActivity.showAppIcons) -->
+    <string name="app_icon_choose">App icon…</string>
+    <string name="app_icon_title">App icon</string>
+    <string name="icon_porcelain">Porcelain</string>
+    <string name="icon_pixelgraph">Pixel graph</string>
+    <string name="icon_core">Core</string>
+    <string name="app_icon_note">Switching closes the app to change its launcher icon; your session is saved. Open it again from the new icon.</string>
+    <string name="app_icon_changed">App icon: %1$s. The launcher may take a moment to show it.</string>
+
     <string name="speed_original">Original hardware — as fast as a real fx-CG50</string>
     <string name="speed_fast">Fast — the SH7305\'s full 118 MHz clock, about 2×</string>
     <string name="install_addin">Install add-in…</string>
@@ -12,4 +28,23 @@
     <string name="install_unreadable">Cannot read %1$s</string>
     <string name="install_missing">No such file: %1$s</string>
     <string name="install_no_emulator">The emulator is not running (no flash dump)</string>
+
+    <!-- flash dump: first start, choosing and changing it (DumpStore, MainActivity) -->
+    <string name="welcome_title">Your own flash dump is needed</string>
+    <string name="welcome_body">This app emulates the fx-CG50 graphing calculator, but it does not include the calculator\'s operating system. That firmware belongs to Casio, so it is not part of the app and cannot be downloaded from it.\n\nTo use the emulator, make a flash dump of your own fx-CG50 (a dumper add-in and a guide are in the project\'s repository, https://github.com/hexbinoct/casio-cg50, in tools/flash_dump), copy the file to this phone, then choose it below.</string>
+    <string name="welcome_sizes">Accepted: the whole 32 MB flash (recommended: it holds the storage memory, so add-ins can be installed) or a 16 MB dump of its first half.</string>
+    <string name="welcome_note">The file is copied into the app\'s own storage; the original is left alone. You can change it later: hold the calculator screen for the settings.</string>
+    <string name="choose_dump">Choose flash dump…</string>
+    <string name="change_dump">Change flash dump…</string>
+    <string name="change_dump_title">Flash dump</string>
+    <string name="change_dump_message">In use: %1$s (%2$s, id %3$s).\n\nEach dump keeps its own session: the calculator\'s state for this one is saved and comes back if you choose it again.</string>
+    <string name="change_dump_choose">Choose another…</string>
+    <string name="dump_copying">Checking and copying %1$s…</string>
+    <string name="dump_copying_generic">Checking and copying the file…</string>
+    <string name="dump_wrong_size">%1$s is %2$s. An fx-CG50 flash dump is exactly 16 MB or 32 MB (16777216 or 33554432 bytes).</string>
+    <string name="dump_not_cg50">%1$s doesn\'t look like an fx-CG50 flash dump: the CASIO header that the boot code has near the start of the flash is missing.</string>
+    <string name="dump_unreadable">Cannot read %1$s: %2$s</string>
+    <string name="dump_same">%1$s is the flash dump already in use.</string>
+    <string name="dump_rejected_title">Not a flash dump</string>
+    <string name="dump_busy">An add-in is being installed: wait until it is done</string>
 </resources>

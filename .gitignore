@@ -25,6 +25,7 @@ emu_go/eval_calls.txt
 *.bmp
 # ...except our own add-in icons (fxSDK needs them to build the probes).
 !tools/*/assets-cg/*.png
+!docs/images/*.png
 
 # Personal tooling tied to a private endpoint — not part of the emulator.
 tools/push_note.py
@@ -53,3 +54,9 @@ re/libfxcg_keyboard.h
 
 # MkDocs build output (the wiki site)
 wiki/site/
+
+# Android release signing: the properties file holds the keystore password; keystores never
+# belong in the repo (the release keystore lives outside it).
+android/keystore.properties
+*.jks
+*.keystore

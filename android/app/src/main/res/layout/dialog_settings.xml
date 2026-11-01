@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The settings dialog (long-press the calculator screen; MainActivity.showSettings). -->
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingLeft="24dp"
+        android:paddingRight="24dp"
+        android:paddingTop="4dp"
+        android:paddingBottom="4dp">
+
+        <TextView
+            style="@style/SettingsSection"
+            android:layout_marginTop="4dp"
+            android:text="@string/settings_speed" />
+
+        <RadioGroup
+            android:id="@+id/speedGroup"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content">
+
+            <RadioButton
+                android:id="@+id/speedOriginal"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="48dp"
+                android:text="@string/speed_original" />
+
+            <RadioButton
+                android:id="@+id/speedFast"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="48dp"
+                android:text="@string/speed_fast" />
+        </RadioGroup>
+
+        <TextView
+            style="@style/SettingsSection"
+            android:text="@string/settings_dump" />
+
+        <TextView
+            android:id="@+id/dumpInfo"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textAppearance="?attr/textAppearanceBody2"
+            android:textColor="?android:attr/textColorSecondary" />
+
+        <TextView
+            android:id="@+id/changeDump"
+            style="@style/SettingsAction"
+            android:text="@string/change_dump" />
+
+        <TextView
+            style="@style/SettingsSection"
+            android:text="@string/settings_addins" />
+
+        <TextView
+            android:id="@+id/installAddin"
+            style="@style/SettingsAction"
+            android:text="@string/install_addin" />
+
+        <TextView
+            style="@style/SettingsSection"
+            android:text="@string/settings_app_icon" />
+
+        <LinearLayout
+            android:id="@+id/appIcon"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginLeft="-8dp"
+            android:layout_marginRight="-8dp"
+            android:background="?attr/selectableItemBackground"
+            android:gravity="center_vertical"
+            android:minHeight="56dp"
+            android:orientation="horizontal"
+            android:paddingLeft="8dp"
+            android:paddingRight="8dp">
+
+            <ImageView
+                android:id="@+id/appIconImage"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:importantForAccessibility="no" />
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginLeft="14dp"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/app_icon_choose"
+                    android:textAppearance="?attr/textAppearanceBody1"
+                    android:textColor="?attr/colorPrimary" />
+
+                <TextView
+                    android:id="@+id/appIconName"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textAppearance="?attr/textAppearanceBody2"
+                    android:textColor="?android:attr/textColorSecondary" />
+            </LinearLayout>
+        </LinearLayout>
+    </LinearLayout>
+</ScrollView>
