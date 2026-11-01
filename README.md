@@ -19,6 +19,15 @@ blinking cursor, and **third-party add-ins (`.g3a`)**.
 > copyrighted property. To run the emulator you must supply a flash dump of *your
 > own* calculator. See [Getting a flash dump](#getting-a-flash-dump).
 
+## Download
+
+Ready-made builds are on the [Releases](https://github.com/hexbinoct/casio-cg50/releases) page:
+the **Android app** (APK) and the **desktop app, CG50 Studio**, for **Windows** (x86-64),
+**Linux** (x86-64; needs GTK 3 and WebKitGTK 4.1) and **macOS** (Apple Silicon and Intel).
+Neither includes any Casio software: you need a [flash dump of your own
+calculator](#getting-a-flash-dump), which the app asks for when it first starts. The macOS
+app isn't notarized, so the first time, right-click it and choose **Open**.
+
 ## What's here
 
 | Path | What |
@@ -99,16 +108,18 @@ The easiest way to use the emulator: the calculator in a window, with a keypad y
 your keyboard, save states, and add-in installs by drag and drop.
 
 <p align="center">
-  <img src="docs/images/cg50-studio.jpeg" width="760"
-       alt="CG50 Studio on Windows: the fx-CG50 MAIN MENU on a large screen beside a clickable keypad, with run, speed, save, load, screenshot and install buttons above and the running speed below">
+  <img src="docs/images/cg50-studio.png" width="760"
+       alt="CG50 Studio: the fx-CG50 MAIN MENU on a large screen beside a clickable keypad, with run, speed, save, load, screenshot and install buttons above and the running speed below">
+  <br>
+  <sub>CG50 Studio running a 32 MB dump of a real fx-CG50, at its MAIN MENU.</sub>
 </p>
 
-**Build it** (needs Go and, once, the Wails CLI; on Windows the WebView2 runtime, which
+[Download it](#download), or **build it** (needs Go and, once, the Wails CLI; on Windows the WebView2 runtime, which
 Windows 10/11 already has; on Linux WebKitGTK):
 
 ```sh
 go install github.com/wailsapp/wails/v2/cmd/wails@latest
-python app/dev.py build        # -> app/build/bin/cg50studio(.exe)
+python app/dev.py build        # -> app/build/bin/: cg50studio(.exe), or CG50 Studio.app on macOS
 python app/dev.py              # or: development mode with live reload
 ```
 
