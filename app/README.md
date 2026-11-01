@@ -56,8 +56,56 @@ top changes it. If the remembered file has moved, the card says so.
 - **Screenshots** at 1×, 2× or 3×, as PNG.
 
 Files live in the user's config folder under `CG50 Studio/` (`%APPDATA%` on Windows,
-`~/Library/Application Support` on macOS, `~/.config` on Linux): `settings.json` and
-`sessions/<dump hash>.{state,slotN}`.
+`~/Library/Application Support` on macOS, `~/.config` on Linux): `settings.json`,
+`layout.json` (the workspace) and `sessions/<dump hash>.{state,slotN}`.
+
+## The workspace
+
+Every window is a dock panel. Drag a tab onto another window to dock it beside it (left,
+right, above, below) or into its tab group, or onto the edge of the workspace; drag the gaps
+between windows to resize; the buttons on a group's tab bar float it above the others (and
+dock it back) or maximise it. **Windows** (top bar) opens and closes windows, opens more
+than one Memory or Disassembly view, and switches layouts:
+
+- **Calculator**: the calculator alone, as the app looked before (the default; with one
+  window there is no tab bar).
+- **Debugging**: calculator, disassembly, registers, memory and trace, console, call stack
+  and breakpoints.
+- **Reverse engineering**: a big listing with syscalls and strings beside it, two memory views.
+- **Reset layout** goes back to the default.
+
+The layout, with each window's own view (address, followed register, search), is saved in
+`layout.json` and comes back on the next start (in a browser without the Go side, in
+`localStorage`).
+
+Keys go to the window that has the focus, shown in the status bar when it isn't the
+calculator: click the calculator and keys press calculator keys as before (Esc = EXIT, …);
+in a listing they move around (F9 breakpoint, Enter follow, Backspace back, G go to); text
+fields keep theirs. Ctrl/⌘ shortcuts and the debugger keys (F8 run/pause, F11 step into, F10
+step over, Shift+F11 step out, Ctrl+F10 run to the selected line) work everywhere. The
+Calculator window shows the keypad when it fits at full size and only the screen otherwise
+(the button in its corner: auto, always, never), at scales that stay on whole device pixels.
+
+| Window | Shows | Interface (the debug engine calls it) |
+|---|---|---|
+| Calculator | the live screen and keypad | (real: `/frame`, key calls) |
+| Disassembly | a listing of a whole address space (virtual), PC and breakpoint marks, branch targets to follow, back/forward | `setDisassembly(provider)`, `setPC(addr)`, `goTo(addr)` |
+| Memory (1, 2, …) | hex and text by region, go to, follow a register, changes marked, the selection as numbers | `setMemory(source)`, `refresh()`, `goTo(addr)` |
+| Registers | general, control, banked, DSP; SR bits; changes marked | `setRegisters(groups)`, `onRegisters(fn)` |
+| Breakpoints | execute and read/write breakpoints, on/off, hits | `debugger.js`: `addBreakpoint`, `setBreakpointHits`, … |
+| Call stack | frames, innermost first | `setCallStack(frames)` |
+| Strings | text search (ASCII, Casio, UTF-16) | `setStrings(provider)` |
+| Syscalls | the syscall table, searchable | `setSyscalls(list)` |
+| Trace | the last N instructions executed | `setTrace(addrs)`, `pushTrace(addr)` |
+| Console | the app's messages and a command line (`help`) | `log(kind, text)`, `addCommand(…)` |
+
+Each window is a module in `frontend/js/panels/`, with its interface described at its top.
+**Until the debug engine is connected, the debugger windows show sample data** from
+`frontend/js/sample.js` (marked *sample* in each window), and the step buttons drive that
+sample; run/pause, the calculator, the console's log and the layout are real. The docking is
+[dockview](https://dockview.dev) (`dockview-core` 8.5.1, MIT, vendored in
+`frontend/vendor/dockview/` with its licence; no build step, works offline), themed with the
+colours below.
 
 ## How it fits together
 
@@ -68,7 +116,11 @@ Files live in the user's config folder under `CG50 Studio/` (`%APPDATA%` on Wind
 | `machine.go` | one running calculator and its run loop (wall-clock pacing, Max, boot boost) |
 | `frame.go` | `/frame?since=<gen>`: the panel as raw RGBA, or 204 if unchanged; screenshots |
 | `store.go` | settings, sessions, state files, dump checks |
+| `layout.go` | the workspace layout (`LoadLayout` / `SaveLayout`, `layout.json`) |
 | `frontend/` | the page: plain HTML, CSS and JS modules, no build step |
+| `frontend/js/workspace.js` | the dock: windows, presets, saving, the Windows menu, which window has the keys |
+| `frontend/js/panels/` | one module per window; `vlist.js` is the virtual list they share |
+| `frontend/js/debugger.js` | step actions and breakpoints, through a backend (today `sample.js`) |
 | `build/` | icons and platform files (`make_icon.py` draws `appicon.png`) |
 
 The page asks for `/frame` once per animation frame; an unchanged screen costs a 204. Key
@@ -86,9 +138,9 @@ Change the tokens to retheme.
 
 ## Next
 
-1. **Debugger**: pause/step/step over/out, breakpoints and watchpoints, registers, a
-   disassembly view with syscall names, a memory viewer/editor (needs a debug API in the core,
-   with tests).
+1. **Debugger**: connect the windows above to the core's debug API and the disassembler
+   (replacing `sample.js`): stepping, breakpoints and watchpoints, registers, memory editing,
+   the listing with syscall names; then peripherals, profiling, symbols.
 2. **Developer comforts**: reinstall when a `.g3a` is rebuilt, copy files out of the storage
    memory, GIF recording, a profiler, key scripts.
 3. **In the browser**: the same page with the core compiled to WebAssembly, the dump kept
