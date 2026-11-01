@@ -57,7 +57,8 @@ top changes it. If the remembered file has moved, the card says so.
 
 Files live in the user's config folder under `CG50 Studio/` (`%APPDATA%` on Windows,
 `~/Library/Application Support` on macOS, `~/.config` on Linux): `settings.json`,
-`layout.json` (the workspace) and `sessions/<dump hash>.{state,slotN}`.
+`layout.json` (the workspace), `sessions/<dump hash>.{state,slotN,breakpoints}` and
+`analysis/<dump hash>.funcs` (the OS's function table, for a quick start).
 
 ## The workspace
 
@@ -80,30 +81,48 @@ The layout, with each window's own view (address, followed register, search), is
 
 Keys go to the window that has the focus, shown in the status bar when it isn't the
 calculator: click the calculator and keys press calculator keys as before (Esc = EXIT, …);
-in a listing they move around (F9 breakpoint, Enter follow, Backspace back, G go to); text
-fields keep theirs. Ctrl/⌘ shortcuts and the debugger keys (F8 run/pause, F11 step into, F10
+in a listing they move around (F9 breakpoint, Enter follow, Backspace back, G go to, X who
+refers to it); text fields keep theirs. Ctrl/⌘ shortcuts and the debugger keys (F8 run/pause, F11 step into, F10
 step over, Shift+F11 step out, Ctrl+F10 run to the selected line) work everywhere. The
 Calculator window shows the keypad when it fits at full size and only the screen otherwise
 (the button in its corner: auto, always, never), at scales that stay on whole device pixels.
 
-| Window | Shows | Interface (the debug engine calls it) |
-|---|---|---|
-| Calculator | the live screen and keypad | (real: `/frame`, key calls) |
-| Disassembly | a listing of a whole address space (virtual), PC and breakpoint marks, branch targets to follow, back/forward | `setDisassembly(provider)`, `setPC(addr)`, `goTo(addr)` |
-| Memory (1, 2, …) | hex and text by region, go to, follow a register, changes marked, the selection as numbers | `setMemory(source)`, `refresh()`, `goTo(addr)` |
-| Registers | general, control, banked, DSP; SR bits; changes marked | `setRegisters(groups)`, `onRegisters(fn)` |
-| Breakpoints | execute and read/write breakpoints, on/off, hits | `debugger.js`: `addBreakpoint`, `setBreakpointHits`, … |
-| Call stack | frames, innermost first | `setCallStack(frames)` |
-| Strings | text search (ASCII, Casio, UTF-16) | `setStrings(provider)` |
-| Syscalls | the syscall table, searchable | `setSyscalls(list)` |
-| Trace | the last N instructions executed | `setTrace(addrs)`, `pushTrace(addr)` |
-| Console | the app's messages and a command line (`help`) | `log(kind, text)`, `addCommand(…)` |
+| Window | Shows |
+|---|---|
+| Calculator | the live screen and keypad |
+| Disassembly | a whole address space at a time (the flash and its P2 mirror, the add-in at 0x00300000, RAM, the on-chip memories), with the OS's and the add-in's functions as labels, syscall and function names in operands and comments, literal values; the PC, breakpoints (F9, or click the left edge), branch targets to follow, back/forward, go to an address or a name, cross-references (X) |
+| Memory (1, 2, …) | hex and text by region, go to, follow a register, bytes changed at the last stop, the selection as numbers; type hex digits to change a byte; device registers are shown as not read |
+| Registers | general, control, the other bank, MACH/MACL, the DSP words; SR bits; changed values marked; double-click to change one |
+| Breakpoints | execute (with a condition such as `r4 == 0x10 && pr > 0x80000000`, and a skip count), read/write watchpoints (every alias of the address), a syscall made by an add-in (or all), exceptions, interrupts; on/off, hits |
+| Call stack | the frames rebuilt from PR and the stack at a stop, with names |
+| Strings | ASCII, Casio and UTF-16 text in the OS, the storage memory, RAM or the add-in |
+| Syscalls | the OS's own syscall table with the names known; double-click: the code; F9: break when an add-in calls it |
+| Trace | the last instructions executed (while it records) |
+| Console | the app's messages, every stop, and commands: `help` lists them (`c`, `s`, `n`, `finish`, `until`, `bp`, `bs`, `be`, `bi`, `bl`, `bd`, `r`, `set`, `x`, `w`, `bt`, `xref`, `info`, `trace`, `strings`, `sys`, `g`, `m`, `layout`) |
 
-Each window is a module in `frontend/js/panels/`, with its interface described at its top.
-**Until the debug engine is connected, the debugger windows show sample data** from
-`frontend/js/sample.js` (marked *sample* in each window), and the step buttons drive that
-sample; run/pause, the calculator, the console's log and the layout are real. The docking is
-[dockview](https://dockview.dev) (`dockview-core` 8.5.1, MIT, vendored in
+**Debugging.** Pause (F8) stops the machine between two instructions; so does a breakpoint, a
+watchpoint, a syscall, exception or interrupt break, or the end of a step. The status bar and
+the console say why, the disassembly marks the PC, and the windows show the state at the stop:
+registers (changes since the last stop marked), call stack, memory read again, the trace.
+Step into (F11), step over (F10), step out (Shift+F11) and run to the selected line (Ctrl+F10)
+run on the machine itself; one that doesn't end at once (stepping over GetKey, which waits for a
+key) keeps running at the chosen speed until it does. Run (F8) goes on from a stop. While it
+runs, the registers and call stack stay, marked as from the last stop. The first stop in the
+Calculator layout offers the Debugging layout. Breakpoints are kept per dump and set again on
+every restart.
+
+**The code analysis.** When a dump is opened the OS is analysed in the background (its 12,043
+functions, then the cross-reference index; a few hundred ms) by
+[`emu_go/sh4`](../emu_go/sh4); the status bar shows the progress, and the listing gets its
+labels when it is done. The function table is cached per dump (96 KB of addresses and sizes,
+nothing of the dump), so the next start skips the exploration. An installed add-in is analysed
+from its `.g3a`; when the calculator launches an add-in, the one it runs is read through the
+OS's add-in page table and analysed instead (a few ms).
+
+Each window is a module in `frontend/js/panels/` with its interface at its top; `engine.js`
+connects them to Go. The disassembly and the string search come from Go in batches of rows
+(`paged.js`), never a call per row: 17 million rows of flash cost what is on screen. The
+docking is [dockview](https://dockview.dev) (`dockview-core` 8.5.1, MIT, vendored in
 `frontend/vendor/dockview/` with its licence; no build step, works offline), themed with the
 colours below.
 
@@ -117,10 +136,16 @@ colours below.
 | `frame.go` | `/frame?since=<gen>`: the panel as raw RGBA, or 204 if unchanged; screenshots |
 | `store.go` | settings, sessions, state files, dump checks |
 | `layout.go` | the workspace layout (`LoadLayout` / `SaveLayout`, `layout.json`) |
+| `debug.go` | the debugger's bindings: run control and stops, breakpoints (saved per dump), registers, memory, trace, call stack |
+| `analysis.go` | the OS and add-in analyses (cached per dump), the listings, names, cross-references, syscalls, strings |
+| `listing.go` | the disassembly's rows: which address each row shows, rendered in batches |
+| `cond.go` | breakpoint conditions: expressions over the registers |
 | `frontend/` | the page: plain HTML, CSS and JS modules, no build step |
 | `frontend/js/workspace.js` | the dock: windows, presets, saving, the Windows menu, which window has the keys |
 | `frontend/js/panels/` | one module per window; `vlist.js` is the virtual list they share |
-| `frontend/js/debugger.js` | step actions and breakpoints, through a backend (today `sample.js`) |
+| `frontend/js/debugger.js` | step actions and the breakpoint list, through a backend |
+| `frontend/js/engine.js` | that backend: every window connected to Go, stops, the console's debugger commands |
+| `frontend/js/paged.js` | rows that live in Go, fetched in blocks and cached |
 | `build/` | icons and platform files (`make_icon.py` draws `appicon.png`) |
 
 The page asks for `/frame` once per animation frame; an unchanged screen costs a 204. Key
@@ -138,9 +163,9 @@ Change the tokens to retheme.
 
 ## Next
 
-1. **Debugger**: connect the windows above to the core's debug API and the disassembler
-   (replacing `sample.js`): stepping, breakpoints and watchpoints, registers, memory editing,
-   the listing with syscall names; then peripherals, profiling, symbols.
+1. **Debugger**: peripherals (a side-effect-free view of device registers), profiling,
+   symbols from an add-in's ELF, user labels and comments, watchpoint value conditions in the
+   window (the core has them).
 2. **Developer comforts**: reinstall when a `.g3a` is rebuilt, copy files out of the storage
    memory, GIF recording, a profiler, key scripts.
 3. **In the browser**: the same page with the core compiled to WebAssembly, the dump kept
