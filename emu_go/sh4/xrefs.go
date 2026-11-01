@@ -156,18 +156,39 @@ func (an *Analysis) buildXrefs() *xrefIndex {
 			e[i].target = an.canon(e[i].target)
 		}
 	}
-	sort.Slice(e, func(i, j int) bool {
-		if e[i].target != e[j].target {
-			return e[i].target < e[j].target
-		}
-		return e[i].from < e[j].from
-	})
+	// by target, then from: stable radix passes on from, then on target
+	tmp := make([]xent, len(e))
+	radix16(e, tmp, func(x *xent) uint32 { return x.from })
+	radix16(e, tmp, func(x *xent) uint32 { return x.target })
 	byFrom := make([]int32, len(e))
 	for i := range byFrom {
 		byFrom[i] = int32(i)
 	}
-	sort.Slice(byFrom, func(i, j int) bool { return e[byFrom[i]].from < e[byFrom[j]].from })
+	tmpi := make([]int32, len(e))
+	radix16(byFrom, tmpi, func(i *int32) uint32 { return e[*i].from })
 	return &xrefIndex{e: e, byFrom: byFrom}
+}
+
+// radix16 sorts x by key, stably, in two passes of 16 bits (tmp: scratch of the same length).
+func radix16[T any](x, tmp []T, key func(*T) uint32) {
+	var cnt [1 << 16]int
+	for shift := 0; shift < 32; shift += 16 {
+		clear(cnt[:])
+		for i := range x {
+			cnt[key(&x[i])>>shift&0xFFFF]++
+		}
+		sum := 0
+		for i, c := range cnt {
+			cnt[i] = sum
+			sum += c
+		}
+		for i := range x {
+			k := key(&x[i]) >> shift & 0xFFFF
+			tmp[cnt[k]] = x[i]
+			cnt[k]++
+		}
+		copy(x, tmp)
+	}
 }
 
 func (an *Analysis) index() *xrefIndex {

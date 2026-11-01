@@ -13,7 +13,9 @@ package sh4
 // and explores cleanly (every path returns, no erased or zero words).
 
 import (
+	"cmp"
 	"context"
+	"slices"
 	"sort"
 	"sync"
 )
@@ -195,7 +197,7 @@ func (an *Analysis) addFunc(a, codeEnd, poolEnd uint32) {
 }
 
 func (an *Analysis) sortFuncs() {
-	sort.Slice(an.funcs, func(i, j int) bool { return an.funcs[i].Addr < an.funcs[j].Addr })
+	slices.SortFunc(an.funcs, func(x, y Func) int { return cmp.Compare(x.Addr, y.Addr) })
 	an.nSorted = len(an.funcs)
 }
 
@@ -203,7 +205,7 @@ func sortUniq(x []uint32) []uint32 {
 	if len(x) < 2 {
 		return x
 	}
-	sort.Slice(x, func(i, j int) bool { return x[i] < x[j] })
+	slices.Sort(x)
 	k := 1
 	for i := 1; i < len(x); i++ {
 		if x[i] != x[k-1] {
