@@ -22,7 +22,7 @@
 
 <header class="bar">
   <div class="brand"><div class="brand-mark"></div>CG50 Studio</div>
-  <button class="chip" id="dumpChip" title="Open a flash dump (Ctrl+O)">
+  <button class="chip" id="dumpChip" title="Open or change the flash dump (Ctrl+O)">
     <svg width="15" height="15"><use href="#i-chip"/></svg><span class="name" id="dumpName">No flash dump</span>
   </button>
   <div class="spacer"></div>
@@ -73,17 +73,20 @@
 
   <div class="welcome" id="welcome" hidden>
     <div class="card">
-      <h1>Start with your own calculator</h1>
-      <p>CG50 Studio runs the real fx-CG50 operating system, from a copy of your own calculator's
-        flash. It ships no Casio software.</p>
+      <h1>Open your calculator's flash dump</h1>
+      <p>CG50 Studio runs the real fx-CG50 operating system from a copy of your own calculator's
+        flash. <strong>No Casio software is included</strong>: the OS is Casio's, so you bring a
+        dump of your own calculator.</p>
+      <p class="notice" id="welcomeNotice" hidden></p>
       <ol class="steps">
-        <li><span class="n">1</span><span>Make a dump of your calculator's flash with a dumper add-in.<br><span class="sub">The whole 32 MB, storage memory included, is best: your files and add-ins come along, and installing works.</span></span></li>
+        <li><span class="n">1</span><span>Make a dump of your calculator's flash with a dumper add-in (<a href="#" id="dumpHelp">how</a>).<br><span class="sub">The whole 32 MB, storage memory included, is best: your files and add-ins come along, and installing works.</span></span></li>
         <li><span class="n">2</span><span>Copy the <span class="mono">.bin</span> file to this computer.</span></li>
-        <li><span class="n">3</span><span>Open it here. Next time CG50 Studio resumes right where you left it.</span></li>
+        <li><span class="n">3</span><span>Open it here. CG50 Studio remembers it and resumes right where you left it; change it any time with the dump button at the top.</span></li>
       </ol>
       <div class="actions">
         <button class="btn primary" id="welcomeOpen">Open flash dump…</button>
         <span>or drop the file on this window</span>
+        <span class="version" id="version"></span>
       </div>
     </div>
   </div>
@@ -104,7 +107,7 @@
   <h2>Keyboard</h2>
   <p>Click the window first. Keys you hold stay held on the calculator, so games work.</p>
   <div class="keys-table" id="keysTable"></div>
-  <button class="btn close" id="helpClose">Close</button>
+  <div class="help-foot"><span class="version" id="helpVersion"></span><button class="btn close" id="helpClose">Close</button></div>
 </dialog>
 
 <script type="module" src="js/app.js"></script>

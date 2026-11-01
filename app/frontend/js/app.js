@@ -116,6 +116,8 @@ function togglePause() { call("SetPaused", !status.paused); status.paused = !sta
 $("runBtn").onclick = togglePause;
 $("dumpChip").onclick = () => call("OpenDump");
 $("welcomeOpen").onclick = () => call("OpenDump");
+const DUMP_HELP = "https://github.com/hexbinoct/casio-cg50#getting-a-flash-dump";
+$("dumpHelp").onclick = (e) => { e.preventDefault(); window.runtime?.BrowserOpenURL(DUMP_HELP); };
 $("saveBtn").onclick = () => call("SaveSlot", 1);
 $("loadBtn").onclick = () => call("LoadSlot", 1);
 $("shotBtn").onclick = () => call("Screenshot", 1);
@@ -150,14 +152,24 @@ function confirmForget() {
   return false;
 }
 
-// keyboard help
-$("keysTable").innerHTML = HELP.map(([k, v]) => `<div><kbd>${k}</kbd><span>${v}</span></div>`).join("");
+// keyboard help; on macOS the shortcuts are ⌘ (Ctrl works too)
+const mac = /Mac/.test(navigator.platform || navigator.userAgent);
+const mod = (t) => (mac ? t.replace(/Ctrl\+/g, "⌘") : t);
+$("keysTable").innerHTML = HELP.map(([k, v]) => `<div><kbd>${mod(k)}</kbd><span>${v}</span></div>`).join("");
+if (mac) {
+  document.querySelectorAll("[title], kbd").forEach((el) => {
+    if (el.title) el.title = mod(el.title);
+    if (el.tagName === "KBD") el.textContent = mod(el.textContent);
+  });
+}
 $("helpClose").onclick = () => $("help").close();
 
 // ---- status --------------------------------------------------------------------------
 function render() {
   const s = status;
-  $("welcome").hidden = s.loaded;
+  $("welcome").hidden = s.loaded || s.loading; // loading: the remembered dump is opening
+  $("welcomeNotice").hidden = !s.notice;
+  $("welcomeNotice").textContent = s.notice || "";
   $("dumpName").textContent = s.loaded ? `${s.dump} · ${s.dumpMB} MB` : "No flash dump";
 
   const run = $("runBtn");
@@ -168,7 +180,7 @@ function render() {
   for (const id of ["runBtn", "saveBtn", "loadBtn", "shotBtn", "installBtn"]) $(id).disabled = !s.loaded;
   document.querySelectorAll("#speedSeg button").forEach((b) => b.classList.toggle("on", b.dataset.speed === s.speed));
 
-  let state = "No dump", cls = "";
+  let state = s.loading ? "Opening the dump…" : "No dump", cls = s.loading ? "booting" : "";
   if (s.loaded) {
     if (s.fault) { state = "Stopped"; cls = "fault"; }
     else if (s.installing) { state = "Installing…"; cls = "booting"; }
@@ -194,6 +206,7 @@ function boot() {
   window.runtime.EventsOn("status", onStatus);
   window.runtime.EventsOn("toast", (t) => toast(t.kind, t.text));
   go().GetStatus().then(onStatus);
+  go().Version().then((v) => { $("version").textContent = "v" + v; $("helpVersion").textContent = "CG50 Studio " + v; });
 }
 boot();
 render();

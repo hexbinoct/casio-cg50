@@ -40,6 +40,8 @@ def main():
         appargs.append("-minimized")
     if cmd == "run":
         exe = os.path.join(HERE, "build", "bin", "cg50studio.exe" if os.name == "nt" else "cg50studio")
+        if sys.platform == "darwin":  # wails builds an app bundle on macOS
+            exe = os.path.join(HERE, "build", "bin", "CG50 Studio.app", "Contents", "MacOS", "cg50studio")
         if not os.path.exists(exe):
             sys.exit("not built yet: python app/dev.py build")
         sys.exit(subprocess.run([exe] + appargs + rest).returncode)

@@ -18,12 +18,25 @@ import (
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
+	"github.com/wailsapp/wails/v2/pkg/options/linux"
 )
 
+// The page and the window icon are all that is embedded: no Casio software, no state. The
+// user opens a dump of their own calculator (store.go keeps its path and the sessions).
+//
 //go:embed all:frontend
 var assets embed.FS
 
+// Linux takes the window icon at run time (Windows and macOS get it from the build).
+//
+//go:embed build/appicon.png
+var icon []byte
+
 const appName = "CG50 Studio"
+
+// version is the app's version (also wails.json's productVersion); release builds set it
+// with -ldflags "-X main.version=…".
+var version = "0.1.0"
 
 func main() {
 	front, err := fs.Sub(assets, "frontend")
@@ -41,11 +54,11 @@ func main() {
 	err = wails.Run(&options.App{
 		StartHidden:      hidden,
 		WindowStartState: state,
-		Title:     appName,
-		Width:     1400,
-		Height:    860,
-		MinWidth:  960,
-		MinHeight: 620,
+		Title:            appName,
+		Width:            1400,
+		Height:           860,
+		MinWidth:         960,
+		MinHeight:        620,
 		AssetServer: &assetserver.Options{
 			Assets:  front,
 			Handler: frameServer{app}, // /frame
@@ -59,6 +72,13 @@ func main() {
 			DisableWebViewDrop: true,
 		},
 		Bind: []interface{}{app},
+		Linux: &linux.Options{
+			Icon:        icon,
+			ProgramName: "cg50studio",
+			// what Wails picks when Linux options are absent: some GPU drivers leave
+			// WebKitGTK's window blank otherwise (wails#2977)
+			WebviewGpuPolicy: linux.WebviewGpuPolicyNever,
+		},
 	})
 	if err != nil {
 		log.Fatal(err)

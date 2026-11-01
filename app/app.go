@@ -7,6 +7,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	goruntime "runtime"
 	"strings"
 	"sync"
 	"time"
@@ -27,6 +28,8 @@ type App struct {
 	speed      string
 	installing bool
 	installed  []string
+	loading    bool   // the remembered dump is being opened at start
+	notice     string // why no dump is open (the remembered one is gone or failed), for the welcome card
 
 	// measured emulated speed (cycles per wall second), for the status bar and the time base
 	lastCycles uint64
@@ -48,14 +51,31 @@ func (a *App) startup(ctx context.Context) {
 	a.speed = st.Speed
 	runtime.OnFileDrop(ctx, a.onDrop)
 	go a.statusLoop()
+	// First start: nothing remembered, and the page shows the welcome card asking for a dump.
+	// Later starts reopen the dump used last time; if it moved or broke, the card says so
+	// (an event sent now could arrive before the page listens, so it's part of the status).
 	if st.LastDump != "" {
-		if _, err := os.Stat(st.LastDump); err == nil {
-			go func() {
-				if err := a.loadDump(st.LastDump); err != nil {
-					a.toast("error", err.Error())
-				}
-			}()
+		if _, err := os.Stat(st.LastDump); err != nil {
+			a.mu.Lock()
+			a.notice = "The flash dump you used last time is no longer at " + st.LastDump + ". Open it again from where it is now."
+			a.mu.Unlock()
+			return
 		}
+		a.mu.Lock()
+		a.loading = true
+		a.mu.Unlock()
+		go func() {
+			err := a.loadDump(st.LastDump)
+			a.mu.Lock()
+			a.loading = false
+			if err != nil {
+				a.notice = "Couldn't open " + st.LastDump + ": " + err.Error()
+			}
+			a.mu.Unlock()
+			if err != nil {
+				a.toast("error", err.Error())
+			}
+		}()
 	}
 }
 
@@ -85,6 +105,8 @@ type Status struct {
 	PC         string  `json:"pc"`
 	Fault      string  `json:"fault"`
 	Installing bool    `json:"installing"`
+	Loading    bool    `json:"loading"` // opening the remembered dump at start
+	Notice     string  `json:"notice"`  // why no dump is open, if something went wrong
 }
 
 func (a *App) statusLoop() {
@@ -149,10 +171,13 @@ func absDiff(x, y uint64) uint64 {
 	return y - x
 }
 
+// Version is the app's version, for the page.
+func (a *App) Version() string { return version }
+
 // GetStatus returns the current state (the page also polls it once at start).
 func (a *App) GetStatus() Status {
 	a.mu.Lock()
-	st := Status{Paused: a.paused, Speed: a.speed, Installing: a.installing}
+	st := Status{Paused: a.paused, Speed: a.speed, Installing: a.installing, Loading: a.loading, Notice: a.notice}
 	m := a.m
 	a.mu.Unlock()
 	// the emulator calls below wait while an install holds the machine: never under a.mu
@@ -176,13 +201,28 @@ func (a *App) toast(kind, text string) {
 // OpenDump asks for a flash dump file and loads it.
 func (a *App) OpenDump() error {
 	p, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
-		Title:   "Open your calculator's flash dump",
-		Filters: []runtime.FileFilter{{DisplayName: "Flash dump (*.bin)", Pattern: "*.bin"}, {DisplayName: "All files", Pattern: "*.*"}},
+		Title:   "Open your calculator's flash dump (not included with CG50 Studio)",
+		Filters: dumpFilters(),
 	})
 	if err != nil || p == "" {
 		return err
 	}
 	return a.loadDump(p)
+}
+
+// dumpFilters are the dump dialog's file types. Dumps are usually .bin, but any name works
+// (readDump checks the contents), so every platform must be able to pick any file:
+// Windows matches *.* , GTK needs * (*.* only matches names with a dot), and macOS takes a
+// list of extensions, where "*" means nothing, so it gets no filter at all.
+func dumpFilters() []runtime.FileFilter {
+	switch goruntime.GOOS {
+	case "darwin":
+		return nil
+	case "windows":
+		return []runtime.FileFilter{{DisplayName: "Flash dump (*.bin)", Pattern: "*.bin"}, {DisplayName: "All files (*.*)", Pattern: "*.*"}}
+	default:
+		return []runtime.FileFilter{{DisplayName: "Flash dump (*.bin)", Pattern: "*.bin"}, {DisplayName: "All files", Pattern: "*"}}
+	}
 }
 
 // LoadDumpFile loads the flash dump at path (recent files, scripts).
@@ -208,6 +248,9 @@ func (a *App) loadDump(path string) error {
 		e.SetWarmBoot() // the whole flash, storage included: skip first-boot setup
 	}
 	a.start(e, d, !resumed)
+	a.mu.Lock()
+	a.notice = ""
+	a.mu.Unlock()
 	st := a.store.settings()
 	st.LastDump = path
 	a.store.saveSettings(st)

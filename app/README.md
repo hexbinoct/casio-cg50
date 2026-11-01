@@ -19,9 +19,23 @@ python app/dev.py dev --hidden   # no window (test through the browser page); --
 python app/dev.py run --hidden   # the built app, same flags (the exe takes -hidden / -minimized)
 ```
 
-`dev.py` only runs the `wails` CLI from this folder. `wails dev` rebuilds when a `.go` file in
+On Linux with WebKitGTK 4.1 only (Ubuntu 24.04, Debian 13), add `-tags webkit2_41` to the
+build. `dev.py` only runs the `wails` CLI from this folder. `wails dev` rebuilds when a `.go` file in
 `app/` changes; after changing the core in `emu_go/`, touch a file here. `wails doctor` checks
 the system (WebView2 on Windows, WebKitGTK on Linux).
+
+## Releases
+
+Pushing a tag `vX.Y.Z` runs [`.github/workflows/release.yml`](../.github/workflows/release.yml):
+it builds the app on Linux (x86-64, WebKitGTK 4.1), Windows (x86-64) and macOS (universal,
+ad-hoc signed, not notarized), and attaches `cg50-studio-X.Y.Z-<platform>.zip` to that tag's
+release, creating it as a draft if it doesn't exist. The version comes from the tag (it sets
+`wails.json`'s `productVersion` and `main.version`). The signed Android APK is added to the same
+release by hand (see `android/README.md`). Run by hand, the workflow only builds.
+
+On the first start the app shows a card asking for a flash dump (none is included), opens
+the file dialog from there, and remembers the dump in `settings.json`; the dump button at the
+top changes it. If the remembered file has moved, the card says so.
 
 ## What it does (milestone 1)
 
