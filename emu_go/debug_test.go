@@ -390,6 +390,57 @@ func TestDebugInterruptBreakAndStepInto(t *testing.T) {
 	wantStop(t, e.StepInto(), StopStep, dbgCode) // rte back
 }
 
+// osInterruptRig is progCall with an interrupt handler built the way OS 3.60's is: the vector
+// code sets SPC to a handler function and PR to a return stub (interrupts kept masked) and
+// rte's into the function; the function's rts, with no call, goes to the stub, which rte's
+// back to the interrupted instruction, PR restored.
+func osInterruptRig(t *testing.T) *Emulator {
+	e := newDbgRig(t, progCall()...)
+	vec := []uint32{
+		0x0B2A,         // sts pr,r11
+		0x0842, 0x0932, // stc spc,r8; stc ssr,r9
+		0xD004, 0x404E, // mov.l fn,r0; ldc r0,spc
+		0xD004, 0x402A, // mov.l stub,r0; lds r0,pr
+		0x6093, 0xCBF0, 0x403E, // ssr = r9 | IMASK 15
+		0x002B, 0x0009, // rte
+	}
+	for i, op := range vec {
+		e.mem.W16(dbgVBR+0x600+uint32(2*i), op)
+	}
+	e.mem.W32(dbgVBR+0x618, dbgVBR+0x700)
+	e.mem.W32(dbgVBR+0x61C, dbgVBR+0x800)
+	for i, op := range []uint32{0xEA09, 0x000B, 0x0009} { // fn: mov #9,r10; rts
+		e.mem.W16(dbgVBR+0x700+uint32(2*i), op)
+	}
+	for i, op := range []uint32{0x4B2A, 0x484E, 0x493E, 0x002B, 0x0009} { // stub: pr=r11; spc=r8; ssr=r9; rte
+		e.mem.W16(dbgVBR+0x800+uint32(2*i), op)
+	}
+	return e
+}
+
+// TestDebugStepOverOSInterrupt: an interrupt during a step over or a step out does not count
+// its handler's rts (it has no call) toward the step's depth.
+func TestDebugStepOverOSInterrupt(t *testing.T) {
+	e := osInterruptRig(t)
+	wantStop(t, e.StepInto(), StopStep, 0x8C001002) // at the bsr
+	e.SetRegister("sr", srMD|0x40)                  // IMASK 4
+	e.cpu.raiseIRQ(0xF00, 9)                        // accepted before the bsr runs
+	wantStop(t, e.StepOver(), StopStep, 0x8C001006)
+	if r := e.Registers(); r.R[10] != 9 || r.R[2] != 2 || r.R[7] != 7 {
+		t.Fatalf("r10=%d r2=%d r7=%d: the handler or the call didn't run", r.R[10], r.R[2], r.R[7])
+	}
+
+	e = osInterruptRig(t)
+	e.StepInto()
+	wantStop(t, e.StepInto(), StopStep, 0x8C001020) // in f
+	e.SetRegister("sr", srMD|0x40)
+	e.cpu.raiseIRQ(0xF00, 9)
+	wantStop(t, e.StepOut(), StopStep, 0x8C001006)
+	if r := e.Registers(); r.R[10] != 9 {
+		t.Fatalf("r10=%d: the handler didn't run", r.R[10])
+	}
+}
+
 func TestDebugMemoryAccess(t *testing.T) {
 	e := newDbgRig(t, progCall()...)
 	buf := make([]byte, 8)

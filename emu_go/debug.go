@@ -172,8 +172,13 @@ type debugger struct {
 	irqOn      bool
 	irqSet     map[uint32]bool
 
-	goal     goalKind
-	depth    int    // goalReturn: calls entered and not yet returned from
+	goal  goalKind
+	depth int // goalReturn: calls entered and not yet returned from
+	// goalReturn: the SPCs of the interrupt and exception handlers being run, innermost
+	// last. Nothing is counted inside a handler, until an rte lands back on its SPC: OS 3.60
+	// runs its interrupt handlers as functions entered by rte with PR at a return stub, so
+	// their rts has no call to pair with.
+	handlers []uint32
 	target   uint32 // goalTo
 	intoSlot bool   // goalInto: a bt/s or bf/s not taken ran; its slot is part of the step
 
@@ -270,6 +275,9 @@ func (e *Emulator) dstep() bool {
 		if d.goal == goalInto {
 			return e.latch(Stop{Reason: StopStep})
 		}
+		if d.goal == goalReturn {
+			d.enterHandler(c.spc)
+		}
 		if d.irqOn && (d.irqSet == nil || d.irqSet[c.lastIRQ]) {
 			return e.latch(Stop{Reason: StopInterrupt, Code: c.lastIRQ, From: c.spc})
 		}
@@ -330,6 +338,15 @@ func (e *Emulator) dstep() bool {
 		}
 		return e.latch(Stop{Reason: StopStep})
 	case goalReturn:
+		if exc {
+			d.enterHandler(c.spc) // the instruction (if it didn't run) or the next resumes there
+		}
+		if n := len(d.handlers); n > 0 {
+			if op == 0x002B && c.pc == d.handlers[n-1] {
+				d.handlers = d.handlers[:n-1] // back where the handler interrupted
+			}
+			break
+		}
 		if !ran {
 			break // it runs again after the handler
 		}
@@ -343,6 +360,14 @@ func (e *Emulator) dstep() bool {
 		}
 	}
 	return false
+}
+
+// enterHandler notes an interrupt or exception handler entered during a goalReturn step.
+func (d *debugger) enterHandler(spc uint32) {
+	if len(d.handlers) == 16 { // one that never came back (the OS dropped its context)
+		d.handlers = d.handlers[1:]
+	}
+	d.handlers = append(d.handlers, spc)
 }
 
 // debugRun is cpu.run through dstep: until stop, an MMIO write, sleep, or a debugger stop.
@@ -552,7 +577,7 @@ func (e *Emulator) resumeLocked() *debugger {
 	d := e.debugger()
 	d.latched = false
 	d.skipArmed, d.skipPC = true, e.cpu.pc
-	d.goal, d.intoSlot, d.depth = goalNone, false, 0
+	d.goal, d.intoSlot, d.depth, d.handlers = goalNone, false, 0, d.handlers[:0]
 	return d
 }
 

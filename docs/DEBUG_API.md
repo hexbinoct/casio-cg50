@@ -97,8 +97,10 @@ The stop is after that `rts` and its slot, at the return address. Recursion and 
 callee therefore don't end it early, and a tail call through `jmp` (the syscall routine is one)
 is followed to the `rts` that really returns. An instruction that an exception undid (an MMU
 fault, rolled back and run again after the handler) is not counted. HLE functions (the native
-blitter) count as returning. Interrupt and exception handlers in between balance their own
-calls; `rte` is not counted.
+blitter) count as returning. Nothing is counted inside an interrupt or exception handler, from
+its entry until an `rte` lands back where it interrupted: OS 3.60 runs its interrupt handlers
+as functions it enters by `rte`, with PR set to a return stub, so their `rts` has no call to
+pair with (`TestDebugStepOverOSInterrupt`).
 
 **Synchronous part.** The step commands run up to 2 M instructions inside the call. Most finish
 there and return their `StopStep`. One that doesn't (stepping over `GetKey`, which waits for a
