@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"cg50emu"
+	"cg50emu/sh4"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -22,14 +23,14 @@ type App struct {
 	ctx   context.Context
 	store *store
 
-	mu         sync.Mutex
-	m          *machine // nil until a dump is loaded
-	paused     bool
-	speed      string
-	installing bool
-	installed  []string
-	loading    bool   // the remembered dump is being opened at start
-	notice     string // why no dump is open (the remembered one is gone or failed), for the welcome card
+	mu             sync.Mutex
+	m              *machine // nil until a dump is loaded
+	speed          string
+	installing     bool
+	installed      []string
+	installedFiles []installedFile // this session's installs, to name the add-in that runs
+	loading        bool            // the remembered dump is being opened at start
+	notice         string          // why no dump is open (the remembered one is gone or failed), for the welcome card
 
 	// measured emulated speed (cycles per wall second), for the status bar and the time base
 	lastCycles uint64
@@ -39,6 +40,14 @@ type App struct {
 
 	frameMu sync.Mutex
 	frame   []byte // scratch for /frame
+
+	dbg debugState  // breakpoints, stops (debug.go)
+	ana analysisSet // the OS and add-in analyses, listings (analysis.go)
+}
+
+type installedFile struct {
+	name string
+	data []byte
 }
 
 func NewApp() *App {
@@ -107,6 +116,10 @@ type Status struct {
 	Installing bool    `json:"installing"`
 	Loading    bool    `json:"loading"` // opening the remembered dump at start
 	Notice     string  `json:"notice"`  // why no dump is open, if something went wrong
+
+	DumpHash string         `json:"dumpHash"`
+	Stop     *StopInfo      `json:"stop"`     // why it is stopped (Paused); nil while running
+	Analysis AnalysisStatus `json:"analysis"` // the code analysis behind the disassembly
 }
 
 func (a *App) statusLoop() {
@@ -130,6 +143,7 @@ func (a *App) statusLoop() {
 		m := a.m
 		a.mu.Unlock()
 		if m != nil {
+			a.watchAddin(m)
 			now := time.Now()
 			cyc, exe := m.emu.Cycles(), m.emu.Executed()
 			a.mu.Lock()
@@ -144,12 +158,12 @@ func (a *App) statusLoop() {
 			}
 			a.lastCycles, a.lastAt, lastExec = cyc, now, exe
 			st.Percent = 100 * a.rate / realIPS
-			if a.paused {
+			if st.Paused {
 				st.Percent, st.MIPS = 0, 0
 			}
 			// keep the OS's clock (RTC, key scan) in step with what the machine really does
 			var setTB uint64
-			if !a.paused && a.rate > 1e6 {
+			if !st.Paused && a.rate > 1e6 {
 				tb := uint64(a.rate)
 				if a.timebase == 0 || absDiff(tb, a.timebase)*10 > a.timebase {
 					a.timebase, setTB = tb, tb
@@ -177,7 +191,7 @@ func (a *App) Version() string { return version }
 // GetStatus returns the current state (the page also polls it once at start).
 func (a *App) GetStatus() Status {
 	a.mu.Lock()
-	st := Status{Paused: a.paused, Speed: a.speed, Installing: a.installing, Loading: a.loading, Notice: a.notice}
+	st := Status{Speed: a.speed, Installing: a.installing, Loading: a.loading, Notice: a.notice}
 	m := a.m
 	a.mu.Unlock()
 	// the emulator calls below wait while an install holds the machine: never under a.mu
@@ -185,10 +199,15 @@ func (a *App) GetStatus() Status {
 		st.Loaded = true
 		st.Dump = m.dump.Name
 		st.DumpMB = m.dump.Size >> 20
+		st.DumpHash = m.dump.Hash
 		st.Booting = m.booting()
 		st.PC = fmt.Sprintf("%08X", m.emu.PC())
 		st.Fault = m.emu.Fault()
+		st.Stop, st.Paused = a.stopped(m)
 	}
+	a.ana.mu.RLock()
+	st.Analysis = a.ana.status
+	a.ana.mu.RUnlock()
 	return st
 }
 
@@ -248,6 +267,7 @@ func (a *App) loadDump(path string) error {
 		e.SetWarmBoot() // the whole flash, storage included: skip first-boot setup
 	}
 	a.start(e, d, !resumed)
+	a.analyseOS(data, d)
 	a.mu.Lock()
 	a.notice = ""
 	a.mu.Unlock()
@@ -278,15 +298,17 @@ func (a *App) start(e *cg50emu.Emulator, d dumpInfo, boost bool) {
 		old.halt()
 		a.saveSession(old)
 	}
+	a.prepareMachine(e, d) // breakpoints of this dump, the trace
 	m := newMachine(e, d, boost)
+	m.onStop = func(s cg50emu.Stop) { a.noteStop(s) }
 	a.mu.Lock()
 	a.m, a.timebase, a.lastAt, a.rate = m, realIPS, time.Time{}, 0
-	a.installed = nil
+	a.installed, a.installedFiles = nil, nil
 	a.mu.Unlock()
-	go m.run(func() (bool, string) {
+	go m.run(func() string {
 		a.mu.Lock()
 		defer a.mu.Unlock()
-		return a.paused, a.speed
+		return a.speed
 	})
 }
 
@@ -340,12 +362,6 @@ func (a *App) ForgetChanges() error {
 }
 
 // ---- running ------------------------------------------------------------------------
-
-func (a *App) SetPaused(p bool) {
-	a.mu.Lock()
-	a.paused = p
-	a.mu.Unlock()
-}
 
 func (a *App) SetSpeed(s string) error {
 	if _, ok := speeds[s]; !ok {
@@ -417,11 +433,26 @@ func (a *App) LoadSlot(n int) error {
 	if err != nil {
 		return fmt.Errorf("slot %d is empty", n)
 	}
+	if err := a.resume(m, blob); err != nil {
+		return err
+	}
+	a.toast("info", fmt.Sprintf("Loaded slot %d", n))
+	return nil
+}
+
+// resume loads a state into the running machine. A stop doesn't survive Resume, so a machine
+// that was stopped is paused again at the state's PC (the debugger windows then show it).
+func (a *App) resume(m *machine, blob []byte) error {
+	_, was := m.emu.Stopped()
 	if err := m.emu.Resume(blob); err != nil {
 		return err
 	}
 	m.endBoost()
-	a.toast("info", fmt.Sprintf("Loaded slot %d", n))
+	a.running()
+	if was {
+		m.emu.Pause()
+		a.stopped(m)
+	}
 	return nil
 }
 
@@ -477,10 +508,9 @@ func (a *App) openStateFile(p string) error {
 	if err != nil {
 		return err
 	}
-	if err := m.emu.Resume(blob); err != nil {
+	if err := a.resume(m, blob); err != nil {
 		return err
 	}
-	m.endBoost()
 	a.toast("info", "Loaded "+filepath.Base(p))
 	return nil
 }
@@ -526,12 +556,16 @@ func (a *App) installFile(p string) {
 		a.installing = false
 		if err == nil {
 			a.installed = append(a.installed, name)
+			a.installedFiles = append(a.installedFiles, installedFile{name, b})
 		}
 		a.mu.Unlock()
 		if err != nil {
 			a.toast("error", name+": "+err.Error())
 		} else {
 			a.toast("info", name+" installed: it's in the MAIN MENU")
+			if strings.EqualFold(filepath.Ext(name), ".g3a") && len(b) > sh4.G3AHeaderLen {
+				a.setAddin(name, b[sh4.G3AHeaderLen:], false, 0, b) // listed until one is launched
+			}
 		}
 	}()
 }

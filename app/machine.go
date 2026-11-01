@@ -1,6 +1,7 @@
 package main
 
 import (
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -33,6 +34,12 @@ type machine struct {
 	stop    chan struct{}
 	done    chan struct{}
 	boostTo atomic.Uint64 // run flat out until Cycles() reaches this (0 = no boost)
+
+	// onStop is told about each new stop of the debugger (debug.go: noteStop)
+	onStop func(cg50emu.Stop)
+
+	addinMu  sync.Mutex
+	addinKey uint64 // the add-in page table last read (analysis.go: watchAddin)
 }
 
 func newMachine(e *cg50emu.Emulator, d dumpInfo, boost bool) *machine {
@@ -43,13 +50,18 @@ func newMachine(e *cg50emu.Emulator, d dumpInfo, boost bool) *machine {
 	return m
 }
 
-// run drives the machine until stop is closed. paused and speed are read each tick.
+// run drives the machine until stop is closed. speed is read each tick.
 //
 // Pacing follows the wall clock, not the ticks: each tick runs the machine up to where it
 // should be by now (anchor + elapsed × rate), so a late or missed tick (Windows timers are
 // coarse) is caught up rather than lost. A big gap (the app was busy or asleep) re-anchors
 // instead of racing to catch up.
-func (m *machine) run(get func() (paused bool, speed string)) {
+//
+// The debugger: Step is called whatever the debugger is doing. A stopped machine runs
+// nothing (and the clock re-anchors when it runs again); a step command that didn't end at
+// once (stepping over GetKey) is finished by these calls at the chosen speed. After each tick
+// a stop not seen before goes to onStop.
+func (m *machine) run(get func() (speed string)) {
 	defer close(m.done)
 	t := time.NewTicker(time.Second / frameHz)
 	defer t.Stop()
@@ -57,19 +69,29 @@ func (m *machine) run(get func() (paused bool, speed string)) {
 		anchorAt  time.Time
 		anchorCyc uint64
 		lastMode  string
+		seen      cg50emu.Stop
+		seenOK    bool
 	)
+	report := func() bool {
+		s, ok := m.emu.Stopped()
+		if ok && (!seenOK || s != seen) && m.onStop != nil {
+			m.onStop(s)
+		}
+		seen, seenOK = s, ok
+		return ok
+	}
 	for {
 		select {
 		case <-m.stop:
 			return
 		case <-t.C:
 		}
-		paused, speed := get()
-		e := m.emu
-		if paused || e.Fault() != "" {
+		if report() {
 			lastMode = "" // re-anchor on resume
 			continue
 		}
+		speed := get()
+		e := m.emu
 		mult := speeds[speed]
 		if mult == 0 || m.booting() {
 			// As fast as possible while the CPU works, but never faster than 1× while it
@@ -77,17 +99,16 @@ func (m *machine) run(get func() (paused bool, speed string)) {
 			lastMode = ""
 			ex := e.Executed()
 			e.Step(realIPS / frameHz)
-			if e.Executed()-ex < realIPS/frameHz/8 {
-				continue // mostly asleep: this tick's 1× is enough
-			}
-			end := time.Now().Add(maxSlice)
-			for time.Now().Before(end) {
-				ex := e.Executed()
-				e.Step(maxChunk)
-				if e.Executed()-ex < maxChunk/8 {
-					break // mostly asleep
+			if e.Executed()-ex >= realIPS/frameHz/8 {
+				end := time.Now().Add(maxSlice)
+				for time.Now().Before(end) {
+					ex := e.Executed()
+					if s := e.Run(maxChunk); s.Reason != cg50emu.StopNone || e.Executed()-ex < maxChunk/8 {
+						break // stopped, or mostly asleep
+					}
 				}
 			}
+			report()
 			continue
 		}
 		now, cyc := time.Now(), e.Cycles()
@@ -107,9 +128,12 @@ func (m *machine) run(get func() (paused bool, speed string)) {
 		end := now.Add(maxSlice)
 		for behind > 0 && time.Now().Before(end) {
 			n := min(behind, maxChunk)
-			e.Step(int(n))
+			if s := e.Run(int(n)); s.Reason != cg50emu.StopNone {
+				break
+			}
 			behind -= n
 		}
+		report()
 	}
 }
 
