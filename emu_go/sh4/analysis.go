@@ -118,6 +118,22 @@ func Analyze(ctx context.Context, img *Image, opt Options) (*Analysis, error) {
 	return an, err
 }
 
+// Restore rebuilds an analysis from a function table that Funcs returned for the same image
+// and options, without exploring again (a host's cache). Every query answers as it did; VBR
+// is empty, and the reference index is built on first use as after Analyze.
+func Restore(img *Image, opt Options, funcs []Func) *Analysis {
+	an := &Analysis{img: img, opt: opt}
+	an.lo, an.hi = opt.Start, opt.End
+	if an.lo == 0 && an.hi == 0 {
+		an.lo, an.hi = img.Base, img.End()
+	}
+	an.lo, an.hi = max(an.lo, img.Base), min(an.hi, img.End())
+	an.rdFn = an.readWord
+	an.funcs = append([]Func(nil), funcs...)
+	an.sortFuncs()
+	return an
+}
+
 // ---- reading, limited to the code region (as DASM) ----
 
 func (an *Analysis) rd8(a uint32) (uint32, bool) {

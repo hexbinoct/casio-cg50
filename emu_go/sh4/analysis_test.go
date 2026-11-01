@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -161,6 +162,36 @@ func TestAnalyzeProgram(t *testing.T) {
 	}
 	if _, err := an.AddFunction(context.Background(), 0x100); err == nil {
 		t.Error("AddFunction outside the region")
+	}
+}
+
+// TestRestore: an analysis rebuilt from its function table answers as the original.
+func TestRestore(t *testing.T) {
+	img := testProgram()
+	opt := AddinOptions(img, nil)
+	an, err := Analyze(context.Background(), img, opt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fs := an.Funcs()
+	rev := append([]Func(nil), fs...)
+	slices.Reverse(rev) // the order given doesn't matter
+	re := Restore(img, opt, rev)
+	if fmt.Sprint(re.Funcs()) != fmt.Sprint(fs) || re.Partial() {
+		t.Fatalf("functions %x, want %x", re.Funcs(), fs)
+	}
+	lo, hi := an.Region()
+	if l2, h2 := re.Region(); l2 != lo || h2 != hi {
+		t.Errorf("region %x-%x, want %x-%x", l2, h2, lo, hi)
+	}
+	for a := lo; a < hi; a += 2 {
+		if re.Classify(a) != an.Classify(a) || re.FuncName(a) != an.FuncName(a) ||
+			fmt.Sprint(re.XrefsTo(a)) != fmt.Sprint(an.XrefsTo(a)) {
+			t.Fatalf("%08x answers differently", a)
+		}
+	}
+	if re.NumXrefs() != an.NumXrefs() {
+		t.Errorf("%d references, want %d", re.NumXrefs(), an.NumXrefs())
 	}
 }
 
