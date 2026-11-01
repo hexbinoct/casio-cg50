@@ -32,10 +32,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
+          - os: ubuntu-24.04
             platform: linux/amd64
             name: linux-amd64
-            # Ubuntu 24.04 has only WebKitGTK 4.1 (wails' default is 4.0)
+            # Ubuntu 24.04 has only WebKitGTK 4.1 (wails' default is 4.0); pinned, not -latest, so the
+            # binary needs glibc 2.39 and runs on current distros
             tags: webkit2_41
           - os: windows-latest
             platform: windows/amd64
@@ -97,14 +98,15 @@ jobs:
 
       - name: Zip
         env:
-          ZIP: cg50-studio-${{ steps.version.outputs.version }}-${{ matrix.name }}.zip
+          # not ZIP: Info-ZIP's zip reads $ZIP as extra options
+          ZIPNAME: cg50-studio-${{ steps.version.outputs.version }}-${{ matrix.name }}.zip
         run: |
           mkdir -p ../dist
           cd build/bin
           case "$RUNNER_OS" in
-            macOS)   ditto -c -k --keepParent "CG50 Studio.app" "../../../dist/$ZIP" ;;
-            Windows) 7z a -tzip -mx=9 "../../../dist/$ZIP" cg50studio.exe ;;
-            *)       chmod +x cg50studio && zip -9 "../../../dist/$ZIP" cg50studio ;;
+            macOS)   ditto -c -k --keepParent "CG50 Studio.app" "../../../dist/$ZIPNAME" ;;
+            Windows) 7z a -tzip -mx=9 "../../../dist/$ZIPNAME" cg50studio.exe ;;
+            *)       chmod +x cg50studio && zip -9 "../../../dist/$ZIPNAME" cg50studio ;;
           esac
           ls -la ../../../dist
 
