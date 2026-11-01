@@ -223,10 +223,10 @@ func (c *CPU) delayedAt(pc uint32) bool {
 
 // peekOp reads the instruction at pc, or 0 (a nop-like non-branch) if it can't be fetched.
 func (c *CPU) peekOp(pc uint32) (op uint32) {
-	ops := c.mem.ubcOps
-	c.mem.ubcOps = false
+	ops := c.mem.ops
+	c.mem.ops = 0
 	defer func() {
-		c.mem.ubcOps = ops
+		c.mem.ops = ops
 		if recover() != nil {
 			op = 0
 		}
@@ -250,8 +250,10 @@ func (c *CPU) stepUBC() {
 	after := live && u.fetchMatch(c, pc0, true)
 	u.opHit = false
 	c.faulted = false
-	c.mem.ubcOps = live && u.opArmed
-	defer func() { c.mem.ubcOps = false }()
+	if live && u.opArmed {
+		c.mem.ops |= opsUBC
+	}
+	defer func() { c.mem.ops &^= opsUBC }()
 	if c.mem.mmuAt {
 		c.stepMMU()
 	} else {
@@ -273,7 +275,7 @@ func (c *CPU) stepUBC() {
 			c.execute(slot)
 		}
 	}
-	c.mem.ubcOps = false
+	c.mem.ops &^= opsUBC
 	if !live || c.faulted || c.sleeping {
 		return
 	}
@@ -287,6 +289,8 @@ func (c *CPU) userBreak(spc uint32) {
 	c.ssr, c.spc, c.sgr = c.sr, spc, c.r[15]
 	c.mem.Write(0xFF000024, 4, expevtUBC)
 	c.setSR(c.sr | srMD | srRB | srBL)
+	c.excCnt++
+	c.lastExc = expevtUBC
 	if c.ubc.regs[ubcCBCR]&1 != 0 {
 		c.pc = c.dbr
 	} else {

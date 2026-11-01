@@ -168,6 +168,24 @@ func (c *ccn) raise(cpu *CPU, f mmuFault, spc uint32) {
 	cpu.ssr, cpu.spc, cpu.sgr = cpu.sr, spc, cpu.r[15]
 	cpu.setSR(cpu.sr | srMD | srRB | srBL)
 	cpu.pc = cpu.vbr + f.vector
+	cpu.excCnt++
+	cpu.lastExc = f.expevt
+}
+
+// peek translates va as translate would, for the host debugger: no exception, no protection
+// check, and the lookup fast path (last) is left alone. n = the bytes left in the page.
+func (c *ccn) peek(va uint32, md bool) (pa, n uint32, ok bool) {
+	for i := -1; i < utlbSize; i++ {
+		j := i
+		if i < 0 {
+			j = c.last
+		}
+		if e := &c.utlb[j]; c.matches(e, va, md) {
+			m := e.mask()
+			return e.ppn()&^m | va&m, m - va&m + 1, true
+		}
+	}
+	return 0, 0, false
 }
 
 // stateMap / restoreState serialise the MMU into the save-state's CCN register map

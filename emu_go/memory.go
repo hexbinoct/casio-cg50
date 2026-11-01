@@ -41,6 +41,11 @@ const (
 	fBufData
 )
 
+const (
+	opsUBC = 1 << iota // Memory.ops: the UBC's operand channels (ubc.go)
+	opsDbg             // Memory.ops: the host debugger's watchpoints (debug.go)
+)
+
 type fword struct {
 	addr, size, val uint32
 }
@@ -73,11 +78,14 @@ type Memory struct {
 
 	// DRAM write-watch (investigation only; nil = disabled). Called for every DRAM
 	// write with phys in [wrLo,wrHi) — used to catch the PC that draws into VRAM.
-	wrLo, wrHi  uint32
-	wrHook      func(phys, size, val uint32)
-	mmioHook    func(va, size, val uint32) // investigation: every MMIO write (nil = off)
-	ubcOps      bool                       // the UBC watches operand accesses (ubc.go stepUBC)
-	flashRdHook func(phys, size uint32)    // investigation: data reads from flash (nil = off)
+	wrLo, wrHi uint32
+	wrHook     func(phys, size, val uint32)
+	mmioHook   func(va, size, val uint32) // investigation: every MMIO write (nil = off)
+	// ops routes the CPU's operand accesses through opRead/opWrite: bit opsUBC while the UBC
+	// watches them (set only inside stepUBC), bit opsDbg while host watchpoints do (set only
+	// around one instruction in Emulator.dstep, debug.go). 0 = the plain path.
+	ops         uint8
+	flashRdHook func(phys, size uint32) // investigation: data reads from flash (nil = off)
 	// accHook (investigation only; nil = off): every access to DRAM (addr = physical address),
 	// to the on-chip memories and MMIO at 0xE0000000.. (addr = P4 address), DRAM instruction
 	// fetches and DMA source reads. Used by ramfree_probe_test.go to map unused RAM.
@@ -93,6 +101,8 @@ type Memory struct {
 	eraseBusy int
 	eraseSect uint32
 	eraseTog  uint32
+
+	dbgw *debugger // the host debugger whose watchpoints Memory.ops bit opsDbg feeds
 }
 
 // Flash geometry: the OS erases 128 KB sectors (its erase routine in IL RAM masks the address
@@ -151,8 +161,8 @@ func (m *Memory) translated(va uint32) bool {
 func (m *Memory) priv() bool { return m.cpu == nil || m.cpu.sr&srMD != 0 }
 
 func (m *Memory) Read(va, size uint32) uint32 {
-	if m.ubcOps {
-		return m.ubcRead(va, size)
+	if m.ops != 0 {
+		return m.opRead(va, size)
 	}
 	if m.translated(va) {
 		va = 0xA0000000 | m.mmu.translate(va, false, m.priv())
@@ -212,8 +222,8 @@ func (m *Memory) Read(va, size uint32) uint32 {
 }
 
 func (m *Memory) Write(va, size, val uint32) {
-	if m.ubcOps {
-		m.ubcWrite(va, size, val)
+	if m.ops != 0 {
+		m.opWrite(va, size, val)
 		return
 	}
 	if m.translated(va) {
@@ -489,10 +499,10 @@ func (m *Memory) fetch16(pc uint32) uint32 {
 			return uint32(m.dram[p-DramBase])<<8 | uint32(m.dram[p-DramBase+1])
 		}
 	}
-	if m.ubcOps { // a delay slot fetched inside a watched instruction: not an operand access
-		m.ubcOps = false
+	if o := m.ops; o != 0 { // a delay slot fetched inside a watched instruction: not an operand access
+		m.ops = 0
 		v := m.Read(pc, 2)
-		m.ubcOps = true
+		m.ops = o
 		return v
 	}
 	return m.Read(pc, 2)
@@ -505,22 +515,37 @@ func (m *Memory) W8(va, v uint32)      { m.Write(va, 1, v) }
 func (m *Memory) W16(va, v uint32)     { m.Write(va, 2, v) }
 func (m *Memory) W32(va, v uint32)     { m.Write(va, 4, v) }
 
-// ubcRead / ubcWrite: an operand access of the instruction being executed while the UBC
-// watches them (ubcOps, set only inside stepUBC). Accesses nested in it (an MMIO write that
-// starts a DMA transfer, say) are not the CPU's and are not seen.
-func (m *Memory) ubcRead(va, size uint32) uint32 {
-	m.ubcOps = false
+// opRead / opWrite: an operand access of the instruction being executed while the UBC or the
+// host's watchpoints watch them (m.ops). Accesses nested in it (an MMIO write that starts a
+// DMA transfer, say) are not the CPU's and are not seen.
+func (m *Memory) opRead(va, size uint32) uint32 {
+	o := m.ops
+	m.ops = 0
 	v := m.Read(va, size)
-	m.ubcOps = true
-	m.cpu.ubc.operand(va, size, v, false)
+	m.ops = o
+	if o&opsUBC != 0 {
+		m.cpu.ubc.operand(va, size, v, false)
+	}
+	if o&opsDbg != 0 {
+		m.dbgw.access(m, va, size, v, false)
+	}
 	return v
 }
 
-func (m *Memory) ubcWrite(va, size, val uint32) {
-	m.ubcOps = false
-	m.cpu.ubc.operand(va, size, val, true)
+func (m *Memory) opWrite(va, size, val uint32) {
+	o := m.ops
+	m.ops = 0
+	if o&opsUBC != 0 {
+		m.cpu.ubc.operand(va, size, val, true)
+	}
 	m.Write(va, size, val)
-	m.ubcOps = true
+	m.ops = o
+	if o&opsDbg != 0 { // after the write: one that faults (MMU) is never reported
+		if size < 4 {
+			val &= 1<<(size*8) - 1
+		}
+		m.dbgw.access(m, va, size, val, true)
+	}
 }
 
 // big-endian helpers

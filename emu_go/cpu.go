@@ -69,6 +69,11 @@ type CPU struct {
 	ubc     *ubcUnit // the User Break Controller (ubc.go); nil without an MMIO bus
 	ubcOn   bool     // a UBC channel is enabled: every instruction goes through stepUBC
 	faulted bool     // stepMMU took an MMU exception (cleared by stepUBC)
+
+	// for the host debugger (debug.go); kept last, away from the fields every instruction uses
+	lastIRQ uint32 // INTEVT of the latest interrupt accepted
+	excCnt  uint64 // exceptions entered (general, MMU, user break; not interrupts)
+	lastExc uint32 // EXPEVT of the latest one
 }
 
 func NewCPU(mem *Memory) *CPU {
@@ -184,6 +189,7 @@ func (c *CPU) acceptInterrupt() bool {
 	c.setSR(sr)
 	c.pc = c.vbr + 0x600
 	c.irqCnt++
+	c.lastIRQ = top.intevt
 	return true
 }
 
@@ -346,6 +352,8 @@ func (c *CPU) generalException(expevt, spc uint32) {
 	c.setSR(c.sr | srMD | srRB | srBL)
 	c.pc = c.vbr + 0x100
 	c.excTaken = c.inSlot
+	c.excCnt++
+	c.lastExc = expevt
 }
 
 // illegal takes the exception for the undefined opcode at c.pc-2: a general illegal

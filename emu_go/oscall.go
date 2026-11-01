@@ -77,6 +77,9 @@ func (e *Emulator) callOS(fn uint32, budget uint64, args ...uint32) (uint32, err
 	c.setSR(sr0 &^ (srBL | srRB | srIMASK)) // the main context with interrupts on
 	c.sleeping = false
 
+	muted := e.debugMuted
+	e.debugMuted = true // the host debugger never stops inside a host call (debug.go)
+	defer func() { e.debugMuted = muted }()
 	start := c.cycles
 	for !done && e.fault == "" && c.cycles-start < budget {
 		e.stepLocked(oscallChunk)

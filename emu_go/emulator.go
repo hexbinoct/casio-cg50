@@ -76,6 +76,12 @@ type Emulator struct {
 	// dbg, if set (by the Android bridge), receives one-line key-path diagnostics.
 	// nil on desktop/tests.
 	dbg func(string)
+
+	// debug is the host debugger (debug.go): breakpoints, watchpoints, stepping, the trace.
+	// nil until a debug call needs it; while nothing is armed Step never looks at it again.
+	// debugMuted hides it from host calls into the OS (oscall.go).
+	debug      *debugger
+	debugMuted bool
 }
 
 // NewEmulator builds a fresh machine ready to boot from reset (pc = 0x80000000). Call
@@ -279,12 +285,10 @@ func (e *Emulator) ReleaseAllKeys() {
 }
 
 // Step advances the machine by n instructions, driving queued taps onto the matrix. If the
-// core faults, the machine halts (see Fault) rather than panicking into the host.
-func (e *Emulator) Step(n int) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	e.stepLocked(n)
-}
+// core faults, the machine halts (see Fault) rather than panicking into the host. A debugger
+// stop (debug.go) ends it early, and while the machine stays stopped Step does nothing; Run
+// is the same call with the reason returned.
+func (e *Emulator) Step(n int) { e.Run(n) }
 
 // stepLocked is Step with e.mu already held (oscall.go runs OS functions through it).
 func (e *Emulator) stepLocked(n int) {
@@ -293,6 +297,7 @@ func (e *Emulator) stepLocked(n int) {
 	}
 	defer func() {
 		if x := recover(); x != nil {
+			e.mem.ops = 0 // a panic inside a watched instruction leaves no hook armed
 			e.fault = fmt.Sprintf("core halted at pc=%08x: %v", e.cpu.pc, x)
 			if e.dbg != nil {
 				e.dbg(e.fault)
@@ -306,18 +311,31 @@ func (e *Emulator) stepLocked(n int) {
 	// moved), or at the first iteration (host calls happen between Steps). In
 	// between, the CPU runs alone — and while it sleeps with nothing pending, time jumps
 	// straight to the next event (the old loop only incremented cycles there).
+	//
+	// With the debugger armed (dbg, decided once per call) the same loop runs every instruction
+	// through dstep instead (debug.go); a stop returns at once, the machine state as after
+	// that instruction (or before it, for a breakpoint).
 	end := e.cpu.cycles + uint64(n)
 	e.mmio.dirty = true
+	dbg := e.debug != nil && e.debug.on && !e.debugMuted
 	for e.cpu.cycles < end {
 		if e.mmio.dirty || e.cpu.cycles >= e.due || e.exactTick {
 			e.mmio.dirty = false
 			e.mmio.tick(e.cpu)
-			e.cpu.step()
+			stopped := false
+			if dbg {
+				stopped = e.dstep()
+			} else {
+				e.cpu.step()
+			}
 			e.tap.drive(e.mmio.keysc, e.cpu.cycles)
 			if len(e.pendingUp) != 0 || len(e.pendingDown) != 0 {
 				e.flushReleases()
 			}
 			e.due = e.nextDue()
+			if stopped {
+				return
+			}
 			continue
 		}
 		if e.cpu.sleeping {
@@ -330,6 +348,12 @@ func (e *Emulator) stepLocked(n int) {
 				e.cpu.cycles = stop // nothing can wake it before the next event
 			} else {
 				e.cpu.step() // a pending request wakes it
+			}
+			continue
+		}
+		if dbg {
+			if e.debugRun(stop) {
+				return
 			}
 			continue
 		}
@@ -464,6 +488,10 @@ func (e *Emulator) Resume(blob []byte) error {
 	e.mmio.keysc.releaseAll()
 	e.mmio.keysc.resumeDefaults() // peripheral config isn't in the snapshot; restore post-init state
 	e.fault = ""
+	e.mem.ops = 0
+	if e.debug != nil {
+		e.debug.reset() // breakpoints and watchpoints stay; a stop, a goal and the trace go
+	}
 	return nil
 }
 
