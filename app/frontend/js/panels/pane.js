@@ -1,7 +1,7 @@
 // Building blocks shared by the windows: a pane = an optional toolbar over a body.
 
-// pane returns { el, tools, body }; sample: true adds the "sample data" badge to the toolbar.
-export function pane(kind, { tools = true, sample = false } = {}) {
+// pane returns { el, tools, body }.
+export function pane(kind, { tools = true } = {}) {
   const el = document.createElement("div");
   el.className = "pane pane-" + kind;
   el.tabIndex = 0; // the window takes keyboard focus when clicked (app.js routes keys by focus)
@@ -14,16 +14,7 @@ export function pane(kind, { tools = true, sample = false } = {}) {
   const body = document.createElement("div");
   body.className = "pane-body";
   el.append(body);
-  if (sample && bar) bar.append(sampleBadge());
   return { el, tools: bar, body };
-}
-
-export function sampleBadge() {
-  const b = document.createElement("span");
-  b.className = "badge sample";
-  b.textContent = "sample";
-  b.title = "Sample data: this window isn't connected to the debug engine yet";
-  return b;
 }
 
 // h builds an element: h("button.btn.icon", { title: "x", onclick }, child, …).

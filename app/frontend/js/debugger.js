@@ -1,19 +1,21 @@
 // The debugger as the page sees it: the actions the toolbar, the shortcuts and the windows
-// ask for, and the breakpoint list. The work is done by a backend:
+// ask for, and the breakpoint list. The work is done by a backend (engine.js, on Go):
 //
 //   setBackend({
 //     stepInto(), stepOver(), stepOut(), runToCursor(addr),   → Promise, the machine stops after
-//     setBreakpoints(list),                                   the whole list, after every change
-//   })
+//     setBreakpoints(list) → Promise<infos>                   the whole list after every change;
+//   })                                                         infos: hits, names, errors by id
 //
-// Until the debug engine is connected, the backend is the SAMPLE session in sample.js: the
-// steps move a made-up CPU state through the sample windows, so the wiring can be seen.
-// Run / pause is real already (app.js, SetPaused).
+// Breakpoint = { id, kind, addr, any, len, enabled, condition, ignore,      (what is set)
+//                hits, where, note, error }                                 (what Go reports)
+//   kind: "exec" | "read" | "write" | "access"    addr: the address (len: bytes watched)
+//         "syscall"                                 addr: the number (any: every syscall)
+//         "exception" | "interrupt"                 addr: EXPEVT / INTEVT (any: all)
 import { nav } from "./nav.js";
 
 let backend = null;
 
-export function setBackend(b) { backend = b; backend?.setBreakpoints?.(bps.slice()); }
+export function setBackend(b) { backend = b; }
 
 // ---- run control ---------------------------------------------------------------------
 
@@ -21,7 +23,7 @@ let cursorFn = () => null; // the disassembly's selected address (panels/disasm.
 export function setCursorSource(fn) { cursorFn = fn; }
 
 async function act(name, ...args) {
-  if (!backend?.[name]) { nav.log("warn", `${name}: no debugger connected`); return; }
+  if (!backend?.[name]) { nav.log("warn", `${name}: open a flash dump first`); return; }
   try { await backend[name](...args); }
   catch (err) { nav.log("error", `${name}: ${err}`); }
 }
@@ -38,7 +40,6 @@ export const actions = {
 };
 
 // ---- breakpoints ---------------------------------------------------------------------
-// { id, addr, kind: "exec" | "read" | "write" | "access", enabled, hits, condition }
 
 let bps = [];
 let nextId = 1;
@@ -47,17 +48,33 @@ const listeners = new Set();
 export function onBreakpoints(fn) { listeners.add(fn); fn(bps); return () => listeners.delete(fn); }
 export function breakpoints() { return bps; }
 export function breakpointAt(addr) { return bps.find((b) => b.addr === addr && b.kind === "exec"); }
+export function syscallBreak(num) { return bps.find((b) => b.kind === "syscall" && !b.any && b.addr === num); }
 
+function notify() { for (const fn of listeners) fn(bps); }
+
+let sendT = 0;
 function changed() {
   bps = bps.slice();
-  for (const fn of listeners) fn(bps);
-  backend?.setBreakpoints?.(bps.slice());
+  notify();
+  clearTimeout(sendT);
+  sendT = setTimeout(send, 30); // a burst of changes (clear all, restore) is one call
 }
 
+async function send() {
+  if (!backend?.setBreakpoints) return;
+  const list = bps.map(({ id, kind, addr, any, len, enabled, condition, ignore }) =>
+    ({ id, kind, addr: addr >>> 0, any: !!any, len: len >>> 0, enabled, condition: condition || "", ignore: ignore || 0 }));
+  try { applyInfo(await backend.setBreakpoints(list)); }
+  catch (err) { nav.log("error", "Breakpoints: " + err); }
+}
+
+const same = (b, addr, kind, extra) => b.addr === addr && b.kind === kind && !!b.any === !!extra.any && (b.len || 0) === (extra.len || 0);
+
 export function addBreakpoint(addr, kind = "exec", extra = {}) {
-  const old = bps.find((b) => b.addr === addr && b.kind === kind);
+  addr = addr >>> 0;
+  const old = bps.find((b) => same(b, addr, kind, extra));
   if (old) return old;
-  const b = { id: nextId++, addr: addr >>> 0, kind, enabled: true, hits: 0, condition: "", ...extra };
+  const b = { id: nextId++, addr, kind, any: false, len: 0, enabled: true, hits: 0, condition: "", ignore: 0, where: "", ...extra };
   bps.push(b);
   changed();
   return b;
@@ -65,29 +82,37 @@ export function addBreakpoint(addr, kind = "exec", extra = {}) {
 
 // toggleBreakpoint: none → on → removed (F9 in the disassembly).
 export function toggleBreakpoint(addr) {
-  const b = breakpointAt(addr);
+  const b = breakpointAt(addr >>> 0);
   if (b) removeBreakpoint(b.id);
   else addBreakpoint(addr);
 }
 
-export function setBreakpointEnabled(id, on) {
+export function setBreakpointEnabled(id, on) { updateBreakpoint(id, { enabled: on }); }
+
+export function updateBreakpoint(id, patch) {
   const b = bps.find((x) => x.id === id);
-  if (b) { b.enabled = on; changed(); }
+  if (b) { Object.assign(b, patch); changed(); }
 }
 
 export function removeBreakpoint(id) { bps = bps.filter((b) => b.id !== id); changed(); }
 export function clearBreakpoints() { bps = []; changed(); }
 
-// setBreakpointHits: the engine reports hit counts (id → count).
-export function setBreakpointHits(hits) {
-  for (const b of bps) if (hits[b.id] !== undefined) b.hits = hits[b.id];
-  changed();
+// applyInfo takes what Go reports (hit counts, names, errors) without sending anything back.
+export function applyInfo(infos) {
+  if (!infos) return;
+  const by = new Map(infos.map((x) => [x.id, x]));
+  let any = false;
+  for (const b of bps) {
+    const x = by.get(b.id);
+    if (!x) continue;
+    for (const k of ["hits", "where", "note", "error"]) if (b[k] !== (x[k] ?? (k === "hits" ? 0 : ""))) { b[k] = x[k] ?? (k === "hits" ? 0 : ""); any = true; }
+  }
+  if (any) { bps = bps.slice(); notify(); }
 }
 
-// the list as saved with the layout's session (addresses, kinds, on/off; not hit counts)
-export function breakpointsState() { return bps.map(({ addr, kind, enabled, condition }) => ({ addr, kind, enabled, condition })); }
+// restoreBreakpoints replaces the list with the one saved for this dump (ids kept).
 export function restoreBreakpoints(list) {
-  bps = [];
-  for (const b of list || []) bps.push({ id: nextId++, hits: 0, condition: "", ...b });
-  changed();
+  bps = (list || []).map((b) => ({ hits: 0, condition: "", ignore: 0, where: "", any: false, len: 0, ...b }));
+  nextId = Math.max(0, ...bps.map((b) => b.id)) + 1;
+  notify();
 }

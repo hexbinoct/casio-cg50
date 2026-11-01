@@ -190,7 +190,7 @@ input[type="checkbox"] { accent-color: var(--aqua); }
 .list-head[hidden] { display: none; }
 
 /* disassembly */
-.d { grid-template-columns: 18px 9.2ch 6ch 8.5ch minmax(16ch, 26ch) 1fr; column-gap: 10px; }
+.d { grid-template-columns: 18px 9.2ch 9.2ch 8.5ch minmax(16ch, 26ch) 1fr; column-gap: 10px; }
 .vl-row.d .g { position: relative; height: 20px; cursor: pointer; }
 .vl-row.d .g:hover::after { content: ""; position: absolute; left: 4px; top: 5px; width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid oklch(0.700 0.150 28 / 0.6); box-sizing: border-box; }
 .vl-row.d .a { color: var(--syn-addr); }
@@ -206,6 +206,27 @@ input[type="checkbox"] { accent-color: var(--aqua); }
 .vl-row.d-label .lbl { color: var(--syn-label); font-weight: 650; padding-left: 0; }
 .vl-row.d-label .a { color: var(--text-3); }
 .vl-row.d-data .m { color: var(--syn-comment); font-weight: 500; }
+.vl-row.d.unk .m, .vl-row.d.unk .o { opacity: 0.55; }
+.vl-row.d-wait .a { color: var(--text-3); }
+
+/* who refers to it (X), under the listing */
+.xref-panel { flex: none; height: 38%; min-height: 120px; display: flex; flex-direction: column; border-top: 1px solid var(--pane-line); background: var(--pane-head); }
+.xref-panel[hidden] { display: none; }
+.xref-head { flex: none; display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 6px 0 10px; font-size: 12.5px; color: var(--text-2); }
+.xref-head b { color: var(--text); }
+.xref-list { flex: 1; min-height: 0; }
+.xref-row { display: grid; grid-template-columns: 9.2ch 6ch minmax(12ch, 0.8fr) 1fr; gap: 10px; padding: 0 10px; height: 22px; align-items: center; font: 12.5px var(--mono); cursor: pointer; white-space: nowrap; }
+.xref-row > span { overflow: hidden; text-overflow: ellipsis; }
+.xref-row:hover { background: var(--row-hover); }
+.xref-row .a { color: var(--syn-link); }
+.xref-row .k { color: var(--text-3); }
+.xref-row .fn { color: var(--syn-label); }
+.xref-row .t { color: var(--text-2); }
+
+/* values kept from the last stop while the machine runs */
+.pane.stale .reg .rv, .pane.stale .cs-table .tr { opacity: 0.55; }
+.stale-note { color: var(--amber); }
+.mem i.s.e { background: var(--amber); }
 .vl-row.d-data .o { color: var(--syn-num); }
 .vl-row.pc { background: var(--pc-row); box-shadow: inset 3px 0 0 var(--amber); }
 .vl-row.pc.sel { background: oklch(0.850 0.120 88 / 0.20); }
@@ -237,7 +258,12 @@ input[type="checkbox"] { accent-color: var(--aqua); }
 .str .e { color: var(--text-3); font-size: 11.5px; }
 .str .t { color: oklch(0.86 0.07 140); }
 .str mark { background: oklch(0.800 0.125 58 / 0.28); color: var(--text); border-radius: 2px; }
-.sys { grid-template-columns: 6ch 1fr 9.2ch; column-gap: 12px; }
+.sys { grid-template-columns: 14px 6ch 1fr 9.2ch; column-gap: 10px; }
+.vl-row.sys .g { position: relative; height: 20px; cursor: pointer; }
+.vl-row.sys .g:hover::after { content: ""; position: absolute; left: 1px; top: 5px; width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid oklch(0.700 0.150 28 / 0.6); box-sizing: border-box; }
+.vl-row.sys .bp-dot { left: 1px; }
+.vl-row.sys.bp { background: var(--bp-row); }
+.vl-row.sys.bp-off .bp-dot { background: none; border: 1.5px solid var(--coral); box-sizing: border-box; box-shadow: none; }
 .sys .n { color: var(--syn-num); }
 .sys .t { color: var(--syn-label); }
 .list-head.str, .list-head.sys, .list-head.trc { padding-left: 8px; }
@@ -272,14 +298,22 @@ input[type="checkbox"] { accent-color: var(--aqua); }
 .table .tr.th { height: 24px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-3); }
 .table .tr:not(.th):hover { background: var(--row-hover); }
 .table .tr > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.bp-table .tr { grid-template-columns: 20px 9.5ch 9.2ch minmax(8ch, 1fr) 5ch minmax(6ch, 0.6fr) 26px; }
+.bp-table { min-width: 600px; }
+.bp-table .tr { grid-template-columns: 20px 10ch 11ch minmax(8ch, 1fr) 5ch minmax(8ch, 0.8fr) 5ch 26px; }
+.bp-table .edit { cursor: text; border-radius: 4px; padding: 1px 3px; margin-left: -3px; }
+.bp-table .edit:hover { background: var(--raised-hi); }
+.bp-table .edit.bad { color: var(--coral); text-decoration: underline wavy oklch(0.700 0.150 28 / 0.6); }
+.cell-edit, .reg-edit { height: 22px; width: 100%; font-size: 12px; }
+.reg-edit { width: 10ch; padding: 0 4px; }
+.kind.k-syscall { color: var(--syn-label); border-color: oklch(0.820 0.095 165 / 0.35); }
+.kind.k-exception, .kind.k-interrupt { color: oklch(0.85 0.06 300); border-color: oklch(0.70 0.09 300 / 0.35); }
 .bp-table .tr.off > span:not(:first-child) { opacity: 0.5; }
 .bp-table .link { color: var(--syn-link); cursor: pointer; }
 .kind { font-size: 11px; padding: 1px 6px; border-radius: 5px; border: 1px solid var(--pane-line); color: var(--text-2); }
 .kind.k-exec { color: var(--coral); border-color: oklch(0.700 0.150 28 / 0.4); }
 .kind.k-write, .kind.k-access { color: var(--amber); border-color: oklch(0.850 0.120 88 / 0.35); }
 .kind.k-read { color: var(--syn-reg); border-color: oklch(0.800 0.065 238 / 0.35); }
-.cs-table .tr { grid-template-columns: 3ch minmax(10ch, 1fr) 9.2ch 9.2ch; }
+.cs-table .tr { grid-template-columns: 3ch minmax(10ch, 1fr) 9.2ch 5ch 9.2ch; }
 .cs-table .tr.click { cursor: pointer; }
 .cs-table .fn { color: var(--syn-label); }
 .cs-table .tr.cur { background: var(--pc-row); box-shadow: inset 3px 0 0 var(--amber); }

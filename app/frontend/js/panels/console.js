@@ -1,9 +1,10 @@
 // The Console window: what the app reports (the same messages as the toasts, kept), what the
-// debugger says, and a command line. Real: the log; the commands drive the other windows.
+// debugger says (every stop), and a command line: help lists the commands; engine.js adds
+// the debugger's (run, step, registers, memory, breakpoints, …).
 //
 // Interface:
 //   log(kind, text)                 kind: "info" | "warn" | "error" | "out"
-//   addCommand(name, help, fn)      fn(args: string[], print(text)) for the command line
+//   addCommand(name, help, fn)      fn(args: string[], print(text)) for the command line (may be async)
 import { pane, h, toolButton } from "./pane.js";
 import { esc, parseAddr } from "../vlist.js";
 import { nav } from "../nav.js";
@@ -30,18 +31,20 @@ addCommand("help", "this list", (_, print) => {
   for (const [n, c] of commands) print(`${n.padEnd(14)} ${c.help}`);
 });
 addCommand("clear", "empty the console", () => { lines.length = 0; for (const v of views) v.clearAll(); });
-addCommand("g", "<address|name>  show it in the disassembly", ([a], print) => {
-  const x = parseAddr(a || "") ?? findName(a || "");
-  if (x == null) print("g: an address, e.g. g 80001234"); else nav.code(x);
+addCommand("g", "<address|name>  show it in the disassembly", async ([a], print) => {
+  const x = a ? await findName(a) : null;
+  if (x == null) print("g: an address or a function's name, e.g. g 80001234, g GetKey"); else nav.code(x);
 });
 addCommand("m", "<address>  show it in a memory view", ([a], print) => {
   const x = parseAddr(a || "");
   if (x == null) print("m: an address, e.g. m 8C000000"); else nav.data(x);
 });
-addCommand("bp", "<address> [read|write|access]  add a breakpoint or watchpoint", ([a, k], print) => {
-  const x = parseAddr(a || "");
-  if (x == null) { print("bp: an address"); return; }
-  dbg.addBreakpoint(x, ["read", "write", "access"].includes(k) ? k : "exec");
+addCommand("bp", "<address|name> [read|write|access [length]]  add a breakpoint or watchpoint", async ([a, k, n], print) => {
+  const x = a ? await findName(a) : null;
+  if (x == null) { print("bp: an address or a function's name"); return; }
+  const kind = ["read", "write", "access"].includes(k) ? k : "exec";
+  const b = dbg.addBreakpoint(x, kind, kind === "exec" ? {} : { len: Math.max(1, Number(n) || 1) });
+  print(`breakpoint ${b.id}: ${kind} at ${x.toString(16).toUpperCase().padStart(8, "0")}`);
 });
 addCommand("bc", "remove every breakpoint", () => dbg.clearBreakpoints());
 addCommand("layout", "<calculator|debugging|re>  switch the workspace layout", ([n], print) => {
@@ -69,7 +72,7 @@ export function create() {
       const c = commands.get(name);
       const print = (t) => log("out", t);
       if (!c) print(`${name}: no such command (help lists them)`);
-      else try { c.fn(args, print); } catch (err) { log("error", String(err)); }
+      else Promise.resolve().then(() => c.fn(args, print)).catch((err) => log("error", String(err)));
     } else if (e.key === "ArrowUp" && hi > 0) { input.value = hist[--hi]; e.preventDefault(); }
     else if (e.key === "ArrowDown" && hi < hist.length) { input.value = hist[++hi] ?? ""; e.preventDefault(); }
   });

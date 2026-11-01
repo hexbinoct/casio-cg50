@@ -49,5 +49,10 @@ export const HELP = [
   ["Disassembly window", ""],
   ["F9", "breakpoint on the line"], ["Enter / double-click", "follow the branch"],
   ["Backspace, Alt+← / Alt+→", "back / forward"], ["Home", "go to the PC"],
-  ["G", "go to an address or name"], ["↑ ↓ PgUp PgDn", "move"],
+  ["G", "go to an address or name"], ["X", "who refers to the line (cross-references)"],
+  ["↑ ↓ PgUp PgDn", "move"],
+  ["Memory window", ""],
+  ["0–9 A–F", "type over the selected byte"], ["G", "go to an address"],
+  ["Registers window", ""],
+  ["Double-click a value", "change it (while stopped)"],
 ];

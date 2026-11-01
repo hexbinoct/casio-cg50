@@ -384,3 +384,6 @@ export async function init(el) {
 }
 
 export const dock = () => api;
+
+// onlyCalculator: the workspace shows the calculator and nothing else (the default layout).
+export function onlyCalculator() { return !!api && api.panels.length === 1 && api.panels[0].id === "calculator"; }

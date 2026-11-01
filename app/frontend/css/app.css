@@ -325,6 +325,10 @@ button:focus-visible { outline: 2px solid var(--aqua); outline-offset: 2px; }
   animation: in 160ms ease-out;
 }
 .toast.error { border-left-color: var(--coral); }
+.toast.offer { display: flex; flex-direction: column; gap: 10px; max-width: 420px; border-left-color: var(--amber); }
+.toast.offer .offer-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.status .stop-text { color: var(--amber); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 0 1 auto; }
+.status .ana-text { color: var(--text-3); white-space: nowrap; }
 @keyframes in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 
 body.wails-drop-target-active .stage::after {

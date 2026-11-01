@@ -7,7 +7,8 @@ import * as workspace from "./workspace.js";
 import * as calculator from "./panels/calculator.js";
 import { log } from "./panels/console.js";
 import { actions as debug } from "./debugger.js";
-import { installSample } from "./sample.js";
+import * as breakpoints from "./debugger.js";
+import * as engine from "./engine.js";
 import { nav } from "./nav.js";
 
 const $ = (id) => document.getElementById(id);
@@ -86,7 +87,13 @@ function renderKeysHint(o) {
 // ---- top bar -------------------------------------------------------------------------
 let status = { loaded: false, paused: false, speed: "1x" };
 
-function togglePause() { if (!status.loaded) return; call("SetPaused", !status.paused); status.paused = !status.paused; render(); }
+function togglePause() {
+  if (!status.loaded) return;
+  const p = !status.paused;
+  call("SetPaused", p).then(() => go().GetStatus().then(onStatus));
+  status.paused = p;
+  render();
+}
 const canStep = () => status.loaded && status.paused && !status.fault;
 
 $("runBtn").onclick = togglePause;
@@ -172,6 +179,7 @@ function render() {
   if (s.loaded) {
     if (s.fault) { state = "Stopped"; cls = "fault"; }
     else if (s.installing) { state = "Installing…"; cls = "booting"; }
+    else if (s.paused && s.stop && s.stop.reason !== "pause") { state = "Stopped"; cls = "paused"; }
     else if (s.paused) { state = "Paused"; cls = "paused"; }
     else if (s.booting) { state = "Starting…"; cls = "booting"; }
     else { state = "Running"; cls = "running"; }
@@ -184,6 +192,11 @@ function render() {
   $("pcText").textContent = s.loaded ? `PC ${s.pc}` : "";
   $("faultText").textContent = s.fault || "";
   $("faultText").title = s.fault || "";
+  const stop = s.loaded && s.paused && !s.fault && s.stop ? s.stop.text : "";
+  $("stopText").textContent = stop;
+  $("stopText").title = stop;
+  const a = s.analysis || {};
+  $("anaText").textContent = s.loaded && a.state === "running" ? `Analysing the OS: ${a.phase}${a.total ? " " + Math.round((100 * a.done) / a.total) + "%" : "…"}` : "";
 }
 
 let lastFault = "";
@@ -192,6 +205,29 @@ function onStatus(s) {
   if (s.fault && s.fault !== lastFault) log("error", "The calculator stopped: " + s.fault);
   lastFault = s.fault || "";
   render();
+  engine.status(s);
+}
+
+// The first stop of a session while only the calculator is open: offer the debugger's layout.
+function offerDebugging(st) {
+  if (!workspace.onlyCalculator()) return;
+  const t = document.createElement("div");
+  t.className = "toast offer";
+  t.innerHTML = `<div><b>${st.text.replace(/</g, "&lt;")}</b><br>Show the debugger's windows?</div>`;
+  const yes = document.createElement("button");
+  yes.className = "btn primary";
+  yes.textContent = "Debugging layout";
+  yes.onclick = () => { t.remove(); workspace.usePreset("debugging"); };
+  const no = document.createElement("button");
+  no.className = "btn";
+  no.textContent = "Not now";
+  no.onclick = () => t.remove();
+  const row = document.createElement("div");
+  row.className = "offer-actions";
+  row.append(yes, no);
+  t.append(row);
+  $("toasts").append(t);
+  setTimeout(() => t.remove(), 15000);
 }
 
 // ---- start ---------------------------------------------------------------------------
@@ -205,11 +241,11 @@ function whenGo(ms) {
 }
 
 async function boot() {
-  installSample(); // SAMPLE data for the debugger windows until the engine is connected
   const ok = await whenGo(3000);
   await workspace.init($("dock"));
   renderKeysHint(workspace.keyOwner());
   if (!ok) { log("warn", "Not running inside CG50 Studio: the Go side is missing"); return; }
+  engine.init({ firstStop: offerDebugging });
   window.runtime.EventsOn("status", onStatus);
   window.runtime.EventsOn("toast", (t) => toast(t.kind, t.text));
   go().GetStatus().then(onStatus);
@@ -219,4 +255,4 @@ render();
 boot();
 
 // for the console of the web view, and for wiring the debug engine in
-window.studio = { workspace, nav, debug };
+window.studio = { workspace, nav, debug, breakpoints, engine };

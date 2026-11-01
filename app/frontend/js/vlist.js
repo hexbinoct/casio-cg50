@@ -69,6 +69,7 @@ export class VList {
 
   // scrollTo brings row i into view: "top", "center", or "nearest" (only if it's outside).
   scrollTo(i, how = "nearest") {
+    if (!this.viewH) { this.pendingScroll = [i, how]; return; } // not laid out yet: after measure
     const v = this.visible;
     if (how === "top") this.setPos(i);
     else if (how === "center") this.setPos(i - Math.floor(v / 2));
@@ -116,6 +117,7 @@ export class VList {
       this.pool.push(el);
     }
     this.pos = Math.min(this.pos, this.maxPos);
+    if (this.pendingScroll && h) { const [i, how] = this.pendingScroll; this.pendingScroll = null; this.scrollTo(i, how); }
     this.invalidate();
   }
 
