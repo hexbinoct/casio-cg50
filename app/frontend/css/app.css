@@ -325,6 +325,9 @@ button:focus-visible { outline: 2px solid var(--aqua); outline-offset: 2px; }
   animation: in 160ms ease-out;
 }
 .toast.error { border-left-color: var(--coral); }
+.toast.warn { border-left-color: var(--amber); }
+.chip.warn { border-color: var(--amber); }
+.chip.warn svg { color: var(--amber); }
 .toast.offer { display: flex; flex-direction: column; gap: 10px; max-width: 420px; border-left-color: var(--amber); }
 .toast.offer .offer-actions { display: flex; gap: 8px; justify-content: flex-end; }
 .status .stop-text { color: var(--amber); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 0 1 auto; }

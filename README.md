@@ -96,13 +96,21 @@ app isn't notarized, so the first time, right-click it and choose **Open**.
 
 ## Getting a flash dump
 
-This repo intentionally ships **no** Casio code. Dump your own fx-CG50:
+This repo intentionally ships **no** Casio code. Dump your own fx-CG50 (a copy of its flash
+chip, not Casio's OS update file):
 
-- Easiest: a gint/fxlink-based dumper — see `tools/flash_dump/README.md` and `dump.c`.
-- Dump the **whole 32 MB** flash and place it at **`os/flash_dump/flash_full.bin`**.
-  The storage memory (fls0) continues past 16 MB, so a 16 MB dump boots but most of your
-  files' contents are missing. The `os/` directory is git-ignored precisely so firmware
-  never gets committed; anything placed elsewhere in the repo is not.
+- **Step by step: [`tools/flash_dump/README.md`](tools/flash_dump/README.md)**, with
+  **FlashDump**, a small read-only add-in that sends the flash to the computer over USB
+  (`fxlink`). It shows the calculator's OS version before it starts.
+- The emulator is made and tested for **OS 3.60** (on the calculator: MENU → System → F4).
+  Other versions are accepted, with a warning: a stand-in 3.80 flash boots, runs apps and
+  add-ins and installs add-ins, but no real 3.80 dump has been tried. The shortcuts tied to
+  3.60 addresses (the native blitter) switch themselves off on another OS.
+- Dump the **whole 32 MB**. The storage memory (fls0) continues past 16 MB, so a 16 MB dump
+  boots but most of your files' contents are missing.
+- For the command line and the tests, place it at **`os/flash_dump/flash_full.bin`**. The
+  `os/` directory is git-ignored precisely so firmware never gets committed; anything placed
+  elsewhere in the repo is not.
 
 Tests that need the flash image or a save-state self-skip when they are absent. The
 instruction **conformance** test needs neither and runs standalone.
@@ -141,14 +149,16 @@ python app/dev.py              # or: development mode with live reload
 **Use it:**
 
 1. Start `cg50studio` and click **Open flash dump…** (or drop the `.bin` on the window). It
-   checks that the file is a 16 MB or 32 MB fx-CG50 dump. With the whole 32 MB it starts at
-   your calculator's own MAIN MENU; a 16 MB dump starts in first-boot setup.
+   checks that the file is a 16 MB or 32 MB fx-CG50 dump and shows its OS version next to the
+   name (a warning if it isn't 3.60). With the whole 32 MB it starts at your calculator's own
+   MAIN MENU; a 16 MB dump starts in first-boot setup.
 2. Use the calculator: click the keys, or type. Enter = EXE, Backspace = DEL, Esc = EXIT,
    Home = MENU, End = AC/ON, arrows, F1–F6, Tab = SHIFT, `` ` `` = ALPHA, a–z = ALPHA + that
    letter, Page Up/Down = OPTN/VARS. Keys you hold stay held, so games work. ⋯ → Keyboard
    shortcuts lists them all.
 3. **Install add-ins:** drop `.g3a` files on the window (or **Install add-in**). The OS itself
-   writes them to the storage memory, and they appear in the MAIN MENU. This needs the 32 MB dump.
+   writes them to the storage memory, and they appear in the MAIN MENU. Works with a 16 MB
+   dump too.
 4. **Speed:** 1× is the real calculator's pace; 2×, 4×, and **Max** (as fast as the computer
    allows while the calculator computes; an idle calculator stays at 1×).
 5. **States:** **Save** / **Load** (Ctrl+S / Ctrl+L) is a quick slot; ⋯ → Save state as… /

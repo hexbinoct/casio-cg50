@@ -117,6 +117,9 @@ type Status struct {
 	Loading    bool    `json:"loading"` // opening the remembered dump at start
 	Notice     string  `json:"notice"`  // why no dump is open, if something went wrong
 
+	OS        string `json:"os"`        // the dump's OS version, "3.60" ("" = not recognised)
+	OSWarning string `json:"osWarning"` // set when that isn't the supported version
+
 	DumpHash string         `json:"dumpHash"`
 	Stop     *StopInfo      `json:"stop"`     // why it is stopped (Paused); nil while running
 	Analysis AnalysisStatus `json:"analysis"` // the code analysis behind the disassembly
@@ -200,6 +203,7 @@ func (a *App) GetStatus() Status {
 		st.Dump = m.dump.Name
 		st.DumpMB = m.dump.Size >> 20
 		st.DumpHash = m.dump.Hash
+		st.OS, st.OSWarning = m.dump.OS, m.dump.osWarning()
 		st.Booting = m.booting()
 		st.PC = fmt.Sprintf("%08X", m.emu.PC())
 		st.Fault = m.emu.Fault()
@@ -278,6 +282,9 @@ func (a *App) loadDump(path string) error {
 		a.toast("info", "Resumed "+d.Name+" where you left it")
 	} else {
 		a.toast("info", "Starting the calculator from "+d.Name)
+	}
+	if w := d.osWarning(); w != "" {
+		a.toast("warn", w)
 	}
 	return nil
 }

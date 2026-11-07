@@ -132,7 +132,7 @@ needs to write the flash itself.
 `fxlink` on the computer can receive data while the add-in runs. The add-in opens gint's
 USB interface, then sends each block as one named transfer: a header with an application
 name, a type name and the size, then the data. The flash dumper
-[`tools/flash_dump/dump.c`](https://github.com/hexbinoct/casio-cg50/blob/main/tools/flash_dump/dump.c)
+[`tools/flash_dump/src/main.c`](https://github.com/hexbinoct/casio-cg50/blob/main/tools/flash_dump/src/main.c)
 does exactly this:
 
 ```c

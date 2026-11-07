@@ -1,112 +1,123 @@
-# Dumping the fx-CG50 flash (and RAM) — guide
+# Making a flash dump of your fx-CG50
 
-Goal: get the **real** flash image off your physical fx-CG50 — not just the OS
-(which we already have from the updater), but the whole flash including the
-**storage / `fls0` filesystem region** and system area the boot code mounts. This
-unblocks the emulator boot and gives us an authoritative validation oracle.
+The emulator (CG50 Studio on the desktop, the Android app) runs the calculator's real operating
+system. That OS belongs to Casio, so the emulator doesn't include it: you give it a **flash
+dump**, a copy of your own calculator's flash memory chip. This page shows how to make one with
+**FlashDump**, a small add-in in this folder.
 
-We do this by running a tiny program ON the calculator that reads memory-mapped
-flash/RAM and streams it to your PC over USB. The USB "mass storage" mode only
-shows the *formatted file view* of fls0 — we need the **raw** bytes, so we need
-a small add-in.
+A flash dump is **not** the OS update file Casio publishes (the ~70 MB updater for OS 3.80 and
+so on). That is an installer for a PC; the emulator needs the chip's contents, which only your
+calculator has.
 
-> Safety: this is **read-only** (no flash erase/write). Low risk. Use fresh
-> batteries (a power loss mid-OS-update is what bricks these; a read won't).
-> Don't run the official OS updater. Keep the original updater image as backup.
+FlashDump only reads: it never writes to the flash, and it can't harm the calculator.
 
----
+## 0. Check your OS version first
 
-## Method A — gint add-in + fxlink  (recommended; gives raw flash)
+On the calculator: **MENU → System → F4 (Version)**. The first line is the OS, e.g. `03.60.0202`.
 
-### 1. Install the fxSDK + gint toolchain
-gint (Lephenixnoir) is the open bare-metal SDK for these calcs; `fxlink` is its
-USB host tool. Easiest on Linux (native) or Windows via WSL/MSYS2; macOS works too.
+The emulator is made and tested for **OS 3.60**. With another version the dump still works:
+in our tests a 3.80 OS boots, runs the built-in apps and add-ins, and installs add-ins, but
+nobody has tried a real 3.80 calculator's dump yet, and the apps will tell you so when you
+open it. FlashDump shows your version too, before it copies anything.
 
-The supported installer is **GiteaPC** (pulls fxSDK, the SuperH GCC, gint, fxlink):
-```
-# Linux / WSL — see https://www.planet-casio.com/Fr/forums/  &  gitea.planet-casio.com
-git clone https://gitea.planet-casio.com/Lephenixnoir/GiteaPC
-cd GiteaPC && ./giteapc.py install Lephenixnoir/fxsdk
-./giteapc.py install Lephenixnoir/gint
-```
-Verify: `fxsdk --version` and `fxlink --version` work.
+## What you need
 
-### 2. Build the dumper add-in
-`dump.c` (in this folder) is a gint add-in that streams memory regions over USB.
-Scaffold a gint project and drop it in:
-```
-fxsdk new flashdump          # creates a CMake gint add-in project
-cd flashdump
-cp ../dump.c src/main.c      # replace the generated main with our dumper
-fxsdk build-cg               # -> flashdump.g3a
-```
-(See `dump.c` header for the exact `usb.h` API names — they vary slightly between
-gint versions; adjust if the build complains. The dump logic stays the same.)
+- the calculator and its USB cable
+- **FlashDump**: a ready-made `FLASHDMP.g3a` is coming to the project's
+  [Releases page](https://github.com/hexbinoct/casio-cg50/releases) once it has been tested
+  on a calculator; until then, build it as shown in [For developers](#for-developers)
+- **fxlink** on the computer, the program that receives the dump. It comes with the
+  [fxSDK](https://gitea.planet-casio.com/Lephenixnoir/fxsdk) and runs on **Linux** and
+  **macOS**; on Windows, use it inside WSL with the calculator passed through by
+  [usbipd-win](https://github.com/dorssel/usbipd-win) (we haven't tried that route ourselves).
+  The fxSDK's installer, GiteaPC:
 
-### 3. Put the .g3a on the calculator
-- Connect the calc by USB, choose **"USB Flash"** (mass-storage) on the calc.
-- Copy `flashdump.g3a` to the storage drive that appears.
-- Safely eject; the add-in now appears in the calc's **Menu**.
-
-### 4. Run it and capture on the PC
-- On the PC, start the receiver and **wait**:
+  ```sh
+  git clone https://gitea.planet-casio.com/Lephenixnoir/GiteaPC
+  cd GiteaPC && python3 giteapc.py install Lephenixnoir/fxsdk
+  fxlink --help        # check that it works
   ```
-  fxlink -iw -o dump_       # interactive, wait; writes incoming transfers to dump_*.bin
-  ```
-  (exact flags: `fxlink --help`; you want "receive/log incoming bulk transfers").
-- On the calc, **reconnect USB and pick the plain USB/“fxlink” connection** (not
-  mass storage), then launch the **flashdump** add-in. It streams each region as a
-  separate transfer; fxlink saves them to files.
 
-### 5. Send me the files
-You'll get one file per region (named in `dump.c`). The important ones:
-`os.bin`, `flash_full.bin` (or `storage.bin`), `dram.bin`, `ilram.bin`.
+## 1. Put FlashDump on the calculator
 
----
+1. Connect the calculator to the computer. On the calculator's connection screen choose
+   **USB Flash** (F1): it appears on the computer like a USB stick.
+2. Copy `FLASHDMP.g3a` onto it (the top folder is fine).
+3. Eject it on the computer, then unplug. **FlashDump** is now in the MAIN MENU.
 
-## What regions to dump (and why)
+## 2. Make the dump
 
-| Name | Virtual addr | Size (start with) | Why |
-|------|--------------|-------------------|-----|
-| **flash_full** | `0x80000000` | `0x02000000` (32 MB) | OS **+ fls0 storage + system area** = the missing piece. THE key dump. |
-| os | `0x80000000` | `0x00C00000` (12 MB) | cross-check vs our unpacked image (must match!) |
-| dram | `0x8C000000` | `0x00800000` (8 MB) | live RAM state = boot/runtime oracle |
-| ilram | `0xFD800000` | `0x00010000` (64 KB) | on-chip RAM (IRQ tables @0xFD80xxxx, kernel structs) |
+1. On the computer, open a terminal in the folder where you want the file, and run
 
-Notes:
-- **Flash size**: the fx-CG50 flash is **32 MB** (`0x02000000`; a full dump took ~3 min
-  over USB). Dump all of it: the fls0 storage continues past 16 MB (phys `0x01000000+`),
-  so a 16 MB dump boots but most files' contents are missing (the OS's FTL reads them
-  as 0xFF). Dumping past the real end causes a bus error (add-in crash) — not harmful,
-  but you lose the transfer.
-- The **uncached** mirror `0xA0000000` reads the same flash; use it if cached reads
-  look odd. Dump RAM **after** the OS has booted normally for the best oracle.
+   ```sh
+   fxlink -i
+   ```
 
----
+   It waits for the calculator.
+2. On the calculator, open **FlashDump**. It shows your OS version, then the choices:
 
-## Method B — Cahute (USB protocol, no add-in)  [investigate]
+   | Key | Dump | Size | |
+   |---|---|---|---|
+   | **F1** | the whole flash | 32 MB | **recommended**: the OS and the storage memory, so your files and add-ins come along |
+   | F2 | the first half | 16 MB | boots and runs, but leaves most of the storage memory out: your installed add-ins and most files are missing (you can still install add-ins in the emulator) |
+   | F6 | flash and RAM | 32 MB + 8 MB + 64 KB | for people working on the emulator itself |
 
-**Cahute** (Thomas Touhey; successor to libcasio/p7) speaks Casio's USB protocols
-and may be able to back up parts of CG flash without writing an add-in:
+3. Press **F1**, then connect the USB cable. The calculator shows the progress; the whole
+   32 MB takes about **3 minutes**. Keep the cable in until it says **Done**.
+4. fxlink saves the dump as `fxlink-flashdump-flash32-<date>.bin`. Check the size: exactly
+   **33,554,432 bytes** (32 MB), or 16,777,216 for the first half. Rename it if you like.
+
+## 3. Open it in the emulator
+
+- **CG50 Studio**: *Open flash dump…*, or drop the file on the window.
+- **Android**: copy the file to the phone, start the app, *Choose flash dump…*.
+
+With the whole 32 MB the calculator starts at its own MAIN MENU, as you left it. A 16 MB dump
+starts with the first-boot setup (language, display, power, battery: press F6 / EXE through it).
+
+## Keep the dump to yourself
+
+The dump is a copy of everything on the calculator. It holds Casio's OS, which isn't yours to
+share. It also holds your own things: the storage memory (files, pictures, add-ins) and the
+main memory (programs, variables, lists, Run-Matrix history, settings). Don't post it or send
+it to anyone.
+
+If you'd rather not have your own files in the emulator, reset them on the calculator first
+(**System → F5 Reset**; back them up over USB before you do), then make the dump. Don't use
+the 16 MB dump for this: its first half still holds part of the storage memory.
+
+## Troubleshooting
+
+- **fxlink doesn't see the calculator.** Start fxlink first, then open FlashDump and press F1,
+  then connect the cable. On Linux, fxlink may need permission to use the USB device (run it
+  with `sudo`, or add a udev rule for the calculator, Casio vendor ID `07cf`).
+- **The file is smaller than 32 MB.** The transfer was cut off (cable, sleep). Run it again.
+- **The app says the OS version isn't 3.60.** That's the warning from step 0: the dump still
+  opens and runs.
+
+## For developers
+
+FlashDump is a [gint](https://gitea.planet-casio.com/Lephenixnoir/gint) add-in (`src/main.c`)
+that streams memory-mapped regions to fxlink over USB. Build it with the fxSDK, here in the
+project's Docker image ([`tools/fxsdk-docker`](../fxsdk-docker/Dockerfile)):
+
+```sh
+docker build -t fxsdk:latest tools/fxsdk-docker            # once, ~30 min
+docker run --rm -v "$PWD/tools/flash_dump:/work" fxsdk:latest fxsdk build-cg   # -> FLASHDMP.g3a
+python tools/flash_dump/make_icons.py                       # redraws assets-cg/ (optional)
 ```
-# https://cahuteproject.org/
-p7 ...    /  cahute backup ...
-```
-Worth a look — if it can pull the OS/flash directly it's the least-effort route.
-Coverage of the CG50's raw OS flash is uncertain, so treat as a bonus, not primary.
 
-## Method C — existing community dumpers  [search first]
+What it sends:
 
-Before building anything, check **Planet Casio** and **Cemetech** for an existing
-"memory dump" / "ROM dump" add-in for the fx-CG50 (e.g. Lephenixnoir's test tools,
-or `gintctl`). If one exists and streams raw flash, use it and skip Method A's code.
+| Name | Address | Size | |
+|---|---|---|---|
+| `flash32` | `0x80000000` | 32 MB | the whole flash: boot code, OS, system area and main memory, the storage memory (fls0, from physical `0x00C80000`) |
+| `flash16` | `0x80000000` | 16 MB | its first half |
+| `dram` | `0x8C000000` | 8 MB | RAM, as it is while FlashDump runs (F6) |
+| `ilram` | `0xFD800000` | 64 KB | the on-chip IL memory (F6) |
 
----
+The OS version comes from the OS's header in flash: `CASIOWIN` at `0x80020000`, the version
+string at `0x80020020`, the place the emulator reads it too (`emu_go/osversion.go`).
 
-## After you have the dumps
-Drop the files in `os/flash_dump/`. We'll:
-1. Diff `os.bin` against our unpacked `cg50_os_3.80.plain.bin` to confirm the dump
-   and find the OS's real flash offset.
-2. Locate the `fls0` / system region and map it into the emulator (`emu/memory.py`),
-   so the flash driver mounts a real, formatted filesystem and boot proceeds.
-3. Use `dram.bin` / `ilram.bin` as a golden state to diff our emulator against.
+Reading past the end of the 32 MB flash raises a bus error. The fx-CG50's flash is 32 MB
+(`0x02000000`), checked with a full dump: the upper 16 MB is real storage memory, not a mirror.

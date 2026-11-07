@@ -112,6 +112,29 @@ class MainActivity : AppCompatActivity() {
         binding.screenView.setOnLongClickListener { showSettings(); true }
         binding.statusText.text = getString(R.string.hint_settings)
         if (savedInstanceState == null) handleInstallIntent(intent) // not again on rotation
+        warnAboutOS(d)
+    }
+
+    /** The dump's size and OS version, for the settings and the change-dump dialog. */
+    private fun dumpSummary(d: DumpStore.Dump): String =
+        "${d.size shr 20} MB" + if (d.os.isNotEmpty()) ", OS ${d.os}" else ""
+
+    /**
+     * Once per dump: the emulator is made and tested for OS 3.60. Another version is not
+     * refused (a 3.80 OS boots, runs and installs add-ins in our tests; the core switches its
+     * 3.60-only shortcuts off by itself), but the user should know.
+     */
+    private fun warnAboutOS(d: DumpStore.Dump) {
+        if (d.osSupported) return
+        val key = "os_warned_${d.hash}"
+        if (prefs.getBoolean(key, false)) return
+        prefs.edit().putBoolean(key, true).apply()
+        val which = if (d.os.isNotEmpty()) getString(R.string.os_named, d.os) else getString(R.string.os_unknown)
+        AlertDialog.Builder(this)
+            .setTitle(R.string.os_warning_title)
+            .setMessage(getString(R.string.os_warning_message, store.nameOf(d), which, DumpStore.SUPPORTED_OS))
+            .setPositiveButton(android.R.string.ok, null)
+            .show()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -142,7 +165,7 @@ class MainActivity : AppCompatActivity() {
             prefs.edit().putString(PREF_SPEED, if (id == R.id.speedFast) "fast" else "original").apply()
             applySpeed()
         }
-        dump?.let { v.dumpInfo.text = getString(R.string.settings_dump_in_use, store.nameOf(it), "${it.size shr 20} MB") }
+        dump?.let { v.dumpInfo.text = getString(R.string.settings_dump_in_use, store.nameOf(it), dumpSummary(it)) }
         val icon = AppIcons.current(this)
         v.appIconImage.setImageResource(icon.mipmap)
         v.appIconName.setText(icon.label)
@@ -214,7 +237,7 @@ class MainActivity : AppCompatActivity() {
         val d = dump ?: return launchDumpPicker()
         AlertDialog.Builder(this)
             .setTitle(R.string.change_dump_title)
-            .setMessage(getString(R.string.change_dump_message, store.nameOf(d), "${d.size shr 20} MB", d.hash))
+            .setMessage(getString(R.string.change_dump_message, store.nameOf(d), dumpSummary(d), d.hash))
             .setPositiveButton(R.string.change_dump_choose) { _, _ ->
                 if (NativeBridge.busy) toast(getString(R.string.dump_busy)) else launchDumpPicker()
             }

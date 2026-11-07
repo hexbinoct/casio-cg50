@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"cg50emu"
 )
 
 // store keeps the app's files in the user's config folder:
@@ -31,6 +33,23 @@ type dumpInfo struct {
 	Name string
 	Hash string // first 16 hex digits of the SHA-256 of the file
 	Size int
+	OS   string // the OS version in the dump, "3.60" ("" = not recognised)
+	OSOK bool   // the OS version the emulator supports (cg50emu.SupportedOS)
+}
+
+// osWarning is what to tell the user about a dump whose OS isn't the supported one ("" = none).
+// Not a refusal: a 3.80 OS boots, runs apps and add-ins and installs them in our tests (a
+// stand-in 3.80 flash, re/make_synthetic_380.py); the 3.60-only shortcuts switch themselves off.
+func (d dumpInfo) osWarning() string {
+	if d.OSOK {
+		return ""
+	}
+	which := "an OS version CG50 Studio doesn't recognise"
+	if d.OS != "" {
+		which = "OS " + d.OS
+	}
+	return d.Name + " has " + which + ". CG50 Studio is made and tested for OS 3.60: other versions " +
+		"start and run, but aren't tested on a real calculator's dump yet, and screens draw a little slower."
 }
 
 func newStore() *store {
@@ -91,7 +110,8 @@ func readDump(path string) ([]byte, dumpInfo, error) {
 		return nil, dumpInfo{}, errors.New("this file doesn't look like an fx-CG50 flash dump")
 	}
 	h := sha256.Sum256(b)
-	return b, dumpInfo{Path: path, Name: filepath.Base(path), Hash: hex.EncodeToString(h[:8]), Size: len(b)}, nil
+	return b, dumpInfo{Path: path, Name: filepath.Base(path), Hash: hex.EncodeToString(h[:8]), Size: len(b),
+		OS: cg50emu.ShortOSVersion(cg50emu.OSVersion(b)), OSOK: cg50emu.OSSupported(b)}, nil
 }
 
 // A state file saved with "Save state as…": a header naming the dump, then the core's blob.

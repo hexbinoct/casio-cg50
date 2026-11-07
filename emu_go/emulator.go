@@ -407,14 +407,17 @@ func (e *Emulator) nextDue() uint64 {
 
 // EnableHLE turns the native blitter (hle.go) on or off. Off by default: the conformance and
 // golden tests run the real OS code; hosts that need the speed (the Android app) turn it on.
-func (e *Emulator) EnableHLE(on bool) {
+// It replaces the OS routine at a 3.60 address, so it stays off on any other OS version (the
+// code there is something else); the result says whether it is on.
+func (e *Emulator) EnableHLE(on bool) bool {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	if on {
+	if on && OSSupported(e.mem.flash) {
 		e.cpu.hlePC, e.cpu.hle = hleBlitEntry, e.cpu.hleBlit
-	} else {
-		e.cpu.hlePC, e.cpu.hle = 0, nil
+		return true
 	}
+	e.cpu.hlePC, e.cpu.hle = 0, nil
+	return false
 }
 
 // Executed returns how many instructions the CPU has actually executed (cycles spent asleep

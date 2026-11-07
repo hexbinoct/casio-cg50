@@ -7,7 +7,7 @@ built with [Wails](https://wails.io) (Go + the system's web view).
 ![CG50 Studio showing the MAIN MENU](../docs/images/cg50-studio.jpeg)
 
 It ships no Casio software. You open a dump of your own calculator's flash (16 MB, or the
-whole 32 MB with the storage memory, which is what installing add-ins needs).
+whole 32 MB, which brings your files and installed add-ins along with the storage memory).
 
 ## Running it
 

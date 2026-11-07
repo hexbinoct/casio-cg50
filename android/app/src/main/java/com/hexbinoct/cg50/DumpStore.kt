@@ -55,6 +55,20 @@ class DumpStore(context: Context) {
             return false
         }
 
+        /** The OS version the emulator is made and tested for (emu_go/osversion.go SupportedOS). */
+        const val SUPPORTED_OS = "3.60"
+
+        /**
+         * The OS version in a flash image, "3.60" ("" = no recognisable OS header): the OS's
+         * header has "CASIOWIN" at 0x20000 and "03.60.0000" at 0x20020 (emu_go/osversion.go).
+         */
+        fun osVersion(b: ByteArray): String {
+            if (b.size < 0x2002A || String(b, 0x20000, 8, Charsets.US_ASCII) != "CASIOWIN") return ""
+            val v = String(b, 0x20020, 10, Charsets.US_ASCII)
+            if (!Regex("""\d\d\.\d\d\.\d{4}""").matches(v)) return ""
+            return v.substring(0, 5).trimStart('0')
+        }
+
         fun hashOf(b: ByteArray): String = hex(MessageDigest.getInstance("SHA-256").digest(b))
         private fun hex(d: ByteArray) = d.take(8).joinToString("") { "%02x".format(it) }
     }
@@ -67,8 +81,10 @@ class DumpStore(context: Context) {
         data class SameDump(val name: String) : Problem()
     }
 
-    /** A dump: its file, size and hash. */
-    class Dump(val file: File, val size: Int, val hash: String)
+    /** A dump: its file, size, hash and OS version ("" = not recognised). */
+    class Dump(val file: File, val size: Int, val hash: String, val os: String) {
+        val osSupported get() = os == SUPPORTED_OS
+    }
 
     /** What [load] found: the dump and its bytes, or why it can't be used. */
     class Loaded(val dump: Dump?, val bytes: ByteArray?, val problem: Problem?)
@@ -93,7 +109,7 @@ class DumpStore(context: Context) {
             return Loaded(null, null, Problem.Unreadable(f.name, e.message ?: e.toString()))
         }
         if (!hasHeader(b)) return Loaded(null, null, Problem.NotCG50(f.name))
-        return Loaded(Dump(f, b.size, hashOf(b)), b, null)
+        return Loaded(Dump(f, b.size, hashOf(b), osVersion(b)), b, null)
     }
 
     /** The session state of a dump; takes over an old fixed-name state of a pushed dump. */

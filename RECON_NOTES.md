@@ -9,7 +9,54 @@
   pending, so the next session can continue without being reminded.
 ============================================================================= -->
 
-> ## ⏯ RESUME HERE (last session end: 2026-11-01, cont.20 = releases, Android dump picker, CG50 Studio debugger, Mac)
+> ## ⏯ RESUME HERE (last session end: 2026-11-07, cont.21 = OS version check, FlashDump add-in, office)
+>
+> **Why:** a Reddit thread had people reading the Android welcome screen ("32 MB … 16 MB")
+> as a file to download and confusing it with Casio's ~70 MB 3.80 updater. So: say plainly
+> what a dump is, give people a dumper they can use, and handle OS versions other than 3.60.
+>
+> **OS version.** The OS header in flash: `CASIOWIN` at 0x20000, version at **0x20020**
+> ("03.60.0000"; the Version screen shows 03.60.0202), same place in 3.80 (`re/os_version.py`).
+> `emu_go/osversion.go`: `OSVersion`, `OSSupported` ("03.60"), `ShortOSVersion`;
+> **`EnableHLE` now returns bool and refuses on any OS but 3.60** (the blitter at 0x80056900
+> is other code in 3.80). CG50 Studio shows "· OS x.yy" on the dump chip, amber chip + a
+> 12 s warn toast if not 3.60; Android shows it in settings/change-dump and a once-per-dump
+> dialog; welcome texts on both say "made and tested for OS 3.60 (MENU, System, F4)".
+> Policy: **warn, don't refuse.** Tests: `osversion_test.go`, `DumpStoreOsVersionTest.kt`.
+>
+> **A stand-in 3.80 flash** (`re/make_synthetic_380.py` → `os/flash_dump/synthetic_380.bin`:
+> the updater's OS image over our 16 MB dump, keeping our boot area): cold boot, first-boot
+> setup, MAIN MENU, Run-Matrix, InstallAddin, a libfxcg add-in and a gint add-in all work
+> (`osver_probe_test.go`, `-tags probe`). Pitfall found: the updater image has the product ID
+> at 0x1FFD0 erased, and gint reads all-0xFF as **fx-CG Manager** (RAM at 0x88000000) → the
+> gint add-in faulted on the first stand-in. In 3.80 the warm flag 0xFD8017DC, frame colour
+> 0xFD8019E8 and add-in page table 0x8C04CF0C are unchanged; the MAIN MENU flag 0x8C0A3043
+> moved (install can't step out of the menu first on 3.80 — fine unless an add-in is
+> suspended under the menu) and the blitter + palette moved (now gated).
+>
+> **FlashDump** (`tools/flash_dump/`, now an fxSDK project: `src/main.c` (was `dump.c`),
+> CMakeLists, `make_icons.py` → `assets-cg/`): shows the OS version + supported/warning, menu
+> F1 32 MB (recommended) / F2 16 MB / F6 flash+DRAM+ILRAM; fxlink types `flash32`,
+> `flash16`, `dram`, `ilram`. Built in Docker (gint 2.11, no warnings) → `FLASHDMP.g3a`
+> (git-ignored). Checked on the emulator up to "Waiting for the computer" on 3.60 and the
+> stand-in 3.80 (`dumper_probe_test.go`); **the USB transfer itself is untested with this
+> build** (the emulator has no USB host) — try it on the real calculator before a release.
+> Guide rewritten for outsiders: `tools/flash_dump/README.md`.
+>
+> **Open:**
+> - Attach `FLASHDMP.g3a` to a release (the guide already points at the Releases page).
+> - **Storage reset doesn't take in the emulator**: System → F5 Reset → F4 Storage (and F5
+>   Add-In&Storage) says "Reset!", writes ~570 KB above 16 MB, but helomelo2 still lists and
+>   runs after a RESTART (`TestResetStorage`, on the 16 MB dump). Try on the 32 MB dump first
+>   (most of fls0 is missing from the 16 MB one); then the FTL / flash erase path.
+> - Erasing fls0 (phys 0x00C80000 →) in a dump gives a clean, working storage memory (cold
+>   boot → setup → install + run OK; `re/make_blank_storage.py`), but **main memory (programs,
+>   variables, history) lives below 0x00C80000 and stays**. Candidate feature: "leave my
+>   files out" in FlashDump and/or the apps — not built, waiting for the user's call.
+> - Android: the OS dialog was built and unit-tested but not seen on a device/AVD yet.
+> - `re/run_probe.py TestName VAR=value` runs a probe test with env vars (no inline `VAR=x`).
+>
+> ## ⏯ (prev) RESUME HERE (last session end: 2026-11-01, cont.20 = releases, Android dump picker, CG50 Studio debugger, Mac)
 >
 > **Releases.** v0.1.0 is out as a **pre-release** (tag on 907914d; built by a manual run of
 > `.github/workflows/release.yml` from 5554ed8, which only fixes the workflow): the Android APK

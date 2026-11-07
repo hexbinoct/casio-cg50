@@ -21,11 +21,11 @@ function call(name, ...args) {
 
 function toast(kind, text) {
   const t = document.createElement("div");
-  t.className = "toast" + (kind === "error" ? " error" : "");
+  t.className = "toast" + (kind === "error" || kind === "warn" ? " " + kind : "");
   t.textContent = text;
   $("toasts").append(t);
-  setTimeout(() => t.remove(), kind === "error" ? 7000 : 3500);
-  log(kind === "error" ? "error" : "info", text);
+  setTimeout(() => t.remove(), kind === "warn" ? 12000 : kind === "error" ? 7000 : 3500);
+  log(kind === "error" ? "error" : kind === "warn" ? "warn" : "info", text);
 }
 nav.log = (kind, text) => log(kind, text);
 
@@ -99,7 +99,7 @@ const canStep = () => status.loaded && status.paused && !status.fault;
 $("runBtn").onclick = togglePause;
 $("dumpChip").onclick = () => call("OpenDump");
 $("welcomeOpen").onclick = () => call("OpenDump");
-const DUMP_HELP = "https://github.com/hexbinoct/casio-cg50#getting-a-flash-dump";
+const DUMP_HELP = "https://github.com/hexbinoct/casio-cg50/tree/main/tools/flash_dump#readme";
 $("dumpHelp").onclick = (e) => { e.preventDefault(); window.runtime?.BrowserOpenURL(DUMP_HELP); };
 $("saveBtn").onclick = () => call("SaveSlot", 1);
 $("loadBtn").onclick = () => call("LoadSlot", 1);
@@ -164,7 +164,9 @@ function render() {
   $("welcome").hidden = s.loaded || s.loading; // loading: the remembered dump is opening
   $("welcomeNotice").hidden = !s.notice;
   $("welcomeNotice").textContent = s.notice || "";
-  $("dumpName").textContent = s.loaded ? `${s.dump} · ${s.dumpMB} MB` : "No flash dump";
+  $("dumpName").textContent = s.loaded ? `${s.dump} · ${s.dumpMB} MB` + (s.os ? ` · OS ${s.os}` : "") : "No flash dump";
+  $("dumpChip").classList.toggle("warn", !!(s.loaded && s.osWarning));
+  $("dumpChip").title = s.loaded && s.osWarning ? s.osWarning : "Open or change the flash dump (Ctrl+O)";
 
   const run = $("runBtn");
   const showRun = s.paused || !s.loaded;
