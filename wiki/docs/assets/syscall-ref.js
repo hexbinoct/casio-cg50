@@ -101,6 +101,7 @@
       '<label><input type="checkbox" id="scr-gint"> Used by gint</label>' +
       '<label><input type="checkbox" id="scr-lib"> In libfxcg</label>' +
       '<label><input type="checkbox" id="scr-wp"> On WikiPrizm</label>' +
+      '<label><input type="checkbox" id="scr-doc"> With our notes</label>' +
       '<label><input type="checkbox" id="scr-changed"> Changed in 3.80</label>' +
       '<label><input type="checkbox" id="scr-stub"> Empty or trivial</label>' +
       '<select id="scr-cat" aria-label="Hardware category (a guess)">' + catOpts + "</select>" +
@@ -118,7 +119,7 @@
     var count = app.querySelector("#scr-count"), more = app.querySelector("#scr-more");
     var note = app.querySelector("#scr-note");
     var f = {};
-    ["named", "gint", "lib", "wp", "changed", "stub", "via"].forEach(function (k) {
+    ["named", "gint", "lib", "wp", "doc", "changed", "stub", "via"].forEach(function (k) {
       f[k] = app.querySelector("#scr-" + k);
     });
     var catSel = app.querySelector("#scr-cat");
@@ -161,7 +162,8 @@
         for (var i = 0; i < N; i++) {
           if (exact[i]) continue;
           var e = names[i];
-          var hay = e ? [e.n, e.libfxcg, e.gint, e.ours, e.wp].join(" ").toLowerCase() : "";
+          var hay = e ? [e.n, e.libfxcg, e.gint, e.ours, e.wp,
+            e.doc ? e.doc.prototype : "", e.doc ? e.doc.description : ""].join(" ").toLowerCase() : "";
           if ((hay && hay.indexOf(sl) >= 0) || (rows[i][11] && rows[i][11].toLowerCase().indexOf(sl) >= 0)) hits.push(i);
         }
         hits = Object.keys(exact).map(Number).sort(function (a, b) { return a - b; }).concat(hits);
@@ -174,6 +176,7 @@
         if (f.gint.checked && !(e && e.gint)) return false;
         if (f.lib.checked && !(e && e.libfxcg)) return false;
         if (f.wp.checked && !(e && e.wp)) return false;
+        if (f.doc.checked && !(e && e.doc)) return false;
         if (f.changed.checked && r[2] < 2) return false;
         if (f.stub.checked && !(r[5] & 19)) return false;
         if (c >= 0) {

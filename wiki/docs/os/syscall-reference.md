@@ -2,12 +2,15 @@
 
 All **8,040 syscall numbers** of OS 3.60, searchable. Each row holds facts read from the OS
 code by a script: where the function is in 3.60 and 3.80, whether 3.80 changed it, its size,
-what it calls, the hardware it seems to touch, and the public names where they exist. How a
-number becomes a call is on the [Syscalls](syscalls.md) page.
+what it calls, the hardware it seems to touch, and the public names where they exist. For
+**78 syscalls** we have also written our own notes: a prototype, what the function does, and
+how sure we are ([Our notes](#our-notes)). How a number becomes a call is on the
+[Syscalls](syscalls.md) page.
 
-Search by number (`0x1839`, or `6201` in decimal), by name, by a message the code uses, or by
-an address in either OS version (`0x802AEA24`): an address finds the syscall whose function
-contains it. Click a row for the details, its calls and its neighbours.
+Search by number (`0x1839`, or `6201` in decimal), by name, by a word of our notes, by a
+message the code uses, or by an address in either OS version (`0x802AEA24`): an address finds
+the syscall whose function contains it. Click a row for the details, its calls and its
+neighbours; "With our notes" lists the documented ones.
 
 <div id="scr-app" class="scr-app">
 <noscript><p>This table needs JavaScript. The data is the file
@@ -18,7 +21,8 @@ contains it. Click a row for the details, its calls and its neighbours.
     Apart from the addresses, every column is a guess made by reading the code statically,
     without running it. "Args?" and "Hardware?" in particular are heuristics: they can miss
     things and they can be wrong. The names come from other projects (below) and from this
-    project's own work. Nothing here says what a function's arguments mean.
+    project's own work. Only [our notes](#our-notes), where a row has them, say what a
+    function's arguments mean.
 
 ## What the columns mean
 
@@ -114,15 +118,49 @@ names for these SH7305 blocks, USB (`0xA4D80000`) and the SPU (`0xFE2FFC00`, `0x
 | [WikiPrizm](https://prizm.cemetech.net/Syscalls/) | 247 | Links only, to its pages that exist: the page titles and the "Syscall index" numbers in its index. None of its text |
 | This project | 42 | Short descriptions from the pages of this site, and the pages that mention each number |
 
-In all, 316 numbers have a name. The name shown is libfxcg's, then WikiPrizm's page title,
-then ours, then gint's label; the details list all of them. libfxcg's placeholder names
+In all, 376 numbers have a name: the 316 above and 60 more from [our notes](#our-notes). The
+name shown is the one in our notes, then libfxcg's, then WikiPrizm's page title, then ours,
+then gint's label; the details list all of them. libfxcg's placeholder names
 (`Test` and the number, e.g. `Test127E`) are not used as names. `re/syscall_names.py` gathers
 them (it downloads each source once into the git-ignored `re/_cache/`) and writes
 `re/syscall_names.json`.
 
-Hand-written notes for single syscalls (a prototype, a description, and how sure we are:
-tested, read from the code, or guessed) go in `re/syscall_docs.json`, keyed by number;
-`re/syscall_ref.py` merges them into the table. It is empty so far.
+## Our notes
+
+For some syscalls we have written notes by hand: a C prototype, a few sentences on what the
+function does, and how sure we are. They appear under "Our notes" in a row's details. Each has
+one of three marks:
+
+| Mark | Meaning | Syscalls |
+|---|---|---|
+| **tested** | Called in the emulator, the way an add-in calls it, and the result checked | 45 |
+| **read** | Understood from the OS 3.60 code, not run | 32 |
+| **guessed** | Partly understood; the description says what is not certain | 1 |
+
+The first ones cover syscalls that libfxcg or gint use without a WikiPrizm page, and groups
+people ask about: files (the Bfile layer, its 16-bit name strings, the eActivity work file),
+the keyboard (key repeat, the key buffer, the key table), the RTC (date records, the calendar
+checks, the interrupt bits) and TMU channel 1. Where we name a syscall that had no name, or
+only a description, the name is ours (marked **ours**); it is not an official one.
+
+A name like `Bfile_GetDrive` describes what the code does. Prototypes use the types the code
+needs (`unsigned short *` for the OS's 16-bit file-name strings); argument names are ours.
+Arguments after the fourth are on the stack, as in any SH-4 C call.
+
+!!! info "Verified in the emulator"
+    The **tested** notes come from a probe test that runs each syscall in the emulator on the
+    32 MB flash dump: string and file-name functions on known inputs, the date checks on valid
+    and invalid dates (leap years included), files created, written, read back and mapped,
+    the key-buffer and key-repeat functions, and the drawing functions checked pixel by pixel
+    in VRAM. Probe test `TestSyscallDocs`.
+
+Some findings that differ from what a name suggests: `sys_memcmp` (`0x1DD1`) returns 1 when
+the bytes are equal, not 0; `strcmp_ignore_case` (`0x1635`) gets the sign wrong for some
+mixed-case pairs, so only its 0 can be trusted; `0x1DDF` returns a pointer past the end, not
+NULL, when the character is missing; and `RTC_DaysInMonth` (`0x11E3`) answers in BCD.
+
+The notes are in `re/syscall_docs.json`, keyed by number; `re/syscall_ref.py` merges them into
+the table.
 
 ## In the emulator
 

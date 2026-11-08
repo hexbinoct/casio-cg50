@@ -24,8 +24,11 @@
 > `re/syscall_names.py` (libfxcg 273, gint 31, WikiPrizm links 247, ours 42; 316 named; libfxcg
 > `TestNNNN` placeholders skipped). 3.60→3.80: 5,483 identical, 2,360 same code moved, 197
 > changed. **Layer 2** = hand-written entries in `re/syscall_docs.json` (empty; fields name,
-> prototype, description, confidence tested/read/guessed) — next: pick the first syscalls
-> (used by gint/libfxcg, no WikiPrizm page). Rerun both scripts and update the counts quoted
+> prototype, description, confidence tested/read/guessed). **First batch done: 78 entries**
+> (45 tested by `emu_go/syscalldoc_probe_test.go` `TestSyscallDocs`, 32 read, 1 guessed; 376
+> named): files/Bfile names, keyboard repeat/buffer, RTC, TMU1, some drawing. Left for later:
+> the USB_* dispatchers (pick a driver by IL RAM byte 0xFD8021A4), message boxes 0x1E4C–0x1E4E,
+> why Bfile_GetMediaFree_OS reads 0 right after Bfile_FormatDrive. Rerun both scripts and update the counts quoted
 > on the page when anything changes. Weak spot: display-controller access goes through RAM
 > tables, so the "display" category is empty.
 >

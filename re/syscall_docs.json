@@ -11,5 +11,515 @@
     "  notes       for us only, not published",
     "Example: \"0x1839\": {\"prototype\": \"void PowerOff(int)\", \"confidence\": \"read\"}"
   ],
-  "syscalls": {}
+  "syscalls": {
+    "0x000C": {
+      "prototype": "void TLBMissHandler(void)",
+      "description": "The OS's TLB-miss exception handler, not a function to call. For a missing page at 0x00300000 or above it looks the page up in the add-in page table and maps it with 0x0009; when there is no entry it hands the fault to 0x0005, the error path.",
+      "confidence": "read",
+      "notes": "gint lists it in tlbh.S. See wiki os/mmu-and-addins.md."
+    },
+    "0x01A6": {
+      "prototype": "void Bdisp_WriteDDRegister3_bit7(int value)",
+      "description": "Read-modify-write of the display controller's register 3: selects the register, reads it, replaces bit 7 with bit 0 of value and writes it back. Does nothing unless two display-state flags in RAM say the controller may be accessed.",
+      "confidence": "read"
+    },
+    "0x01A8": {
+      "name": "Bdisp_SetPoint3x3_VRAM",
+      "prototype": "void Bdisp_SetPoint3x3_VRAM(int x, int y, int on)",
+      "description": "Plots one pixel of a 128x64 grid as a 3x3 block in VRAM: pixels 3x..3x+2, 3y..3y+2 of the area below the 24-pixel status bar, black when on is non-zero, white when it is 0. Pixels past 384x192 are skipped. It draws through Bdisp_SetPointWB_VRAM (0x0262). 0x1E6C jumps here.",
+      "confidence": "tested",
+      "notes": "libfxcg calls it Test01A8. probe TestSyscallDocs (emu_go/syscalldoc_probe_test.go, untracked): (2,5,1) blackens x 6-8, y 39-41; (127,63,1) reaches x 383, y 215; on=0 whitens."
+    },
+    "0x028F": {
+      "prototype": "void Bdisp_WriteGraphVRAM_WB(const DISPGRAPH *graph)",
+      "description": "Like Bdisp_WriteGraphVRAM (0x0290) but with y counted from below the status bar: it copies the 44-byte descriptor, adds 24 to its second word (y) and passes the copy to the shared bitmap routine 0x02B0 with the same mode argument (1) that 0x0290 uses.",
+      "confidence": "read"
+    },
+    "0x02A4": {
+      "name": "FrameColorIndex",
+      "prototype": "signed char FrameColorIndex(int mode, int index)",
+      "description": "Gets or sets a frame colour override held in one RAM byte. mode 0 clears it (stores -3), mode 1 stores index, any other mode only reads; the byte is returned. While it holds 0-7, FrameColor (0x02A3) and 0x02A9 use entry index of the OS's 8-colour table instead of the colour they are given (index 3 is cyan, 0x07FF).",
+      "confidence": "tested",
+      "notes": "libfxcg calls it Syscall02A4. probe TestSyscallDocs (emu_go/syscalldoc_probe_test.go, untracked): initial -3; set 3 -> FrameColor(1,0x1234) returns 0x07FF; reset -> 0x1234 again."
+    },
+    "0x0925": {
+      "prototype": "void Bdisp_FilledRectangle(int x1, int y1, int x2, int y2, char color)",
+      "description": "Fills a rectangle in VRAM with an indexed colour (index 2 gives green, 0x07E0). Both corners are included, and y is counted from below the 24-pixel status bar. The colour index (fifth argument) is on the stack. It packs the corners into a rectangle and calls 0x0927.",
+      "confidence": "tested",
+      "notes": "probe TestSyscallDocs (emu_go/syscalldoc_probe_test.go, untracked): (30,20,31,21, index 2) gives 0x07E0 at x 30-31, y 44-45. Other indexes not checked."
+    },
+    "0x0926": {
+      "prototype": "void Bdisp_FilledRectangleFullColor(int x1, int y1, int x2, int y2, unsigned short color)",
+      "description": "Fills a rectangle in VRAM with an RGB565 colour. Both corners are included and y is counted from below the 24-pixel status bar. The colour (fifth argument) is on the stack. It packs the corners into a rectangle and calls 0x0928.",
+      "confidence": "tested",
+      "notes": "probe TestSyscallDocs (emu_go/syscalldoc_probe_test.go, untracked): (10,20,12,22,0xF800) fills x 10-12, y 44-46 exactly."
+    },
+    "0x0FEA": {
+      "name": "Keyboard_SetSlowRepeat",
+      "prototype": "void Keyboard_SetSlowRepeat(void)",
+      "description": "Calls Keyboard_SetRepeat (0x12A4) with 20 and 2.",
+      "confidence": "tested",
+      "notes": "probe TestSyscallDocs (emu_go/syscalldoc_probe_test.go, untracked). The name assumes a larger reload means fewer repeats; the rate itself was not measured."
+    },
+    "0x0FEB": {
+      "name": "Keyboard_SetDefaultRepeat",
+      "prototype": "void Keyboard_SetDefaultRepeat(void)",
+      "description": "Calls Keyboard_SetRepeat (0x12A4) with 20 and 0, the values found at the MAIN MENU.",
+      "confidence": "tested",
+      "notes": "probe TestSyscallDocs (emu_go/syscalldoc_probe_test.go, untracked)"
+    },
+    "0x115E": {
+      "prototype": "int memcmp3(const void *a, const void *b, int n)",
+      "description": "Compares n bytes as unsigned values and returns -1, 0 or 1 (not the difference of the bytes). n = 0 gives 0.",
+      "confidence": "tested",
+      "notes": "probe TestSyscallDocs (emu_go/syscalldoc_probe_test.go, untracked)"
+    },
+    "0x1161": {
+      "prototype": "int MB_IsLead(char c)",
+      "description": "Returns 1 if c is the first byte of a two-byte character of the OS's character set: 0x7F, 0xE5, 0xE6, 0xE7, 0xF7 or 0xF9. Any other byte gives 0.",
+      "confidence": "tested",
+      "notes": "probe TestSyscallDocs (emu_go/syscalldoc_probe_test.go, untracked)"
+    },
+    "0x11CB": {
+      "name": "TMU1_Setup",
+      "prototype": "void TMU1_Setup(void)",
+      "description": "Programs TMU channel 1 without starting it: control set-up (0x11CC), constant and counter 0x0002D000 (0x11CD, 0x11CE), interrupt priority 8 (0x11D3). The timers page found TMU1 in exactly this state (TCOR = TCNT = 0x0002D000, TCR = 0x0023) and stopped.",
+      "confidence": "read"
+    },
+    "0x11CC": {
+      "name": "TMU1_SetControl",
+      "prototype": "void TMU1_SetControl(void)",
+      "description": "Writes TCR1 (0xA449001C): clears the underflow flag and the clock-edge bits, selects Pphi/256 (TPSC = 3) and enables the underflow interrupt (UNIE): 0x0023 from a cleared register.",
+      "confidence": "read"
+    },
+    "0x11CD": {
+      "name": "TMU1_SetConstant",
+      "prototype": "void TMU1_SetConstant(void)",
+      "description": "Writes 0x0002D000 to TMU1's constant register TCOR1 (0xA4490014).",
+      "confidence": "read"
+    },
+    "0x11CE": {
+      "name": "TMU1_SetCounter",
+      "prototype": "void TMU1_SetCounter(void)",
+      "description": "Writes 0x0002D000 to TMU1's counter TCNT1 (0xA4490018).",
+      "confidence": "read"
+    },
+    "0x11CF": {
+      "name": "TMU1_ClearCounter",
+      "prototype": "void TMU1_ClearCounter(void)",
+      "description": "Writes 0 to TMU1's counter TCNT1 (0xA4490018).",
+      "confidence": "read"
+    },
+    "0x11D0": {
+      "name": "TMU1_ClearConstant",
+      "prototype": "void TMU1_ClearConstant(void)",
+      "description": "Writes 0 to TMU1's constant register TCOR1 (0xA4490014).",
+      "confidence": "read"
+    },
+    "0x11D1": {
+      "name": "TMU1_ClearUnderflow",
+      "prototype": "void TMU1_ClearUnderflow(void)",
+      "description": "Clears the underflow flag (bit 8) of TCR1 (0xA449001C).",
+      "confidence": "read"
+    },
+    "0x11D2": {
+      "name": "TMU2_ClearUnderflow",
+      "prototype": "void TMU2_ClearUnderflow(void)",
+      "description": "Clears the underflow flag (bit 8) of TCR2 (0xA4490028).",
+      "confidence": "read"
+    },
+    "0x11D3": {
+      "name": "TMU1_EnableInterrupt",
+      "prototype": "void TMU1_EnableInterrupt(void)",
+      "description": "Clears TMU1's underflow flag (0x11D1) and sets its interrupt priority to 8 (IPRA bits 11-8).",
+      "confidence": "read"
+    },
+    "0x11D4": {
+      "name": "TMU2_EnableInterrupt",
+      "prototype": "void TMU2_EnableInterrupt(void)",
+      "description": "Clears TMU2's underflow flag (0x11D2) and sets its interrupt priority to 8 (IPRA bits 7-4).",
+      "confidence": "read"
+    },
+    "0x11D8": {
+      "name": "RTC_AlarmInterruptOff",
+      "prototype": "void RTC_AlarmInterruptOff(void)",
+      "description": "Clears RCR1's alarm interrupt enable (bit 3) and alarm flag (bit 0).",
+      "confidence": "read"
+    },
+    "0x11D9": {
+      "name": "RTC_CompareDateTime",
+      "prototype": "int RTC_CompareDateTime(const unsigned char a[8], const unsigned char b[8])",
+      "description": "Compares the first seven bytes of two date records. Returns 1 if a is earlier, 2 if they are equal, 4 if a is later.",
+      "confidence": "tested",
+      "notes": "probe TestSyscallDocs (emu_go/syscalldoc_probe_test.go, untracked)"
+    },
+    "0x11DA": {
+      "name": "RTC_Init",
+      "prototype": "void RTC_Init(void)",
+      "description": "Start-up of the RTC: turns the carry interrupt off (0x11DC), sets RCR2's START bit, checks the date (RTC_CheckDateTime, 0x11E4, or straight RTC_ResetDateTime, 0x11E6, depending on an OS state check), then sets the RTC periodic interrupt's priority to 8 (IPRK bits 15-12) and writes 3 to IMCR10 to unmask it.",
+      "confidence": "read",
+      "notes": "Matches the IPRK = 0x8000 / IMCR10 = 3 writes seen at cold boot (interrupts page)."
+    },
+    "0x11DB": {
+      "name": "RTC_CarryInterruptOn",
+      "prototype": "void RTC_CarryInterruptOn(void)",
+      "description": "Clears RCR1's carry flag (bit 7) and sets its carry interrupt enable (bit 4); the alarm flag is left as it is.",
+      "confidence": "read",
+      "notes": "No caller found among the syscalls (Layer 1)."
+    },
+    "0x11DC": {
+      "name": "RTC_CarryInterruptOff",
+      "prototype": "void RTC_CarryInterruptOff(void)",
+      "description": "Clears RCR1's carry flag (bit 7) and carry interrupt enable (bit 4); the alarm flag is left as it is.",
+      "confidence": "read"
+    },
+    "0x11DD": {
+      "name": "RTC_AlarmInterruptOn",
+      "prototype": "void RTC_AlarmInterruptOn(void)",
+      "description": "Sets RCR1's alarm interrupt enable (bit 3) and clears the alarm flag (bit 0).",
+      "confidence": "read",
+      "notes": "No caller found among the syscalls (Layer 1)."
+    },
+    "0x11E1": {
+      "name": "RTC_DefaultDateTime",
+      "prototype": "void RTC_DefaultDateTime(unsigned char rec[8])",
+      "description": "Fills a date record with the OS's default date: 2010-10-01 00:00:00. 0x11E9 jumps here.",
+      "confidence": "tested",
+      "notes": "probe TestSyscallDocs (emu_go/syscalldoc_probe_test.go, untracked): bytes 20 10 10 01 00 00 00 00."
+    },
+    "0x11E2": {
+      "name": "RTC_ReadDateTime",
+      "prototype": "void RTC_ReadDateTime(unsigned char rec[8])",
+      "description": "Copies the RTC's calendar counters (year, month, day, hour, minute, second) into an 8-byte BCD date record: year (2 bytes, e.g. 0x20 0x26), month, day, hour, minute, second, 0. It reads each counter once; RTC_CheckDateTime (0x11E4) reads twice to get a stable value.",
+      "confidence": "tested",
+      "notes": "probe TestSyscallDocs (emu_go/syscalldoc_probe_test.go, untracked): result valid by 0x11E5 and its year equals RYRCNT."
+    },
+    "0x11E3": {
+      "name": "RTC_DaysInMonth",
+      "prototype": "void RTC_DaysInMonth(const unsigned char *yearHi, const unsigned char *yearLo, const unsigned char *month, unsigned char *days)",
+      "description": "Writes the number of days of a month to *days, in BCD (0x28-0x31). Month and year are BCD bytes; the year only matters for February, with the Gregorian rule (2000 is a leap year, 2100 is not).",
+      "confidence": "tested",
+      "notes": "probe TestSyscallDocs (emu_go/syscalldoc_probe_test.go, untracked): Feb 2024 0x29, Feb 2026 0x28, Feb 2000 0x29, Feb 2100 0x28, Apr 0x30, Dec 0x31."
+    },
+    "0x11E4": {
+      "name": "RTC_CheckDateTime",
+      "prototype": "void RTC_CheckDateTime(void)",
+      "description": "Reads the clock twice with RTC_ReadDateTime (0x11E2) until both reads agree (at most 300 tries), and resets it with RTC_ResetDateTime (0x11E6) if the date is not valid (RTC_IsValidDateTime, 0x11E5).",
+      "confidence": "read"
+    },
+    "0x11E5": {
+      "name": "RTC_IsValidDateTime",
+      "prototype": "int RTC_IsValidDateTime(const unsigned char rec[8])",
+      "description": "Returns 1 if a date record is a real date and time: every digit BCD, year 1901 or later, month 1-12, day within the month (RTC_DaysInMonth, 0x11E3), hour 0-23, minutes and seconds 0-59. Otherwise 0. The last byte is not checked.",
+      "confidence": "tested",
+      "notes": "probe TestSyscallDocs (emu_go/syscalldoc_probe_test.go, untracked)"
+    },
+    "0x11E6": {
+      "name": "RTC_ResetDateTime",
+      "prototype": "void RTC_ResetDateTime(void)",
+      "description": "Sets the clock to 2010-10-01 00:00:00 through RTC_SetDateTime (0x11DE), unless two OS state checks (not traced) say to keep it.",
+      "confidence": "read"
+    },
+    "0x11E7": {
+      "name": "RTC_ClearCarryFlag",
+      "prototype": "void RTC_ClearCarryFlag(void)",
+      "description": "Clears RCR1's carry flag (bit 7) and leaves the rest of RCR1 as it is.",
+      "confidence": "read"
+    },
+    "0x11E8": {
+      "name": "RTC_ReadSeconds",
+      "prototype": "void RTC_ReadSeconds(unsigned char *sec)",
+      "description": "Stores the RTC seconds counter (RSECCNT, BCD) in *sec.",
+      "confidence": "tested",
+      "notes": "probe TestSyscallDocs (emu_go/syscalldoc_probe_test.go, untracked)"
+    },
+    "0x11EA": {
+      "name": "RTC_PeriodicHandler",
+      "prototype": "void RTC_PeriodicHandler(void)",
+      "description": "The OS's handler for the RTC periodic interrupt (0xAA0): clears RCR2's periodic flag and rate, which stops the interrupt, then calls 0x183D, which sets bit 7 of a flag byte the main loop reads (the cursor blink). See Timers, the 2 Hz wake-up.",
+      "confidence": "read",
+      "notes": "Same address as the handler the timers page names (0x801DFC6C)."
+    },
+    "0x1295": {
+      "name": "Keyboard_SetRepeatMode",
+      "prototype": "void Keyboard_SetRepeatMode(char mode, int interval)",
+      "description": "Stores mode in the key repeat mode byte; when mode is 1 it also stores interval. The keyboard page reads mode 1 as repeating every key, not just the arrows, at that interval.",
+      "confidence": "guessed",
+      "notes": "The stores are certain (0x8C090C30, 0x8C090C34); what the ISR does with them is the wiki's unconfirmed reading."
+    },
+    "0x129E": {
+      "name": "Keyboard_ScanIdle",
+      "prototype": "int Keyboard_ScanIdle(void)",
+      "description": "Returns 1 when bit 0 of the key-scan unit's register 0xA44B0012 is clear (no scan in progress), 0 while it is set.",
+      "confidence": "read",
+      "notes": "The bit's meaning is from the keyboard page."
+    },
+    "0x12A4": {
+      "name": "Keyboard_SetRepeat",
+      "prototype": "void Keyboard_SetRepeat(int first, int next)",
+      "description": "Sets the key repeat counts, in key scans (about 30 ms each): first is the wait before the first repeat, next the reload after each repeat. The MAIN MENU uses 20 and 0. See the keyboard page (Key repeat).",
+      "confidence": "tested",
+      "notes": "probe TestSyscallDocs (emu_go/syscalldoc_probe_test.go, untracked): set 7,3 and read back with 0x12A5."
+    },
+    "0x12A5": {
+      "name": "Keyboard_GetRepeat",
+      "prototype": "void Keyboard_GetRepeat(int *first, int *next)",
+      "description": "Reads back the two key repeat counts that Keyboard_SetRepeat (0x12A4) stores.",
+      "confidence": "tested",
+      "notes": "probe TestSyscallDocs (emu_go/syscalldoc_probe_test.go, untracked)"
+    },
+    "0x12A7": {
+      "name": "Keyboard_MatrixToPos",
+      "prototype": "int Keyboard_MatrixToPos(unsigned short *pos, const unsigned char matrix[2])",
+      "description": "Looks a zero-based key-matrix position up in the OS's key table: matrix[0] is the row, matrix[1] the column. Stores (row + 1) << 8 | (column + 1) in *pos and returns 1, or stores 0 and returns 0 when no key sits there.",
+      "confidence": "tested",
+      "notes": "probe TestSyscallDocs (emu_go/syscalldoc_probe_test.go, untracked): {0,0} -> 0x0101, {2,1} -> 0x0302, {1,0} -> none. Table 0x8068FA70 (keyboard page)."
+    },
+    "0x12A8": {
+      "name": "Keyboard_PosToMatrix",
+      "prototype": "int Keyboard_PosToMatrix(unsigned char matrix[2], short pos)",
+      "description": "The reverse of 0x12A7: searches the key table for pos and, if found, writes the zero-based row to matrix[0] and the column to matrix[1] and returns 1; otherwise returns 0.",
+      "confidence": "tested",
+      "notes": "probe TestSyscallDocs (emu_go/syscalldoc_probe_test.go, untracked): 0x0302 -> {2,1}; 0x0909 -> 0."
+    },
+    "0x12AD": {
+      "name": "Keyboard_ThrottleOn",
+      "prototype": "void Keyboard_ThrottleOn(void)",
+      "description": "Sets the flag (0x8C08B98C = 1) that makes the key-scan handler slow down for a held key: after a first countdown (120 scans) it only acts on every fifth scan. See the keyboard page.",
+      "confidence": "read",
+      "notes": "The counts come from 0x129A and the values 0x1292 stores; not run."
+    },
+    "0x12AE": {
+      "name": "Keyboard_ThrottleOff",
+      "prototype": "void Keyboard_ThrottleOff(void)",
+      "description": "Clears the flag that Keyboard_ThrottleOn (0x12AD) sets.",
+      "confidence": "read"
+    },
+    "0x12C7": {
+      "prototype": "void ClearKeyBuffer(void)",
+      "description": "Empties the OS's 16-entry key buffer (the one Keyboard_PutKeycode, 0x12C6, fills): count, write index and every slot go to zero. Then it calls 0x12B0(-1), which also resets the key-scan side.",
+      "confidence": "tested",
+      "notes": "probe TestSyscallDocs (emu_go/syscalldoc_probe_test.go, untracked): 0x12C8 reads 0 after it."
+    },
+    "0x12C8": {
+      "name": "KeyBuffer_Count",
+      "prototype": "int KeyBuffer_Count(void)",
+      "description": "Returns how many entries the OS's 16-entry key buffer holds: each Keyboard_PutKeycode (0x12C6) adds one, ClearKeyBuffer (0x12C7) resets it to 0.",
+      "confidence": "tested",
+      "notes": "probe TestSyscallDocs (emu_go/syscalldoc_probe_test.go, untracked): 0 after clear, 2 after two PutKeycode calls."
+    },
+    "0x1349": {
+      "prototype": "int strlen(const char *s)",
+      "description": "Returns the number of bytes before the terminating zero.",
+      "confidence": "tested",
+      "notes": "probe TestSyscallDocs (emu_go/syscalldoc_probe_test.go, untracked). No caller inside the OS (Layer 1)."
+    },
+    "0x1635": {
+      "prototype": "int strcmp_ignore_case(const char *a, const char *b)",
+      "description": "Compares two strings with A-Z and a-z treated as equal. Equality (0) is reliable, the sign is not: when the character from a is lower case and the one from b is an upper-case letter, the difference is taken the other way round, so (\"a\", \"B\") and (\"B\", \"a\") both return 1. At the end of the shorter string it returns the difference of the two bytes.",
+      "confidence": "tested",
+      "notes": "probe TestSyscallDocs (emu_go/syscalldoc_probe_test.go, untracked): (a,B)=1, (B,a)=1, (b,A)=-1, (A,b)=-1, (abc,abcd)=-100."
+    },
+    "0x1A2E": {
+      "name": "SetSetupSetting",
+      "prototype": "void SetSetupSetting(int item, int value)",
+      "description": "A jump to SetSetupSetting (0x0032) that first sign-extends item from 16 bits. The OS's own code calls this number (119 syscalls do) more often than 0x0032.",
+      "confidence": "read"
+    },
+    "0x1A2F": {
+      "name": "GetSetupSetting",
+      "prototype": "int GetSetupSetting(int item)",
+      "description": "A jump to GetSetupSetting (0x0031) that first sign-extends item from 16 bits; 332 syscalls call this number.",
+      "confidence": "read"
+    },
+    "0x1D99": {
+      "name": "Bfile_CardBegin",
+      "prototype": "int Bfile_CardBegin(void)",
+      "description": "Called before every crd0 (SD card) operation of the Bfile layer; on the fx-CG50 it is a stub that returns -23, so those operations stop there and return -23.",
+      "confidence": "tested",
+      "notes": "probe TestSyscallDocs (emu_go/syscalldoc_probe_test.go, untracked): 0x1D99 = -23, Bfile_GetFileSize_OS on a crd0 handle = -23."
+    },
+    "0x1D9F": {
+      "name": "Bfile_GetDrive",
+      "prototype": "int Bfile_GetDrive(const unsigned short *path)",
+      "description": "Tells which drive a path names: 1 for fls0, 2 for crd0, -1 otherwise. A leading \\\\ is optional, only the four characters after it are compared, and the comparison is case-sensitive (\\\\FLS0 gives -1). Paths of 2 characters or fewer give -1.",
+      "confidence": "tested",
+      "notes": "probe TestSyscallDocs (emu_go/syscalldoc_probe_test.go, untracked)"
+    },
+    "0x1DA2": {
+      "name": "Bfile_FormatDrive",
+      "prototype": "int Bfile_FormatDrive(const unsigned short *path)",
+      "description": "Re-creates the file system of the drive the path names, deleting every file. For fls0 it erases the storage sectors first, with a progress bar. Returns 0 on success, -5 for an unknown drive.",
+      "confidence": "tested",
+      "notes": "probe TestSyscallDocs (emu_go/syscalldoc_probe_test.go, untracked): returned 0 and a FindFirst over \\\\fls0\\* then found no file (37 before). Bfile_GetMediaFree_OS read 0 right after; not looked into."
+    },
+    "0x1DAA": {
+      "prototype": "int Bfile_GetBlockAddress(int handle, int offset, void **address)",
+      "description": "Gives the flash address where a file's byte at offset is stored, through *address (an uncached 0xA... address), and returns how many bytes from there are contiguous in that 4 KB block. The add-in mapper (0x0026) uses it to map an add-in's pages. Handles carry the drive in bits 24-27: 1 = fls0 (the storage memory), 2 = crd0 (an SD card slot the fx-CG50 does not have). -5 for a bad handle.",
+      "confidence": "tested",
+      "notes": "probe TestSyscallDocs (emu_go/syscalldoc_probe_test.go, untracked): offset 0 -> 4096 and the bytes at the address match the file; offset 8 -> 4088."
+    },
+    "0x1DB0": {
+      "name": "Bfile_WriteFileNoSync",
+      "prototype": "int Bfile_WriteFileNoSync(int handle, const void *buf, int size)",
+      "description": "Writes size bytes at the file's current position and moves it, like Bfile_WriteFile_OS (0x1DAF), but without the step that Bfile_WriteFile_OS runs after the write (0x1DB2 runs it on its own). Returns the number of bytes written.",
+      "confidence": "tested",
+      "notes": "probe TestSyscallDocs (emu_go/syscalldoc_probe_test.go, untracked): two writes of 16 -> tell 32, data read back after close. The meaning of the skipped step (a sync/commit) is a guess from the code's shape. 22 callers, among them 0x0E70-0x0E82."
+    },
+    "0x1DB1": {
+      "name": "Bfile_WriteFileAt",
+      "prototype": "int Bfile_WriteFileAt(int handle, const void *buf, int size, int pos)",
+      "description": "Writes size bytes at position pos of an open file and leaves the position after them. Returns the number of bytes written.",
+      "confidence": "tested",
+      "notes": "probe TestSyscallDocs (emu_go/syscalldoc_probe_test.go, untracked): (h, buf, 8, 4) wrote bytes 4-11, tell 12."
+    },
+    "0x1DB2": {
+      "name": "Bfile_SyncFile",
+      "prototype": "int Bfile_SyncFile(int handle)",
+      "description": "Runs, on its own, the step that Bfile_WriteFile_OS performs after writing (see 0x1DB0). fls0 handles only: returns 0, or -5 for any other handle.",
+      "confidence": "read",
+      "notes": "probe TestSyscallDocs (emu_go/syscalldoc_probe_test.go, untracked) returned 0 on an open fls0 handle and -5 on a crd0 one. What the step does inside the file system was not traced."
+    },
+    "0x1DBB": {
+      "name": "EActWork_Create",
+      "prototype": "int EActWork_Create(void)",
+      "description": "Creates \\\\fls0\\EACTWORK.tmp, the eActivity work file, empty; an existing one is emptied too. Returns 0 or a negative error.",
+      "confidence": "tested",
+      "notes": "probe TestSyscallDocs (emu_go/syscalldoc_probe_test.go, untracked): after writing 8 bytes, a second create leaves a file that reads 0 bytes. When the file exists it calls 0x0DCA first (not traced)."
+    },
+    "0x1DBC": {
+      "name": "EActWork_Exists",
+      "prototype": "int EActWork_Exists(void)",
+      "description": "Returns 1 if \\\\fls0\\EACTWORK.tmp, the eActivity work file, exists, else 0.",
+      "confidence": "tested",
+      "notes": "probe TestSyscallDocs (emu_go/syscalldoc_probe_test.go, untracked)"
+    },
+    "0x1DBD": {
+      "name": "EActWork_Read",
+      "prototype": "int EActWork_Read(void *buf, int size, int pos)",
+      "description": "Opens \\\\fls0\\EACTWORK.tmp, the eActivity work file, reads size bytes from position pos into buf and closes it. Returns the number of bytes read or a negative error.",
+      "confidence": "tested",
+      "notes": "probe TestSyscallDocs (emu_go/syscalldoc_probe_test.go, untracked)"
+    },
+    "0x1DBE": {
+      "name": "EActWork_Write",
+      "prototype": "int EActWork_Write(const void *buf, int size, int pos)",
+      "description": "Opens \\\\fls0\\EACTWORK.tmp, the eActivity work file, moves to pos when pos is above 0, writes size bytes and closes it. Returns the number of bytes written or a negative error.",
+      "confidence": "tested",
+      "notes": "probe TestSyscallDocs (emu_go/syscalldoc_probe_test.go, untracked): a write at 16 extended the file."
+    },
+    "0x1DC3": {
+      "name": "Bfile_Optimize",
+      "prototype": "int Bfile_Optimize(const unsigned short *path)",
+      "description": "Optimises the drive the path names, the job of MEMORY's Optimization (App_Optimize, 0x1630, calls it). For fls0 it makes a pass over the files, then reclaims space in a loop with a progress bar until free space stops growing, and when 0x0DE7 says so it rebuilds the running add-in's mapping (0x0028). Returns 0 or a negative error, -5 for an unknown drive.",
+      "confidence": "read",
+      "notes": "probe TestSyscallDocs (emu_go/syscalldoc_probe_test.go, untracked) ran it on fls0: returned 0, files intact (free space unchanged; nothing to reclaim)."
+    },
+    "0x1DCD": {
+      "name": "Bfile_CharToLower",
+      "prototype": "unsigned short Bfile_CharToLower(unsigned short c)",
+      "description": "Returns c with A-Z changed to a-z; any other value unchanged. 0x1DD8 is a second copy.",
+      "confidence": "tested",
+      "notes": "probe TestSyscallDocs (emu_go/syscalldoc_probe_test.go, untracked)"
+    },
+    "0x1DD0": {
+      "name": "Bfile_CopyBytes",
+      "prototype": "void Bfile_CopyBytes(void *dst, const void *src, int n)",
+      "description": "Copies n bytes, one at a time, from the first to the last.",
+      "confidence": "tested",
+      "notes": "probe TestSyscallDocs (emu_go/syscalldoc_probe_test.go, untracked)"
+    },
+    "0x1DD1": {
+      "prototype": "int sys_memcmp(const void *a, const void *b, int n)",
+      "description": "Despite the name, a test for equality: returns 1 when the first n bytes are the same (also for n = 0) and 0 when they differ. It does not say which is smaller.",
+      "confidence": "tested",
+      "notes": "probe TestSyscallDocs (emu_go/syscalldoc_probe_test.go, untracked)"
+    },
+    "0x1DD2": {
+      "name": "Bfile_NameLength",
+      "prototype": "int Bfile_NameLength(const unsigned short *s)",
+      "description": "Returns the number of characters in a 16-bit file-name string. Both 0x0000 and 0xFFFF end the string.",
+      "confidence": "tested",
+      "notes": "probe TestSyscallDocs (emu_go/syscalldoc_probe_test.go, untracked)"
+    },
+    "0x1DD3": {
+      "name": "Bfile_NameEqual",
+      "prototype": "int Bfile_NameEqual(const unsigned short *a, const unsigned short *b)",
+      "description": "Returns 1 if two 16-bit file-name strings have the same length and characters (case counts), else 0.",
+      "confidence": "tested",
+      "notes": "probe TestSyscallDocs (emu_go/syscalldoc_probe_test.go, untracked)"
+    },
+    "0x1DD4": {
+      "name": "Bfile_NameCopy",
+      "prototype": "void Bfile_NameCopy(unsigned short *dst, const unsigned short *src)",
+      "description": "Copies a 16-bit file-name string including its end mark (0x0000 or 0xFFFF).",
+      "confidence": "tested",
+      "notes": "probe TestSyscallDocs (emu_go/syscalldoc_probe_test.go, untracked)"
+    },
+    "0x1DD5": {
+      "name": "Bfile_NameCopyN",
+      "prototype": "void Bfile_NameCopyN(unsigned short *dst, const unsigned short *src, int n)",
+      "description": "Copies at most n characters of a 16-bit file-name string. If the end mark comes first, it is copied and repeated up to n characters; if not, nothing is added, so dst is then not terminated.",
+      "confidence": "tested",
+      "notes": "probe TestSyscallDocs (emu_go/syscalldoc_probe_test.go, untracked)"
+    },
+    "0x1DD8": {
+      "name": "Bfile_CharToLower",
+      "prototype": "unsigned short Bfile_CharToLower(unsigned short c)",
+      "description": "Same as 0x1DCD: A-Z to a-z, anything else unchanged.",
+      "confidence": "tested",
+      "notes": "probe TestSyscallDocs (emu_go/syscalldoc_probe_test.go, untracked)"
+    },
+    "0x1DD9": {
+      "name": "Bfile_CharToUpper",
+      "prototype": "unsigned short Bfile_CharToUpper(unsigned short c)",
+      "description": "Returns c with a-z changed to A-Z; any other value unchanged.",
+      "confidence": "tested",
+      "notes": "probe TestSyscallDocs (emu_go/syscalldoc_probe_test.go, untracked)"
+    },
+    "0x1DDD": {
+      "name": "Bfile_NamePad",
+      "prototype": "void Bfile_NamePad(unsigned short *s, unsigned short c, int n)",
+      "description": "Fills a 16-bit file-name string with c from its end up to n characters; the end mark is overwritten and no new one is written.",
+      "confidence": "tested",
+      "notes": "probe TestSyscallDocs (emu_go/syscalldoc_probe_test.go, untracked): (\"ab\", ' ', 5) -> a b sp sp sp, then the old memory."
+    },
+    "0x1DDE": {
+      "name": "Bfile_NameSetCase",
+      "prototype": "void Bfile_NameSetCase(unsigned short *s, int mode)",
+      "description": "Changes the letters of a zero-terminated 16-bit file-name string in place: mode 1 to upper case, mode 2 to lower case; other modes do nothing.",
+      "confidence": "tested",
+      "notes": "probe TestSyscallDocs (emu_go/syscalldoc_probe_test.go, untracked)"
+    },
+    "0x1DDF": {
+      "name": "Bfile_NameFindChar",
+      "prototype": "unsigned short *Bfile_NameFindChar(const unsigned short *s, unsigned short c)",
+      "description": "Returns a pointer to the first c in a 16-bit file-name string. When c is missing it points one character past the end mark, not NULL.",
+      "confidence": "tested",
+      "notes": "probe TestSyscallDocs (emu_go/syscalldoc_probe_test.go, untracked): missing 'z' in a 14-character name -> s + 15."
+    },
+    "0x1DE0": {
+      "name": "Bfile_NameFindLastChar",
+      "prototype": "unsigned short *Bfile_NameFindLastChar(const unsigned short *s, unsigned short c)",
+      "description": "Returns a pointer to the last c in a 16-bit file-name string, or NULL when there is none.",
+      "confidence": "tested",
+      "notes": "probe TestSyscallDocs (emu_go/syscalldoc_probe_test.go, untracked)"
+    },
+    "0x1E58": {
+      "prototype": "void SwitchToMainMenu(void)",
+      "description": "Enters the MAIN MENU from scratch and never returns: if 0x1197 reports flash offset 0x300 blank it restarts the OS (0x1187); otherwise it runs start-up steps, clears the add-in mappings (0x0025), prepares the menu (0x1E5A) and then loops in the menu forever.",
+      "confidence": "read"
+    },
+    "0x1E6C": {
+      "prototype": "void (int x, int y, int on)",
+      "description": "A jump to Bdisp_SetPoint3x3_VRAM (0x01A8); the arguments pass through unchanged.",
+      "confidence": "read"
+    },
+    "0x1ED5": {
+      "name": "Delay_1ms",
+      "prototype": "void Delay_1ms(void)",
+      "description": "Busy-waits about 1 ms: until the free-running ETMU5 counter (32,768 Hz, 0xA44D00D8) has moved by more than 32 counts (about 1.007 ms). OS_InnerWait_ms (0x1BB4) calls it n times.",
+      "confidence": "read"
+    }
+  }
 }
