@@ -9,7 +9,37 @@
   pending, so the next session can continue without being reminded.
 ============================================================================= -->
 
-> ## ⏯ RESUME HERE (last session end: 2026-11-08, cont.22 = FlashDump tested on the real calculator, Windows laptop)
+> ## ⏯ RESUME HERE (last session end: 2026-11-08, cont.23 = v0.2.0 published, syscall reference, OS 3.80.1 check, Mac)
+>
+> **Release v0.2.0 is out** (full release, "Latest"): release-signed `cg50-emulator-0.2.0.apk`
+> (versionCode 2, CN=fxprgm) added to the workflow's draft, then published. On the phone the
+> 0.1.0 debug build was replaced (backup in git-ignored `os/phone_backup/2026-11-08/`, dump +
+> sessions pushed back as `flash_full.bin`): **the OS-version dialog works on a device** (3.80
+> stand-in: dialog at start, settings show "16 MB, OS 3.80"). Still open: tell the Reddit OP.
+>
+> **Syscall reference** (new site page `wiki/docs/os/syscall-reference.md`, "Layer 1"): all
+> 8040 numbers of 3.60, searchable, with facts derived by `re/syscall_ref.py` (3.60/3.80
+> addresses and same/moved/changed, size, likely arguments, calls/called by, hardware guess,
+> neighbours, one short message) → `wiki/docs/assets/syscalls360.json`; names from
+> `re/syscall_names.py` (libfxcg 273, gint 31, WikiPrizm links 247, ours 42; 316 named; libfxcg
+> `TestNNNN` placeholders skipped). 3.60→3.80: 5,483 identical, 2,360 same code moved, 197
+> changed. **Layer 2** = hand-written entries in `re/syscall_docs.json` (empty; fields name,
+> prototype, description, confidence tested/read/guessed) — next: pick the first syscalls
+> (used by gint/libfxcg, no WikiPrizm page). Rerun both scripts and update the counts quoted
+> on the page when anything changes. Weak spot: display-controller access goes through RAM
+> tables, so the "display" category is empty.
+>
+> **OS 3.80.1 stand-in** (an OS-only image of 3.80.1, "03.80.0010", built 2023-04-19, over the
+> 32 MB dump: `os/flash_dump/standin_380_1_32mb.bin`, git-ignored, never commit): boots and
+> runs in CG50 Studio. KhiCAS 1.7 (`khicas50.g3a`) shows "OS 03.80.00 not checked"; after F6
+> it calls a fixed RAM address 0x8C20AFFC (`jsr @r1` at 0x003FCB12) that holds zeros →
+> "Illegal Code Err, PC 0". On 3.60 that path never runs: KhiCAS's own unknown-OS path, not an
+> emulator bug. Probe: `emu_go/khicas380_probe_test.go` (git-ignored, `-tags probe`, env
+> KHI_FLASH / KHI_DOWN / KHI_LAUNCH / KHI_F6 / KHI_FIND / KHI_TRACE / KHI_PC / KHI_DUMP).
+> Pitfall: a breakpoint at 0 doesn't fire for a jump to 0 (the exception comes first); a big
+> trace ring + "last add-in PC" finds it.
+>
+> ## ⏯ (prev) RESUME HERE (last session end: 2026-11-08, cont.22 = FlashDump tested on the real calculator, Windows laptop)
 >
 > **FlashDump works on the real fx-CG50**, received on **Windows** (usbipd-win → WSL → fxlink
 > in the `fxsdk:latest` Docker image): two 32 MB dumps, OS 03.60; boot + OS byte-identical to

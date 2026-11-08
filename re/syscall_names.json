@@ -1,0 +1,2998 @@
+{
+ "0x0006": {
+  "src": [
+   "ours"
+  ],
+  "ours": "MMU off, flush the UTLB",
+  "pages": [
+   "os/mmu-and-addins.md"
+  ],
+  "name": "MMU off, flush the UTLB"
+ },
+ "0x0007": {
+  "src": [
+   "ours"
+  ],
+  "ours": "Turn the MMU on",
+  "pages": [
+   "os/mmu-and-addins.md"
+  ],
+  "name": "Turn the MMU on"
+ },
+ "0x0008": {
+  "src": [
+   "ours"
+  ],
+  "ours": "Flush the TLB (AT stays on)",
+  "pages": [
+   "os/mmu-and-addins.md"
+  ],
+  "name": "Flush the TLB (AT stays on)"
+ },
+ "0x0009": {
+  "src": [
+   "ours"
+  ],
+  "ours": "Map one add-in page into the next TLB slot",
+  "pages": [
+   "os/mmu-and-addins.md"
+  ],
+  "name": "Map one add-in page into the next TLB slot"
+ },
+ "0x000C": {
+  "src": [
+   "gint"
+  ],
+  "gint": "TLB-miss handler (tlbh.S)",
+  "name": "TLB-miss handler (tlbh.S)"
+ },
+ "0x0011": {
+  "src": [
+   "ours"
+  ],
+  "ours": "Invalidate the instruction cache",
+  "pages": [
+   "os/mmu-and-addins.md"
+  ],
+  "name": "Invalidate the instruction cache"
+ },
+ "0x0017": {
+  "src": [
+   "ours"
+  ],
+  "ours": "Rebuild the list of add-ins",
+  "pages": [
+   "os/syscalls.md"
+  ],
+  "name": "Rebuild the list of add-ins"
+ },
+ "0x0025": {
+  "src": [
+   "ours"
+  ],
+  "ours": "MMU off, clear the add-in page table",
+  "pages": [
+   "os/mmu-and-addins.md"
+  ],
+  "name": "MMU off, clear the add-in page table"
+ },
+ "0x0026": {
+  "src": [
+   "ours"
+  ],
+  "ours": "Map a starting add-in (the mapper)",
+  "pages": [
+   "os/mmu-and-addins.md"
+  ],
+  "name": "Map a starting add-in (the mapper)"
+ },
+ "0x0027": {
+  "src": [
+   "ours"
+  ],
+  "ours": "Map the add-in RAM (slots 55-63)",
+  "pages": [
+   "os/mmu-and-addins.md"
+  ],
+  "name": "Map the add-in RAM (slots 55-63)"
+ },
+ "0x0028": {
+  "src": [
+   "ours"
+  ],
+  "ours": "Rebuild a running add-in's mapping",
+  "pages": [
+   "about/open-questions.md",
+   "os/mmu-and-addins.md"
+  ],
+  "name": "Rebuild a running add-in's mapping"
+ },
+ "0x002B": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "GlibGetOSVersionInfo",
+  "wp": "Syscalls/GlibGetOSVersionInfo/",
+  "name": "GlibGetOSVersionInfo"
+ },
+ "0x0031": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "GetSetupSetting",
+  "wp": "Syscalls/GetSetupSetting/",
+  "name": "GetSetupSetting"
+ },
+ "0x0032": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "SetSetupSetting",
+  "wp": "Syscalls/SetSetupSetting/",
+  "name": "SetSetupSetting"
+ },
+ "0x0034": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "Alpha_GetData",
+  "wp": "Syscalls/Alpha_GetData/",
+  "name": "Alpha_GetData"
+ },
+ "0x0035": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "Alpha_SetData",
+  "wp": "Syscalls/Alpha_SetData/",
+  "name": "Alpha_SetData"
+ },
+ "0x0111": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "Bkey_ClrAllFlags",
+  "wp": "Syscalls/Keyboard/Bkey_ClrAllFlags/",
+  "name": "Bkey_ClrAllFlags"
+ },
+ "0x0112": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "Bkey_SetFlag",
+  "wp": "Syscalls/Keyboard/Bkey_SetFlag/",
+  "name": "Bkey_SetFlag"
+ },
+ "0x0129": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "Set_FKeys2",
+  "wp": "Syscalls/Keyboard/Set_FKeys2/",
+  "name": "Set_FKeys2"
+ },
+ "0x012B": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "Set_FKeys1",
+  "wp": "Syscalls/Keyboard/Set_FKeys1/",
+  "name": "Set_FKeys1"
+ },
+ "0x0131": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "FKey_Display",
+  "wp": "Syscalls/UI_elements/FKey_Display/",
+  "name": "FKey_Display"
+ },
+ "0x0160": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "BCDtoInternal",
+  "wp": "Syscalls/BCDtoInternal/",
+  "pages": [
+   "os/number-format.md"
+  ],
+  "name": "BCDtoInternal"
+ },
+ "0x0192": {
+  "src": [
+   "ours"
+  ],
+  "ours": "LCD controller power-down",
+  "pages": [
+   "os/boot.md"
+  ],
+  "name": "LCD controller power-down"
+ },
+ "0x0194": {
+  "src": [
+   "wp"
+  ],
+  "wp": "Syscalls/Bdisp_SetDDRegisterB/",
+  "name": "Bdisp_SetDDRegisterB"
+ },
+ "0x0197": {
+  "src": [
+   "ours"
+  ],
+  "ours": "Display off",
+  "pages": [
+   "os/boot.md"
+  ],
+  "name": "Display off"
+ },
+ "0x0199": {
+  "src": [
+   "wp"
+  ],
+  "wp": "Syscalls/Bdisp_SetBacklightLevel/",
+  "name": "Bdisp_SetBacklightLevel"
+ },
+ "0x01A2": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "Bdisp_DDRegisterSelect",
+  "wp": "Syscalls/Bdisp_DDRegisterSelect/",
+  "name": "Bdisp_DDRegisterSelect"
+ },
+ "0x01A3": {
+  "src": [
+   "libfxcg"
+  ],
+  "libfxcg": "Bdisp_DefineDMARange",
+  "name": "Bdisp_DefineDMARange"
+ },
+ "0x01A6": {
+  "src": [
+   "libfxcg"
+  ],
+  "libfxcg": "Bdisp_WriteDDRegister3_bit7",
+  "name": "Bdisp_WriteDDRegister3_bit7"
+ },
+ "0x01A8": {
+  "src": [
+   "libfxcg"
+  ],
+  "libfxcg": "Test01A8",
+  "name": ""
+ },
+ "0x01B6": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "Bdisp_AreaClr_DD_x3",
+  "wp": "Syscalls/Bdisp_AreaClr_DD_x3/",
+  "name": "Bdisp_AreaClr_DD_x3"
+ },
+ "0x01BE": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "Bdisp_ShapeBase3XVRAM",
+  "wp": "Syscalls/Bdisp_ShapeBase3XVRAM/",
+  "name": "Bdisp_ShapeBase3XVRAM"
+ },
+ "0x01C0": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "Bdisp_ShapeToDD",
+  "wp": "Syscalls/Bdisp_ShapeToDD/",
+  "name": "Bdisp_ShapeToDD"
+ },
+ "0x01C4": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "Bdisp_ShapeToVRAM16C",
+  "wp": "Syscalls/Bdisp_ShapeToVRAM16C/",
+  "name": "Bdisp_ShapeToVRAM16C"
+ },
+ "0x01C7": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "Bdisp_ShapeBase",
+  "wp": "Syscalls/Bdisp_ShapeBase/",
+  "name": "Bdisp_ShapeBase"
+ },
+ "0x01DF": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "DisableGB18030",
+  "wp": "Syscalls/DisableGB18030/",
+  "name": "DisableGB18030"
+ },
+ "0x01E0": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "EnableGB18030",
+  "wp": "Syscalls/EnableGB18030/",
+  "name": "EnableGB18030"
+ },
+ "0x01E6": {
+  "src": [
+   "libfxcg",
+   "gint",
+   "wp"
+  ],
+  "libfxcg": "GetVRAMAddress",
+  "gint": "GetVRAMAddress",
+  "wp": "Syscalls/GetVRAMAddress/",
+  "pages": [
+   "memory-map.md",
+   "os/syscalls.md",
+   "peripherals/display.md"
+  ],
+  "name": "GetVRAMAddress"
+ },
+ "0x01E9": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "GetMiniGlyphPtr",
+  "wp": "Syscalls/GetMiniGlyphPtr/",
+  "name": "GetMiniGlyphPtr"
+ },
+ "0x01F1": {
+  "src": [
+   "wp"
+  ],
+  "wp": "Syscalls/Cursor_SetPosition/",
+  "name": "Cursor_SetPosition"
+ },
+ "0x01F5": {
+  "src": [
+   "wp"
+  ],
+  "wp": "Syscalls/Cursor_GetSettings/",
+  "name": "Cursor_GetSettings"
+ },
+ "0x01F9": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "Print_OS",
+  "wp": "Syscalls/Print_OS/",
+  "name": "Print_OS"
+ },
+ "0x021B": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "PrintMiniMini",
+  "wp": "Syscalls/PrintMiniMini/",
+  "name": "PrintMiniMini"
+ },
+ "0x0238": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "PrintGlyph",
+  "wp": "Syscalls/PrintGlyph/",
+  "name": "PrintGlyph"
+ },
+ "0x0239": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "PrintCXY",
+  "wp": "Syscalls/PrintCXY/",
+  "name": "PrintCXY"
+ },
+ "0x023B": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "PrintMiniGlyph",
+  "wp": "Syscalls/PrintMiniGlyph/",
+  "name": "PrintMiniGlyph"
+ },
+ "0x023C": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "PrintMini",
+  "wp": "Syscalls/PrintMini/",
+  "name": "PrintMini"
+ },
+ "0x0259": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "DispInt",
+  "wp": "Syscalls/DispInt/",
+  "name": "DispInt"
+ },
+ "0x025D": {
+  "src": [
+   "ours"
+  ],
+  "ours": "Write 8 pixels straight to the panel",
+  "pages": [
+   "peripherals/display.md"
+  ],
+  "name": "Write 8 pixels straight to the panel"
+ },
+ "0x025F": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "Bdisp_PutDisp_DD",
+  "wp": "Syscalls/Bdisp_PutDisp_DD/",
+  "pages": [
+   "os/syscalls.md",
+   "peripherals/display.md"
+  ],
+  "name": "Bdisp_PutDisp_DD"
+ },
+ "0x0260": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "Bdisp_PutDisp_DD_stripe",
+  "wp": "Syscalls/Bdisp_PutDisp_DD_stripe/",
+  "pages": [
+   "about/open-questions.md",
+   "os/syscalls.md",
+   "peripherals/display.md"
+  ],
+  "name": "Bdisp_PutDisp_DD_stripe"
+ },
+ "0x0262": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "Bdisp_SetPointWB_VRAM",
+  "wp": "Syscalls/Bdisp_SetPointWB_VRAM/",
+  "name": "Bdisp_SetPointWB_VRAM"
+ },
+ "0x0263": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "Bdisp_SetPoint_VRAM",
+  "wp": "Syscalls/Bdisp_SetPoint_VRAM/",
+  "name": "Bdisp_SetPoint_VRAM"
+ },
+ "0x0267": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "Bdisp_GetPoint_VRAM",
+  "wp": "Syscalls/Bdisp_GetPoint_VRAM/",
+  "name": "Bdisp_GetPoint_VRAM"
+ },
+ "0x026B": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "Bdisp_SetPoint_DD",
+  "wp": "Syscalls/Bdisp_SetPoint_DD/",
+  "name": "Bdisp_SetPoint_DD"
+ },
+ "0x026E": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "Bdisp_GetPoint_DD_Workbench",
+  "wp": "Syscalls/Bdisp_GetPoint_DD_Workbench/",
+  "name": "Bdisp_GetPoint_DD_Workbench"
+ },
+ "0x026F": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "Bdisp_GetPoint_DD",
+  "wp": "Syscalls/Bdisp_GetPoint_DD/",
+  "name": "Bdisp_GetPoint_DD"
+ },
+ "0x0272": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "Bdisp_AllClr_VRAM",
+  "wp": "Syscalls/Bdisp_AllClr_VRAM/",
+  "name": "Bdisp_AllClr_VRAM"
+ },
+ "0x0275": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "Bdisp_Fill_VRAM",
+  "wp": "Syscalls/Bdisp_Fill_VRAM/",
+  "name": "Bdisp_Fill_VRAM"
+ },
+ "0x0276": {
+  "src": [
+   "wp"
+  ],
+  "wp": "Syscalls/Bdisp_Fill_DD/",
+  "name": "Bdisp_Fill_DD"
+ },
+ "0x028F": {
+  "src": [
+   "libfxcg"
+  ],
+  "libfxcg": "Bdisp_WriteGraphVRAM_WB",
+  "name": "Bdisp_WriteGraphVRAM_WB"
+ },
+ "0x0290": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "Bdisp_WriteGraphVRAM",
+  "wp": "Syscalls/Bdisp_WriteGraphVRAM/",
+  "name": "Bdisp_WriteGraphVRAM"
+ },
+ "0x0291": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "Bdisp_WriteGraphDD_WB",
+  "wp": "Syscalls/Bdisp_WriteGraphDD_WB/",
+  "name": "Bdisp_WriteGraphDD_WB"
+ },
+ "0x02A3": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "FrameColor",
+  "wp": "Syscalls/FrameColor/",
+  "name": "FrameColor"
+ },
+ "0x02A4": {
+  "src": [
+   "libfxcg"
+  ],
+  "libfxcg": "Syscall02A4",
+  "name": "Syscall02A4"
+ },
+ "0x02A7": {
+  "src": [
+   "libfxcg"
+  ],
+  "libfxcg": "Syscall02A7",
+  "name": "Syscall02A7"
+ },
+ "0x02A8": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "DrawFrame",
+  "wp": "Syscalls/DrawFrame/",
+  "pages": [
+   "peripherals/display.md"
+  ],
+  "name": "DrawFrame"
+ },
+ "0x02A9": {
+  "src": [
+   "libfxcg"
+  ],
+  "libfxcg": "Syscall02A9",
+  "name": "Syscall02A9"
+ },
+ "0x02AA": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "DirectDrawRectangle",
+  "wp": "Syscalls/DirectDrawRectangle/",
+  "name": "DirectDrawRectangle"
+ },
+ "0x02B0": {
+  "src": [
+   "ours"
+  ],
+  "ours": "Generic bitmap routine",
+  "pages": [
+   "peripherals/display.md"
+  ],
+  "name": "Generic bitmap routine"
+ },
+ "0x02B2": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "Bdisp_AreaClr",
+  "wp": "Syscalls/Bdisp_AreaClr/",
+  "name": "Bdisp_AreaClr"
+ },
+ "0x02B7": {
+  "src": [
+   "libfxcg",
+   "gint",
+   "wp"
+  ],
+  "libfxcg": "EnableStatusArea",
+  "gint": "ConfigureStatusArea",
+  "wp": "Syscalls/EnableStatusArea/",
+  "name": "EnableStatusArea"
+ },
+ "0x02B8": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "DefineStatusAreaFlags",
+  "wp": "Syscalls/DefineStatusAreaFlags/",
+  "name": "DefineStatusAreaFlags"
+ },
+ "0x02BB": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "DrawHeaderLine",
+  "wp": "Syscalls/UI_elements/DrawHeaderLine/",
+  "name": "DrawHeaderLine"
+ },
+ "0x02BF": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "RTC_Reset",
+  "wp": "Syscalls/RTC/RTC_Reset/",
+  "name": "RTC_Reset"
+ },
+ "0x02C0": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "RTC_GetTime",
+  "wp": "Syscalls/RTC/RTC_GetTime/",
+  "name": "RTC_GetTime"
+ },
+ "0x02C1": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "RTC_GetTicks",
+  "wp": "Syscalls/RTC/RTC_GetTicks/",
+  "pages": [
+   "os/syscalls.md",
+   "peripherals/timers.md"
+  ],
+  "name": "RTC_GetTicks"
+ },
+ "0x02C2": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "RTC_Elapsed_ms",
+  "wp": "Syscalls/RTC/RTC_Elapsed_ms/",
+  "name": "RTC_Elapsed_ms"
+ },
+ "0x02C7": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "HourGlass",
+  "wp": "Syscalls/UI_elements/HourGlass/",
+  "name": "HourGlass"
+ },
+ "0x07A2": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "CharacterSelectDialog",
+  "wp": "Syscalls/UI_elements/CharacterSelectDialog/",
+  "name": "CharacterSelectDialog"
+ },
+ "0x07E5": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "CLIP_Store",
+  "wp": "Syscalls/MCS/CLIP_Store/",
+  "name": "CLIP_Store"
+ },
+ "0x08C7": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "Cursor_SetFlashOn",
+  "wp": "Syscalls/Cursor_SetFlashOn/",
+  "name": "Cursor_SetFlashOn"
+ },
+ "0x08C8": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "Cursor_SetFlashOff",
+  "wp": "Syscalls/Cursor_SetFlashOff/",
+  "name": "Cursor_SetFlashOff"
+ },
+ "0x08CA": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "Keyboard_CursorFlash",
+  "wp": "Syscalls/Keyboard_CursorFlash/",
+  "name": "Keyboard_CursorFlash"
+ },
+ "0x08CC": {
+  "src": [
+   "ours"
+  ],
+  "ours": "Cursor blink routine (2 Hz)",
+  "pages": [
+   "peripherals/timers.md"
+  ],
+  "name": "Cursor blink routine (2 Hz)"
+ },
+ "0x08D2": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "SetCursorFlashToggle",
+  "wp": "Syscalls/SetCursorFlashToggle/",
+  "name": "SetCursorFlashToggle"
+ },
+ "0x08D8": {
+  "src": [
+   "ours"
+  ],
+  "ours": "Start the TMU free-running counter",
+  "pages": [
+   "peripherals/timers.md"
+  ],
+  "name": "Start the TMU free-running counter"
+ },
+ "0x08D9": {
+  "src": [
+   "libfxcg",
+   "gint",
+   "wp"
+  ],
+  "libfxcg": "Timer_Install",
+  "gint": "Timer_Install",
+  "wp": "Syscalls/Timers/Timer_Install/",
+  "pages": [
+   "peripherals/timers.md"
+  ],
+  "name": "Timer_Install"
+ },
+ "0x08DA": {
+  "src": [
+   "libfxcg",
+   "gint",
+   "wp"
+  ],
+  "libfxcg": "Timer_Deinstall",
+  "gint": "Timer_Deinstall",
+  "wp": "Syscalls/Timers/Timer_Deinstall/",
+  "pages": [
+   "peripherals/timers.md"
+  ],
+  "name": "Timer_Deinstall"
+ },
+ "0x08DB": {
+  "src": [
+   "libfxcg",
+   "gint",
+   "wp"
+  ],
+  "libfxcg": "Timer_Start",
+  "gint": "Timer_Start",
+  "wp": "Syscalls/Timers/Timer_Start/",
+  "pages": [
+   "peripherals/timers.md"
+  ],
+  "name": "Timer_Start"
+ },
+ "0x08DC": {
+  "src": [
+   "libfxcg",
+   "gint",
+   "wp"
+  ],
+  "libfxcg": "Timer_Stop",
+  "gint": "Timer_Stop",
+  "wp": "Syscalls/Timers/Timer_Stop/",
+  "pages": [
+   "peripherals/timers.md"
+  ],
+  "name": "Timer_Stop"
+ },
+ "0x091E": {
+  "src": [
+   "wp"
+  ],
+  "wp": "Syscalls/Bdisp_FrameAndColor/",
+  "name": "Bdisp_FrameAndColor"
+ },
+ "0x0920": {
+  "src": [
+   "wp"
+  ],
+  "wp": "Syscalls/Bdisp_ColorAndFrameSetFlags/",
+  "name": "Bdisp_ColorAndFrameSetFlags"
+ },
+ "0x0921": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "Bdisp_EnableColor",
+  "wp": "Syscalls/Bdisp_EnableColor/",
+  "name": "Bdisp_EnableColor"
+ },
+ "0x0923": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "DrawFrameWorkbench",
+  "wp": "Syscalls/DrawFrameWorkbench/",
+  "name": "DrawFrameWorkbench"
+ },
+ "0x0924": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "Bdisp_Rectangle",
+  "wp": "Syscalls/Bdisp_Rectangle/",
+  "name": "Bdisp_Rectangle"
+ },
+ "0x0925": {
+  "src": [
+   "libfxcg"
+  ],
+  "libfxcg": "Bdisp_FilledRectangle",
+  "name": "Bdisp_FilledRectangle"
+ },
+ "0x0926": {
+  "src": [
+   "libfxcg"
+  ],
+  "libfxcg": "Bdisp_FilledRectangleFullColor",
+  "name": "Bdisp_FilledRectangleFullColor"
+ },
+ "0x092B": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "Box",
+  "wp": "Syscalls/UI_elements/Box/",
+  "name": "Box"
+ },
+ "0x0938": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "MsgBoxMoveWB",
+  "wp": "Syscalls/MsgBoxMoveWB/",
+  "name": "MsgBoxMoveWB"
+ },
+ "0x0A87": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "APP_EACT_StatusIcon",
+  "wp": "Syscalls/APP_EACT_StatusIcon/",
+  "name": "APP_EACT_StatusIcon"
+ },
+ "0x0A8B": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "SetupMode_StatusIcon",
+  "wp": "Syscalls/SetupMode_StatusIcon/",
+  "name": "SetupMode_StatusIcon"
+ },
+ "0x0C01": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "AUX_DisplayErrorMessage",
+  "wp": "Syscalls/UI_elements/AUX_DisplayErrorMessage/",
+  "name": "AUX_DisplayErrorMessage"
+ },
+ "0x0C2C": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "SMEM_MapIconToExt",
+  "wp": "Syscalls/SMEM_MapIconToExt/",
+  "name": "SMEM_MapIconToExt"
+ },
+ "0x0C5A": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "StandardScrollbar",
+  "wp": "Syscalls/UI_elements/StandardScrollbar/",
+  "name": "StandardScrollbar"
+ },
+ "0x0C66": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "SaveFileDialog",
+  "wp": "Syscalls/UI_elements/SaveFileDialog/",
+  "name": "SaveFileDialog"
+ },
+ "0x0C6B": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "APP_FINANCE",
+  "wp": "Syscalls/Built-in_Apps/APP_FINANCE/",
+  "name": "APP_FINANCE"
+ },
+ "0x0D08": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "Bdisp_MMPrintRef",
+  "wp": "Syscalls/Bdisp_MMPrintRef/",
+  "name": "Bdisp_MMPrintRef"
+ },
+ "0x0D09": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "Bdisp_MMPrint",
+  "wp": "Syscalls/Bdisp_MMPrint/",
+  "name": "Bdisp_MMPrint"
+ },
+ "0x0D39": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "PRGM_GetKey_OS",
+  "wp": "Syscalls/Keyboard/PRGM_GetKey_OS/",
+  "name": "PRGM_GetKey_OS"
+ },
+ "0x0D79": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "App_InitDlgDescriptor",
+  "wp": "Syscalls/App_InitDlgDescriptor/",
+  "name": "App_InitDlgDescriptor"
+ },
+ "0x0D91": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "OverwriteConfirmation",
+  "wp": "Syscalls/UI_elements/OverwriteConfirmation/",
+  "name": "OverwriteConfirmation"
+ },
+ "0x0DAC": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "SMEM_FindFirst",
+  "wp": "Syscalls/SMEM_FindFirst/",
+  "name": "SMEM_FindFirst"
+ },
+ "0x0DDA": {
+  "src": [
+   "ours"
+  ],
+  "ours": "Erase the 156 storage sectors",
+  "name": "Erase the 156 storage sectors"
+ },
+ "0x0DDB": {
+  "src": [
+   "ours"
+  ],
+  "ours": "Erase 160 sectors from 0xC00000",
+  "name": "Erase 160 sectors from 0xC00000"
+ },
+ "0x0DDF": {
+  "src": [
+   "libfxcg"
+  ],
+  "libfxcg": "SMEM_maint",
+  "name": "SMEM_maint"
+ },
+ "0x0EA0": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "Bkey_GetAllFlags",
+  "wp": "Syscalls/Keyboard/Bkey_GetAllFlags/",
+  "name": "Bkey_GetAllFlags"
+ },
+ "0x0EA1": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "Bkey_SetAllFlags",
+  "wp": "Syscalls/Keyboard/Bkey_SetAllFlags/",
+  "name": "Bkey_SetAllFlags"
+ },
+ "0x0EA7": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "TestMode",
+  "wp": "Syscalls/TestMode/",
+  "name": "TestMode"
+ },
+ "0x0EAB": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "GetKey",
+  "wp": "Syscalls/Keyboard/GetKey/",
+  "pages": [
+   "os/boot.md",
+   "os/syscalls.md"
+  ],
+  "name": "GetKey"
+ },
+ "0x115E": {
+  "src": [
+   "libfxcg"
+  ],
+  "libfxcg": "memcmp3",
+  "name": "memcmp3"
+ },
+ "0x1161": {
+  "src": [
+   "libfxcg"
+  ],
+  "libfxcg": "MB_IsLead",
+  "name": "MB_IsLead"
+ },
+ "0x1163": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "MB_ElementCount",
+  "wp": "Syscalls/MB_ElementCount/",
+  "name": "MB_ElementCount"
+ },
+ "0x1170": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "itoa",
+  "wp": "Syscalls/Itoa/",
+  "name": "itoa"
+ },
+ "0x1186": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "GetMainBatteryVoltage",
+  "wp": "Syscalls/GetMainBatteryVoltage/",
+  "name": "GetMainBatteryVoltage"
+ },
+ "0x1187": {
+  "src": [
+   "libfxcg",
+   "gint",
+   "wp",
+   "ours"
+  ],
+  "libfxcg": "Restart",
+  "gint": "Reset",
+  "wp": "Syscalls/Restart/",
+  "ours": "Restart the OS through the reset vector",
+  "pages": [
+   "os/boot.md",
+   "os/syscalls.md"
+  ],
+  "name": "Restart"
+ },
+ "0x1197": {
+  "src": [
+   "ours"
+  ],
+  "ours": "Is flash offset 0x300 blank? (skip setup)",
+  "pages": [
+   "os/boot.md"
+  ],
+  "name": "Is flash offset 0x300 blank? (skip setup)"
+ },
+ "0x11BD": {
+  "src": [
+   "ours"
+  ],
+  "ours": "Arm the IRQ1/IRQ2 wake-up pins",
+  "pages": [
+   "peripherals/interrupts.md"
+  ],
+  "name": "Arm the IRQ1/IRQ2 wake-up pins"
+ },
+ "0x11BE": {
+  "src": [
+   "ours"
+  ],
+  "ours": "Disarm the IRQ1/IRQ2 wake-up pins",
+  "pages": [
+   "peripherals/interrupts.md"
+  ],
+  "name": "Disarm the IRQ1/IRQ2 wake-up pins"
+ },
+ "0x11BF": {
+  "src": [
+   "ours"
+  ],
+  "ours": "Read the USB and 3PIN pins",
+  "pages": [
+   "peripherals/interrupts.md"
+  ],
+  "name": "Read the USB and 3PIN pins"
+ },
+ "0x11C0": {
+  "src": [
+   "ours"
+  ],
+  "ours": "Read the USB pin (0xA4050162 bit 1)",
+  "pages": [
+   "peripherals/interrupts.md",
+   "peripherals/timers.md"
+  ],
+  "name": "Read the USB pin (0xA4050162 bit 1)"
+ },
+ "0x11C6": {
+  "src": [
+   "ours"
+  ],
+  "ours": "KEYSC set-up while the unit is off",
+  "pages": [
+   "peripherals/keyboard.md"
+  ],
+  "name": "KEYSC set-up while the unit is off"
+ },
+ "0x11C7": {
+  "src": [
+   "ours"
+  ],
+  "ours": "KEYSC normal set-up",
+  "pages": [
+   "peripherals/keyboard.md"
+  ],
+  "name": "KEYSC normal set-up"
+ },
+ "0x11C9": {
+  "src": [
+   "ours"
+  ],
+  "ours": "Copy the flash routines to IL RAM",
+  "pages": [
+   "flash.md"
+  ],
+  "name": "Copy the flash routines to IL RAM"
+ },
+ "0x11D6": {
+  "src": [
+   "libfxcg",
+   "wp",
+   "ours"
+  ],
+  "libfxcg": "CMT_Delay_micros",
+  "wp": "Syscalls/CMT/CMT_Delay_micros/",
+  "ours": "Delay on the one-shot unit 0xA44A0000",
+  "pages": [
+   "peripherals/timers.md"
+  ],
+  "name": "CMT_Delay_micros"
+ },
+ "0x11D7": {
+  "src": [
+   "libfxcg",
+   "wp",
+   "ours"
+  ],
+  "libfxcg": "CMT_Delay_100micros",
+  "wp": "Syscalls/CMT/CMT_Delay_100micros/",
+  "ours": "Delay x 100 (jumps to 0x11D6)",
+  "pages": [
+   "peripherals/timers.md"
+  ],
+  "name": "CMT_Delay_100micros"
+ },
+ "0x11DE": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "RTC_SetDateTime",
+  "wp": "Syscalls/RTC/RTC_SetDateTime/",
+  "name": "RTC_SetDateTime"
+ },
+ "0x11ED": {
+  "src": [
+   "ours"
+  ],
+  "ours": "A low-power routine",
+  "pages": [
+   "about/open-questions.md",
+   "os/boot.md",
+   "os/syscalls.md"
+  ],
+  "name": "A low-power routine"
+ },
+ "0x120A": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "EditMBStringCtrl2",
+  "wp": "Syscalls/Text_and_expression_editing/EditMBStringCtrl2/",
+  "name": "EditMBStringCtrl2"
+ },
+ "0x120B": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "EditMBStringCtrl3",
+  "wp": "Syscalls/Text_and_expression_editing/EditMBStringCtrl3/",
+  "name": "EditMBStringCtrl3"
+ },
+ "0x120C": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "EditMBStringCtrl4",
+  "wp": "Syscalls/Text_and_expression_editing/EditMBStringCtrl4/",
+  "name": "EditMBStringCtrl4"
+ },
+ "0x120E": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "EditMBStringCtrl",
+  "wp": "Syscalls/Text_and_expression_editing/EditMBStringCtrl/",
+  "name": "EditMBStringCtrl"
+ },
+ "0x1218": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "DisplayMBString2",
+  "wp": "Syscalls/Text_and_expression_editing/DisplayMBString2/",
+  "name": "DisplayMBString2"
+ },
+ "0x121D": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "DisplayMBString",
+  "wp": "Syscalls/Text_and_expression_editing/DisplayMBString/",
+  "name": "DisplayMBString"
+ },
+ "0x1224": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "EditMBStringChar",
+  "wp": "Syscalls/Text_and_expression_editing/EditMBStringChar/",
+  "name": "EditMBStringChar"
+ },
+ "0x127E": {
+  "src": [
+   "libfxcg",
+   "ours"
+  ],
+  "libfxcg": "Test127E",
+  "ours": "Is one given key held? (port scan)",
+  "pages": [
+   "about/open-questions.md",
+   "os/syscalls.md",
+   "peripherals/keyboard.md"
+  ],
+  "name": "Is one given key held? (port scan)"
+ },
+ "0x128F": {
+  "src": [
+   "ours"
+  ],
+  "ours": "OpCodeToStr (a BASIC token's text)",
+  "pages": [
+   "os/syscalls.md"
+  ],
+  "name": "OpCodeToStr (a BASIC token's text)"
+ },
+ "0x12BF": {
+  "src": [
+   "libfxcg",
+   "gint",
+   "wp"
+  ],
+  "libfxcg": "GetKeyWait_OS",
+  "gint": "GetKeyWait",
+  "wp": "Syscalls/Keyboard/GetKeyWait_OS/",
+  "pages": [
+   "os/boot.md"
+  ],
+  "name": "GetKeyWait_OS"
+ },
+ "0x12C0": {
+  "src": [
+   "ours"
+  ],
+  "ours": "The body of GetKeyWait_OS",
+  "pages": [
+   "os/boot.md"
+  ],
+  "name": "The body of GetKeyWait_OS"
+ },
+ "0x12C6": {
+  "src": [
+   "libfxcg",
+   "gint",
+   "wp"
+  ],
+  "libfxcg": "Keyboard_PutKeycode",
+  "gint": "PutKeyCode",
+  "wp": "Syscalls/Keyboard/Keyboard_PutKeycode/",
+  "name": "Keyboard_PutKeycode"
+ },
+ "0x12C7": {
+  "src": [
+   "gint"
+  ],
+  "gint": "ClearKeyBuffer",
+  "name": "ClearKeyBuffer"
+ },
+ "0x12C9": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "Keyboard_SpyMatrixCode",
+  "wp": "Syscalls/Keyboard/Keyboard_SpyMatrixCode/",
+  "name": "Keyboard_SpyMatrixCode"
+ },
+ "0x12D4": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "SetBatteryType",
+  "wp": "Syscalls/SetBatteryType/",
+  "name": "SetBatteryType"
+ },
+ "0x12D5": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "GetBatteryType",
+  "wp": "Syscalls/GetBatteryType/",
+  "name": "GetBatteryType"
+ },
+ "0x12D8": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "SetBacklightDuration",
+  "wp": "Syscalls/SetBacklightDuration/",
+  "name": "SetBacklightDuration"
+ },
+ "0x12D9": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "GetBacklightDuration",
+  "wp": "Syscalls/GetBacklightDuration/",
+  "name": "GetBacklightDuration"
+ },
+ "0x12F3": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "GetFKeyPtr",
+  "wp": "Syscalls/Locale/GetFKeyPtr/",
+  "name": "GetFKeyPtr"
+ },
+ "0x12FC": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "LocalizeMessage1",
+  "wp": "Syscalls/Locale/LocalizeMessage1/",
+  "name": "LocalizeMessage1"
+ },
+ "0x1300": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "ProcessPrintChars",
+  "wp": "Syscalls/ProcessPrintChars/",
+  "name": "ProcessPrintChars"
+ },
+ "0x1343": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "HexToNibble",
+  "wp": "Syscalls/HexToNibble/",
+  "name": "HexToNibble"
+ },
+ "0x1344": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "HexToByte",
+  "wp": "Syscalls/HexToByte/",
+  "name": "HexToByte"
+ },
+ "0x1345": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "HexToWord",
+  "wp": "Syscalls/HexToWord/",
+  "name": "HexToWord"
+ },
+ "0x1346": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "NibbleToHex",
+  "wp": "Syscalls/NibbleToHex/",
+  "name": "NibbleToHex"
+ },
+ "0x1347": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "ByteToHex",
+  "wp": "Syscalls/ByteToHex/",
+  "name": "ByteToHex"
+ },
+ "0x1348": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "WordToHex",
+  "wp": "Syscalls/WordToHex/",
+  "name": "WordToHex"
+ },
+ "0x1349": {
+  "src": [
+   "libfxcg"
+  ],
+  "libfxcg": "strlen",
+  "name": "strlen"
+ },
+ "0x134E": {
+  "src": [
+   "libfxcg"
+  ],
+  "libfxcg": "USB_Open",
+  "name": "USB_Open"
+ },
+ "0x1350": {
+  "src": [
+   "libfxcg"
+  ],
+  "libfxcg": "USB_Close",
+  "name": "USB_Close"
+ },
+ "0x1353": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "Comm_Open",
+  "wp": "Syscalls/Communication/Comm_Open/",
+  "name": "Comm_Open"
+ },
+ "0x1354": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "Comm_Close",
+  "wp": "Syscalls/Communication/Comm_Close/",
+  "name": "Comm_Close"
+ },
+ "0x1384": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "APP_LINK_transmit_select_dialog",
+  "wp": "Syscalls/Communication/APP_LINK_transmit_select_dialog/",
+  "name": "APP_LINK_transmit_select_dialog"
+ },
+ "0x1396": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "Comm_TryCheckPacket",
+  "wp": "Syscalls/Communication/Comm_TryCheckPacket/",
+  "name": "Comm_TryCheckPacket"
+ },
+ "0x1397": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "App_LINK_SetRemoteBaud",
+  "wp": "Syscalls/Communication/App_LINK_SetRemoteBaud/",
+  "name": "App_LINK_SetRemoteBaud"
+ },
+ "0x1398": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "App_LINK_Send_ST9_Packet",
+  "wp": "Syscalls/Communication/App_LINK_Send_ST9_Packet/",
+  "name": "App_LINK_Send_ST9_Packet"
+ },
+ "0x1399": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "App_LINK_GetDeviceInfo",
+  "wp": "Syscalls/Communication/App_LINK_GetDeviceInfo/",
+  "name": "App_LINK_GetDeviceInfo"
+ },
+ "0x13A6": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "App_LINK_TransmitInit",
+  "wp": "Syscalls/Communication/App_LINK_TransmitInit/",
+  "name": "App_LINK_TransmitInit"
+ },
+ "0x13A7": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "App_LINK_Transmit",
+  "wp": "Syscalls/Communication/App_LINK_Transmit/",
+  "name": "App_LINK_Transmit"
+ },
+ "0x13F1": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "Comm_Terminate",
+  "wp": "Syscalls/Communication/Comm_Terminate/",
+  "name": "Comm_Terminate"
+ },
+ "0x1409": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "App_LINK_SetReceiveTimeout_ms",
+  "wp": "Syscalls/Communication/App_LINK_SetReceiveTimeout_ms/",
+  "name": "App_LINK_SetReceiveTimeout_ms"
+ },
+ "0x140A": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "App_LINK_GetReceiveTimeout_ms",
+  "wp": "Syscalls/Communication/App_LINK_GetReceiveTimeout_ms/",
+  "name": "App_LINK_GetReceiveTimeout_ms"
+ },
+ "0x1516": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "MCS_DeleteDirectory",
+  "wp": "Syscalls/MCS/MCS_DeleteDirectory/",
+  "name": "MCS_DeleteDirectory"
+ },
+ "0x151A": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "MCS_WriteItem",
+  "wp": "Syscalls/MCS/MCS_WriteItem/",
+  "name": "MCS_WriteItem"
+ },
+ "0x1529": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "MCS_GetState",
+  "wp": "Syscalls/MCS/MCS_GetState/",
+  "name": "MCS_GetState"
+ },
+ "0x1532": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "MCS_GetCapa",
+  "wp": "Syscalls/MCS/MCS_GetCapa/",
+  "name": "MCS_GetCapa"
+ },
+ "0x1543": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "MCS_GetMainMemoryStart",
+  "wp": "Syscalls/MCS/MCS_GetMainMemoryStart/",
+  "name": "MCS_GetMainMemoryStart"
+ },
+ "0x154B": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "MCS_CreateDirectory",
+  "wp": "Syscalls/MCS/MCS_CreateDirectory/",
+  "name": "MCS_CreateDirectory"
+ },
+ "0x154D": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "MCSPutVar2",
+  "wp": "Syscalls/MCS/MCSPutVar2/",
+  "name": "MCSPutVar2"
+ },
+ "0x1552": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "MCSOvwDat2",
+  "wp": "Syscalls/MCS/MCSOvwDat2/",
+  "name": "MCSOvwDat2"
+ },
+ "0x1558": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "MCSDelVar2",
+  "wp": "Syscalls/MCS/MCSDelVar2/",
+  "name": "MCSDelVar2"
+ },
+ "0x1560": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "MCSGetOpenItem",
+  "wp": "Syscalls/MCS/MCSGetOpenItem/",
+  "name": "MCSGetOpenItem"
+ },
+ "0x1562": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "MCSGetDlen2",
+  "wp": "Syscalls/MCS/MCSGetDlen2/",
+  "name": "MCSGetDlen2"
+ },
+ "0x1563": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "MCSGetData1",
+  "wp": "Syscalls/MCS/MCSGetData1/",
+  "name": "MCSGetData1"
+ },
+ "0x1630": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "App_Optimize",
+  "wp": "Syscalls/App_Optimize/",
+  "name": "App_Optimize"
+ },
+ "0x1632": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "APP_MEMORY",
+  "wp": "Syscalls/Built-in_Apps/APP_MEMORY/",
+  "name": "APP_MEMORY"
+ },
+ "0x1633": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "ItoA_10digit",
+  "wp": "Syscalls/ItoA_10digit/",
+  "name": "ItoA_10digit"
+ },
+ "0x1635": {
+  "src": [
+   "libfxcg"
+  ],
+  "libfxcg": "strcmp_ignore_case",
+  "name": "strcmp_ignore_case"
+ },
+ "0x16F5": {
+  "src": [
+   "ours"
+  ],
+  "ours": "Idle wait (0x16F6 with r6 = 1)",
+  "pages": [
+   "os/boot.md"
+  ],
+  "name": "Idle wait (0x16F6 with r6 = 1)"
+ },
+ "0x16F6": {
+  "src": [
+   "ours"
+  ],
+  "ours": "Idle wait (calls the idle routine)",
+  "pages": [
+   "os/boot.md"
+  ],
+  "name": "Idle wait (calls the idle routine)"
+ },
+ "0x17BC": {
+  "src": [
+   "libfxcg"
+  ],
+  "libfxcg": "Test17BC",
+  "name": ""
+ },
+ "0x17E6": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "TakeScreenshot",
+  "wp": "Syscalls/TakeScreenshot/",
+  "name": "TakeScreenshot"
+ },
+ "0x17E7": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "TakeScreenshot2",
+  "wp": "Syscalls/TakeScreenshot2/",
+  "name": "TakeScreenshot2"
+ },
+ "0x17E9": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "OpenFileDialog",
+  "wp": "Syscalls/UI_elements/OpenFileDialog/",
+  "name": "OpenFileDialog"
+ },
+ "0x17F7": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "MsgBoxPush",
+  "wp": "Syscalls/UI_elements/MsgBoxPush/",
+  "name": "MsgBoxPush"
+ },
+ "0x17F9": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "MsgBoxPop",
+  "wp": "Syscalls/UI_elements/MsgBoxPop/",
+  "name": "MsgBoxPop"
+ },
+ "0x17FB": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "BoxYLimits",
+  "wp": "Syscalls/BoxYLimits/",
+  "name": "BoxYLimits"
+ },
+ "0x17FC": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "Box2",
+  "wp": "Syscalls/UI_elements/Box2/",
+  "name": "Box2"
+ },
+ "0x17FD": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "BoxInnerClear",
+  "wp": "Syscalls/UI_elements/BoxInnerClear/",
+  "name": "BoxInnerClear"
+ },
+ "0x1802": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "ConfirmFileOverwriteDialog",
+  "wp": "Syscalls/UI_elements/ConfirmFileOverwriteDialog/",
+  "name": "ConfirmFileOverwriteDialog"
+ },
+ "0x1809": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "ProgressBar2",
+  "wp": "Syscalls/UI_elements/ProgressBar2/",
+  "name": "ProgressBar2"
+ },
+ "0x180B": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "ProgressBar0",
+  "wp": "Syscalls/UI_elements/ProgressBar0/",
+  "name": "ProgressBar0"
+ },
+ "0x180E": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "ProgressBar",
+  "wp": "Syscalls/UI_elements/ProgressBar/",
+  "name": "ProgressBar"
+ },
+ "0x1815": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "ColorIndexDialog1",
+  "wp": "Syscalls/UI_elements/ColorIndexDialog1/",
+  "name": "ColorIndexDialog1"
+ },
+ "0x1816": {
+  "src": [
+   "libfxcg"
+  ],
+  "libfxcg": "Syscall1816",
+  "name": "Syscall1816"
+ },
+ "0x182E": {
+  "src": [
+   "ours"
+  ],
+  "ours": "Reprogram the PFC (power-on)",
+  "pages": [
+   "os/boot.md"
+  ],
+  "name": "Reprogram the PFC (power-on)"
+ },
+ "0x1834": {
+  "src": [
+   "ours"
+  ],
+  "ours": "No key yet: wait",
+  "pages": [
+   "os/boot.md"
+  ],
+  "name": "No key yet: wait"
+ },
+ "0x1837": {
+  "src": [],
+  "pages": [
+   "os/boot.md"
+  ],
+  "name": ""
+ },
+ "0x1838": {
+  "src": [],
+  "pages": [
+   "os/boot.md"
+  ],
+  "name": ""
+ },
+ "0x1839": {
+  "src": [
+   "libfxcg",
+   "gint",
+   "wp"
+  ],
+  "libfxcg": "PowerOff",
+  "gint": "PowerOff",
+  "wp": "Syscalls/PowerOff/",
+  "pages": [
+   "about/open-questions.md",
+   "os/boot.md",
+   "os/syscalls.md"
+  ],
+  "name": "PowerOff"
+ },
+ "0x183A": {
+  "src": [
+   "ours"
+  ],
+  "ours": "PowerOff's body (r5 = flag)",
+  "pages": [
+   "os/boot.md"
+  ],
+  "name": "PowerOff's body (r5 = flag)"
+ },
+ "0x1841": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "LongToAscHex",
+  "wp": "Syscalls/LongToAscHex/",
+  "name": "LongToAscHex"
+ },
+ "0x1863": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "locate_OS",
+  "wp": "Syscalls/Locate_OS/",
+  "name": "locate_OS"
+ },
+ "0x1865": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "PrintLine2",
+  "wp": "Syscalls/PrintLine2/",
+  "name": "PrintLine2"
+ },
+ "0x1883": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "PrintLine",
+  "wp": "Syscalls/PrintLine/",
+  "name": "PrintLine"
+ },
+ "0x18EC": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "PrintXY_2",
+  "wp": "Syscalls/Locale/PrintXY_2/",
+  "name": "PrintXY_2"
+ },
+ "0x18F9": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "PrintXY",
+  "wp": "Syscalls/PrintXY/",
+  "name": "PrintXY"
+ },
+ "0x1906": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "Bdisp_WriteSystemMessage",
+  "wp": "Syscalls/Locale/Bdisp_WriteSystemMessage/",
+  "name": "Bdisp_WriteSystemMessage"
+ },
+ "0x1945": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "APP_Program",
+  "wp": "Syscalls/Built-in_Apps/APP_Program/",
+  "name": "APP_Program"
+ },
+ "0x1A03": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "APP_RUNMAT",
+  "wp": "Syscalls/Built-in_Apps/APP_RUNMAT/",
+  "name": "APP_RUNMAT"
+ },
+ "0x1A0A": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "Scrollbar",
+  "wp": "Syscalls/UI_elements/Scrollbar/",
+  "name": "Scrollbar"
+ },
+ "0x1A2C": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "GetStackPtr",
+  "wp": "Syscalls/GetStackPtr/",
+  "name": "GetStackPtr"
+ },
+ "0x1A2E": {
+  "src": [
+   "ours"
+  ],
+  "ours": "Write a setup item",
+  "pages": [
+   "os/number-format.md"
+  ],
+  "name": "Write a setup item"
+ },
+ "0x1A2F": {
+  "src": [
+   "ours"
+  ],
+  "ours": "Read a setup item",
+  "pages": [
+   "os/number-format.md"
+  ],
+  "name": "Read a setup item"
+ },
+ "0x1B0E": {
+  "src": [
+   "libfxcg"
+  ],
+  "libfxcg": "Test1B0E",
+  "name": ""
+ },
+ "0x1BB4": {
+  "src": [
+   "libfxcg",
+   "wp",
+   "ours"
+  ],
+  "libfxcg": "OS_InnerWait_ms",
+  "wp": "Syscalls/OS_InnerWait_ms/",
+  "ours": "Wait n milliseconds",
+  "pages": [
+   "peripherals/timers.md"
+  ],
+  "name": "OS_InnerWait_ms"
+ },
+ "0x1BB7": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "Serial_Open",
+  "wp": "Syscalls/Serial/Serial_Open/",
+  "name": "Serial_Open"
+ },
+ "0x1BB8": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "Serial_Close",
+  "wp": "Syscalls/Serial/Serial_Close/",
+  "name": "Serial_Close"
+ },
+ "0x1BB9": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "Serial_ReadSingle",
+  "wp": "Syscalls/Serial/Serial_ReadSingle/",
+  "name": "Serial_ReadSingle"
+ },
+ "0x1BBA": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "Serial_Read",
+  "wp": "Syscalls/Serial/Serial_Read/",
+  "name": "Serial_Read"
+ },
+ "0x1BBB": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "Serial_Peek",
+  "wp": "Syscalls/Serial/Serial_Peek/",
+  "name": "Serial_Peek"
+ },
+ "0x1BBC": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "Serial_WriteSingle",
+  "wp": "Syscalls/Serial/Serial_WriteSingle/",
+  "name": "Serial_WriteSingle"
+ },
+ "0x1BBD": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "Serial_WriteUnbuffered",
+  "wp": "Syscalls/Serial/Serial_WriteUnbuffered/",
+  "name": "Serial_WriteUnbuffered"
+ },
+ "0x1BBE": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "Serial_Write",
+  "wp": "Syscalls/Serial/Serial_Write/",
+  "name": "Serial_Write"
+ },
+ "0x1BBF": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "Serial_PollRX",
+  "wp": "Syscalls/Serial/Serial_PollRX/",
+  "name": "Serial_PollRX"
+ },
+ "0x1BC0": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "Serial_PollTX",
+  "wp": "Syscalls/Serial/Serial_PollTX/",
+  "name": "Serial_PollTX"
+ },
+ "0x1BC1": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "Serial_ClearRX",
+  "wp": "Syscalls/Serial/Serial_ClearRX/",
+  "name": "Serial_ClearRX"
+ },
+ "0x1BC2": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "Serial_ClearTX",
+  "wp": "Syscalls/Serial/Serial_ClearTX/",
+  "name": "Serial_ClearTX"
+ },
+ "0x1BC6": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "Serial_IsOpen",
+  "wp": "Syscalls/Serial/Serial_IsOpen/",
+  "name": "Serial_IsOpen"
+ },
+ "0x1D77": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "DefineStatusMessage",
+  "wp": "Syscalls/DefineStatusMessage/",
+  "name": "DefineStatusMessage"
+ },
+ "0x1D7B": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "DefineStatusGlyph",
+  "wp": "Syscalls/DefineStatusGlyph/",
+  "name": "DefineStatusGlyph"
+ },
+ "0x1D7F": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "EnableDisplayHeader",
+  "wp": "Syscalls/EnableDisplayHeader/",
+  "name": "EnableDisplayHeader"
+ },
+ "0x1D81": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "DisplayHeader",
+  "wp": "Syscalls/DisplayStatusArea/",
+  "name": "DisplayHeader"
+ },
+ "0x1D82": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "Bdisp_HeaderText",
+  "wp": "Syscalls/Bdisp_HeaderText/",
+  "name": "Bdisp_HeaderText"
+ },
+ "0x1D85": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "Bdisp_HeaderText2",
+  "wp": "Syscalls/Bdisp_HeaderText2/",
+  "name": "Bdisp_HeaderText2"
+ },
+ "0x1D86": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "Bdisp_HeaderFill",
+  "wp": "Syscalls/Bdisp_HeaderFill/",
+  "name": "Bdisp_HeaderFill"
+ },
+ "0x1D87": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "Bdisp_HeaderFill2",
+  "wp": "Syscalls/Bdisp_HeaderFill2/",
+  "name": "Bdisp_HeaderFill2"
+ },
+ "0x1D89": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "BatteryIcon",
+  "wp": "Syscalls/BatteryIcon/",
+  "name": "BatteryIcon"
+ },
+ "0x1D8A": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "KeyboardIcon",
+  "wp": "Syscalls/KeyboardIcon/",
+  "name": "KeyboardIcon"
+ },
+ "0x1D8B": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "RadIcon",
+  "wp": "Syscalls/RadIcon/",
+  "name": "RadIcon"
+ },
+ "0x1D8C": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "RealIcon",
+  "wp": "Syscalls/RealIcon/",
+  "name": "RealIcon"
+ },
+ "0x1D8D": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "NormIcon",
+  "wp": "Syscalls/NormIcon/",
+  "name": "NormIcon"
+ },
+ "0x1D8E": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "d_c_Icon",
+  "wp": "Syscalls/D_c_Icon/",
+  "name": "d_c_Icon"
+ },
+ "0x1D8F": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "LineIcon",
+  "wp": "Syscalls/LineIcon/",
+  "name": "LineIcon"
+ },
+ "0x1DA3": {
+  "src": [
+   "libfxcg",
+   "gint",
+   "wp"
+  ],
+  "libfxcg": "Bfile_OpenFile_OS",
+  "gint": "BFile_Open",
+  "wp": "Syscalls/Bfile/Bfile_OpenFile_OS/",
+  "pages": [
+   "os/syscalls.md"
+  ],
+  "name": "Bfile_OpenFile_OS"
+ },
+ "0x1DA4": {
+  "src": [
+   "libfxcg",
+   "gint",
+   "wp"
+  ],
+  "libfxcg": "Bfile_CloseFile_OS",
+  "gint": "BFile_Close",
+  "wp": "Syscalls/Bfile/Bfile_CloseFile_OS/",
+  "pages": [
+   "os/syscalls.md"
+  ],
+  "name": "Bfile_CloseFile_OS"
+ },
+ "0x1DA5": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "Bfile_GetMediaFree_OS",
+  "wp": "Syscalls/Bfile/Bfile_GetMediaFree_OS/",
+  "name": "Bfile_GetMediaFree_OS"
+ },
+ "0x1DA6": {
+  "src": [
+   "libfxcg",
+   "gint",
+   "wp"
+  ],
+  "libfxcg": "Bfile_GetFileSize_OS",
+  "gint": "BFile_Size",
+  "wp": "Syscalls/Bfile/Bfile_GetFileSize_OS/",
+  "name": "Bfile_GetFileSize_OS"
+ },
+ "0x1DA9": {
+  "src": [
+   "libfxcg",
+   "gint",
+   "wp"
+  ],
+  "libfxcg": "Bfile_SeekFile_OS",
+  "gint": "BFile_Seek",
+  "wp": "Syscalls/Bfile/Bfile_SeekFile_OS/",
+  "name": "Bfile_SeekFile_OS"
+ },
+ "0x1DAA": {
+  "src": [
+   "libfxcg"
+  ],
+  "libfxcg": "Bfile_GetBlockAddress",
+  "name": "Bfile_GetBlockAddress"
+ },
+ "0x1DAB": {
+  "src": [
+   "libfxcg",
+   "gint",
+   "wp"
+  ],
+  "libfxcg": "Bfile_TellFile_OS",
+  "gint": "BFile_GetPos",
+  "wp": "Syscalls/Bfile/Bfile_TellFile_OS/",
+  "name": "Bfile_TellFile_OS"
+ },
+ "0x1DAC": {
+  "src": [
+   "libfxcg",
+   "gint",
+   "wp"
+  ],
+  "libfxcg": "Bfile_ReadFile_OS",
+  "gint": "BFile_Read",
+  "wp": "Syscalls/Bfile/Bfile_ReadFile_OS/",
+  "name": "Bfile_ReadFile_OS"
+ },
+ "0x1DAE": {
+  "src": [
+   "libfxcg",
+   "gint",
+   "wp"
+  ],
+  "libfxcg": "Bfile_CreateEntry_OS",
+  "gint": "BFile_Create",
+  "wp": "Syscalls/Bfile/Bfile_CreateEntry_OS/",
+  "pages": [
+   "os/syscalls.md"
+  ],
+  "name": "Bfile_CreateEntry_OS"
+ },
+ "0x1DAF": {
+  "src": [
+   "libfxcg",
+   "gint",
+   "wp"
+  ],
+  "libfxcg": "Bfile_WriteFile_OS",
+  "gint": "BFile_Write",
+  "wp": "Syscalls/Bfile/Bfile_WriteFile_OS/",
+  "pages": [
+   "os/syscalls.md"
+  ],
+  "name": "Bfile_WriteFile_OS"
+ },
+ "0x1DB3": {
+  "src": [
+   "libfxcg",
+   "gint",
+   "wp"
+  ],
+  "libfxcg": "Bfile_RenameEntry",
+  "gint": "BFile_Rename",
+  "wp": "Syscalls/Bfile/Bfile_RenameEntry/",
+  "name": "Bfile_RenameEntry"
+ },
+ "0x1DB4": {
+  "src": [
+   "libfxcg",
+   "gint",
+   "wp"
+  ],
+  "libfxcg": "Bfile_DeleteEntry",
+  "gint": "BFile_Remove",
+  "wp": "Syscalls/Bfile/Bfile_DeleteEntry/",
+  "pages": [
+   "os/syscalls.md"
+  ],
+  "name": "Bfile_DeleteEntry"
+ },
+ "0x1DB6": {
+  "src": [
+   "libfxcg",
+   "gint",
+   "wp"
+  ],
+  "libfxcg": "Bfile_FindFirst_NON_SMEM",
+  "gint": "BFile_FindFirst",
+  "wp": "Syscalls/Bfile/Bfile_FindFirst_NON_SMEM/",
+  "name": "Bfile_FindFirst_NON_SMEM"
+ },
+ "0x1DB7": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "Bfile_FindFirst",
+  "wp": "Syscalls/Bfile/Bfile_FindFirst/",
+  "name": "Bfile_FindFirst"
+ },
+ "0x1DB8": {
+  "src": [
+   "libfxcg",
+   "gint",
+   "wp"
+  ],
+  "libfxcg": "Bfile_FindNext_NON_SMEM",
+  "gint": "BFile_FindNext",
+  "wp": "Syscalls/Bfile/Bfile_FindNext_NON_SMEM/",
+  "name": "Bfile_FindNext_NON_SMEM"
+ },
+ "0x1DB9": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "Bfile_FindNext",
+  "wp": "Syscalls/Bfile/Bfile_FindNext/",
+  "name": "Bfile_FindNext"
+ },
+ "0x1DBA": {
+  "src": [
+   "libfxcg",
+   "gint",
+   "wp"
+  ],
+  "libfxcg": "Bfile_FindClose",
+  "gint": "BFile_FindClose",
+  "wp": "Syscalls/Bfile/Bfile_FindClose/",
+  "name": "Bfile_FindClose"
+ },
+ "0x1DD1": {
+  "src": [
+   "libfxcg"
+  ],
+  "libfxcg": "sys_memcmp",
+  "name": "sys_memcmp"
+ },
+ "0x1DDA": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "Bfile_Name_MatchMask",
+  "wp": "Syscalls/Bfile/Bfile_Name_MatchMask/",
+  "name": "Bfile_Name_MatchMask"
+ },
+ "0x1DDB": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "Bfile_NameToStr_ncpy",
+  "wp": "Syscalls/Bfile/Bfile_NameToStr_ncpy/",
+  "name": "Bfile_NameToStr_ncpy"
+ },
+ "0x1DDC": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "Bfile_StrToName_ncpy",
+  "wp": "Syscalls/Bfile/Bfile_StrToName_ncpy/",
+  "name": "Bfile_StrToName_ncpy"
+ },
+ "0x1E05": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "APP_SYSTEM_POWER",
+  "wp": "Syscalls/APP_SYSTEM_POWER/",
+  "name": "APP_SYSTEM_POWER"
+ },
+ "0x1E07": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "APP_SYSTEM_BATTERY",
+  "wp": "Syscalls/APP_SYSTEM_BATTERY/",
+  "name": "APP_SYSTEM_BATTERY"
+ },
+ "0x1E0A": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "APP_SYSTEM_DISPLAY",
+  "wp": "Syscalls/APP_SYSTEM_DISPLAY/",
+  "name": "APP_SYSTEM_DISPLAY"
+ },
+ "0x1E0D": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "APP_SYSTEM_LANGUAGE",
+  "wp": "Syscalls/APP_SYSTEM_LANGUAGE/",
+  "name": "APP_SYSTEM_LANGUAGE"
+ },
+ "0x1E13": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "APP_SYSTEM",
+  "wp": "Syscalls/Built-in_Apps/APP_SYSTEM/",
+  "name": "APP_SYSTEM"
+ },
+ "0x1E17": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "APP_SYSTEM_RESET",
+  "wp": "Syscalls/APP_SYSTEM_RESET/",
+  "name": "APP_SYSTEM_RESET"
+ },
+ "0x1E23": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "ResetAllDialog",
+  "wp": "Syscalls/ResetAllDialog/",
+  "name": "ResetAllDialog"
+ },
+ "0x1E34": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "APP_SYSTEM_VERSION",
+  "wp": "Syscalls/APP_SYSTEM_VERSION/",
+  "name": "APP_SYSTEM_VERSION"
+ },
+ "0x1E44": {
+  "src": [
+   "libfxcg"
+  ],
+  "libfxcg": "Test1E44",
+  "name": ""
+ },
+ "0x1E4B": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "DisplayMessageBox",
+  "wp": "Syscalls/UI_elements/DisplayMessageBox/",
+  "name": "DisplayMessageBox"
+ },
+ "0x1E50": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "GetSecondaryVRAMAddress",
+  "wp": "Syscalls/GetSecondaryVramAddress/",
+  "name": "GetSecondaryVRAMAddress"
+ },
+ "0x1E58": {
+  "src": [
+   "gint"
+  ],
+  "gint": "SwitchToMainMenu (osmenu.c)",
+  "name": "SwitchToMainMenu (osmenu.c)"
+ },
+ "0x1E60": {
+  "src": [
+   "libfxcg",
+   "gint",
+   "wp"
+  ],
+  "libfxcg": "SpecialMatrixcodeProcessing",
+  "gint": "SpecialMatrixCodeProcessing",
+  "wp": "Syscalls/Keyboard/SpecialMatrixcodeProcessing/",
+  "name": "SpecialMatrixcodeProcessing"
+ },
+ "0x1E62": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "SaveVRAM_1",
+  "wp": "Syscalls/SaveVRAM_1/",
+  "name": "SaveVRAM_1"
+ },
+ "0x1E63": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "LoadVRAM_1",
+  "wp": "Syscalls/LoadVRAM_1/",
+  "name": "LoadVRAM_1"
+ },
+ "0x1E6A": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "DisplayMainMenu",
+  "wp": "Syscalls/UI_elements/DisplayMainMenu/",
+  "name": "DisplayMainMenu"
+ },
+ "0x1E6E": {
+  "src": [
+   "libfxcg",
+   "gint",
+   "wp"
+  ],
+  "libfxcg": "SetQuitHandler",
+  "gint": "SetQuitHandler",
+  "wp": "Syscalls/SetQuitHandler/",
+  "name": "SetQuitHandler"
+ },
+ "0x1E90": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "SetAutoPowerOffTime",
+  "wp": "Syscalls/SetAutoPowerOffTime/",
+  "name": "SetAutoPowerOffTime"
+ },
+ "0x1E91": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "GetAutoPowerOffTime",
+  "wp": "Syscalls/GetAutoPowerOffTime/",
+  "name": "GetAutoPowerOffTime"
+ },
+ "0x1E99": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "GetGetkeyToMainFunctionReturnFlag",
+  "wp": "Syscalls/GetGetkeyToMainFunctionReturnFlag/",
+  "name": "GetGetkeyToMainFunctionReturnFlag"
+ },
+ "0x1E9F": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "GetAppName",
+  "wp": "Syscalls/GetAppName/",
+  "name": "GetAppName"
+ },
+ "0x1EA6": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "EnableGetkeyToMainFunctionReturn",
+  "wp": "Syscalls/EnableGetkeyToMainFunctionReturn/",
+  "name": "EnableGetkeyToMainFunctionReturn"
+ },
+ "0x1EA7": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "DisableGetkeyToMainFunctionReturn",
+  "wp": "Syscalls/DisableGetkeyToMainFunctionReturn/",
+  "name": "DisableGetkeyToMainFunctionReturn"
+ },
+ "0x1ED5": {
+  "src": [
+   "ours"
+  ],
+  "ours": "Delay of about 1 ms",
+  "pages": [
+   "peripherals/timers.md"
+  ],
+  "name": "Delay of about 1 ms"
+ },
+ "0x1ED9": {
+  "src": [
+   "libfxcg"
+  ],
+  "libfxcg": "USB_IsOpen",
+  "name": "USB_IsOpen"
+ },
+ "0x1EDA": {
+  "src": [
+   "libfxcg"
+  ],
+  "libfxcg": "USB_WriteSingle",
+  "name": "USB_WriteSingle"
+ },
+ "0x1EDB": {
+  "src": [
+   "libfxcg"
+  ],
+  "libfxcg": "USB_Write",
+  "name": "USB_Write"
+ },
+ "0x1EDD": {
+  "src": [
+   "libfxcg"
+  ],
+  "libfxcg": "USB_ReadSingle",
+  "name": "USB_ReadSingle"
+ },
+ "0x1EDE": {
+  "src": [
+   "libfxcg"
+  ],
+  "libfxcg": "USB_Read",
+  "name": "USB_Read"
+ },
+ "0x1EDF": {
+  "src": [
+   "libfxcg"
+  ],
+  "libfxcg": "USB_Peek",
+  "name": "USB_Peek"
+ },
+ "0x1EE0": {
+  "src": [
+   "libfxcg"
+  ],
+  "libfxcg": "USB_PollRX",
+  "name": "USB_PollRX"
+ },
+ "0x1EE1": {
+  "src": [
+   "libfxcg"
+  ],
+  "libfxcg": "USB_PollTX",
+  "name": "USB_PollTX"
+ },
+ "0x1EE2": {
+  "src": [
+   "libfxcg"
+  ],
+  "libfxcg": "USB_ClearRX",
+  "name": "USB_ClearRX"
+ },
+ "0x1EE3": {
+  "src": [
+   "libfxcg"
+  ],
+  "libfxcg": "USB_ClearTX",
+  "name": "USB_ClearTX"
+ },
+ "0x1EF7": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "WriteBackground",
+  "wp": "Syscalls/WriteBackground/",
+  "name": "WriteBackground"
+ },
+ "0x1EF8": {
+  "src": [
+   "libfxcg",
+   "wp"
+  ],
+  "libfxcg": "SetBackGround",
+  "wp": "Syscalls/UI_elements/SetBackGround/",
+  "name": "SetBackGround"
+ },
+ "0x1F42": {
+  "src": [
+   "libfxcg",
+   "gint",
+   "wp"
+  ],
+  "libfxcg": "sys_free",
+  "gint": "free",
+  "wp": "Syscalls/Heap/Sys_free/",
+  "pages": [
+   "os/syscalls.md"
+  ],
+  "name": "sys_free"
+ },
+ "0x1F44": {
+  "src": [
+   "libfxcg",
+   "gint",
+   "wp"
+  ],
+  "libfxcg": "sys_malloc",
+  "gint": "malloc",
+  "wp": "Syscalls/Heap/Sys_malloc/",
+  "pages": [
+   "os/syscalls.md"
+  ],
+  "name": "sys_malloc"
+ },
+ "0x1F46": {
+  "src": [
+   "libfxcg",
+   "gint",
+   "wp"
+  ],
+  "libfxcg": "sys_realloc",
+  "gint": "realloc",
+  "wp": "Syscalls/Heap/Sys_realloc/",
+  "name": "sys_realloc"
+ }
+}

@@ -1,0 +1,15 @@
+{
+  "_about": [
+    "Layer 2 of the syscall reference: hand-written notes per syscall, merged into",
+    "wiki/docs/assets/syscalls360.json by re/syscall_ref.py and shown on the page.",
+    "Keys are the number as \"0xNNNN\" (4 hex digits). Every field is optional:",
+    "  name        our name for it (shown in place of the public name, marked as ours)",
+    "  prototype   a C prototype, e.g. \"void PowerOff(int displayLogo)\"",
+    "  description plain text, a few sentences, written by us (never copied from WikiPrizm)",
+    "  confidence  tested (seen working: a probe, an emulator test), read (read from the",
+    "              OS code), or guessed",
+    "  notes       for us only, not published",
+    "Example: \"0x1839\": {\"prototype\": \"void PowerOff(int)\", \"confidence\": \"read\"}"
+  ],
+  "syscalls": {}
+}

@@ -57,6 +57,10 @@ markdown_extensions:
 extra_css:
   - assets/extra.css
 
+# Only acts on the page with the syscall table (os/syscall-reference.md).
+extra_javascript:
+  - assets/syscall-ref.js
+
 nav:
   - Home: index.md
   - Hardware:
@@ -74,6 +78,7 @@ nav:
       - Boot and power-off: os/boot.md
       - MMU and add-in launch: os/mmu-and-addins.md
       - Syscalls: os/syscalls.md
+      - Syscall reference: os/syscall-reference.md
       - Number format: os/number-format.md
   - Guides:
       - Writing probe add-ins: guides/probe-addins.md

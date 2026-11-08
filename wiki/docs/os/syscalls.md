@@ -5,9 +5,10 @@ key, open a file, allocate memory. Each function has a number, and one small rou
 OS turns the number into an address. This page shows that routine, the table behind it, how
 to look a number up in OS 3.60, and the syscalls the other pages of this site mention.
 
-The full list of numbers, with names and arguments, is on
-[WikiPrizm](https://prizm.cemetech.net/) and in the PrizmSDK/libfxcg headers. It is not
-repeated here.
+All 8,040 numbers are in the searchable [Syscall reference](syscall-reference.md), with
+their addresses in 3.60 and 3.80, what each function calls and the public names. Descriptions
+and prototypes of the named ones are on [WikiPrizm](https://prizm.cemetech.net/) and in the
+PrizmSDK/libfxcg headers.
 
 ## The call
 

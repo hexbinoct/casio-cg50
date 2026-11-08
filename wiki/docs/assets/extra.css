@@ -36,3 +36,176 @@
 .md-typeset table:not([class]) td:first-child code {
   white-space: nowrap;
 }
+
+/* Syscall reference (os/syscall-reference.md, assets/syscall-ref.js). */
+.scr-controls {
+  margin: 0.8em 0 0.4em;
+}
+.scr-controls input[type="search"] {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 0.55em 0.7em;
+  font: inherit;
+  font-size: 0.8rem;
+  color: var(--md-default-fg-color);
+  background: var(--md-code-bg-color);
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: 0.2rem;
+}
+.scr-controls input[type="search"]:focus {
+  outline: none;
+  border-color: var(--md-accent-fg-color);
+}
+.scr-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3em 1em;
+  align-items: center;
+  margin-top: 0.5em;
+  font-size: 0.68rem;
+}
+.scr-filters label {
+  white-space: nowrap;
+  cursor: pointer;
+}
+.scr-filters select {
+  font: inherit;
+  color: var(--md-default-fg-color);
+  background: var(--md-code-bg-color);
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: 0.2rem;
+  padding: 0.15em 0.3em;
+  max-width: 100%;
+}
+.scr-count,
+.scr-loading {
+  font-size: 0.68rem;
+  color: var(--md-default-fg-color--light);
+  margin: 0.4em 0;
+}
+/* The table scrolls sideways inside its box on a narrow screen; the page does not. */
+.scr-wrap {
+  overflow-x: auto;
+  max-width: 100%;
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: 0.2rem;
+}
+.md-typeset table.scr-table {
+  display: table;
+  width: 100%;
+  margin: 0;
+  border: 0;
+  border-collapse: collapse;
+  font-size: 0.66rem;
+}
+.md-typeset table.scr-table th,
+.md-typeset table.scr-table td {
+  padding: 0.35em 0.6em;
+  vertical-align: top;
+  border-top: 1px solid var(--md-default-fg-color--lightest);
+}
+.md-typeset table.scr-table th {
+  position: sticky;
+  top: 0;
+  white-space: nowrap;
+  text-align: left;
+  font-weight: 700;
+  background: var(--md-default-bg-color);
+}
+.md-typeset table.scr-table tr.scr-row > td:nth-child(1),
+.md-typeset table.scr-table tr.scr-row > td:nth-child(3),
+.md-typeset table.scr-table tr.scr-row > td:nth-child(4) {
+  white-space: nowrap;
+}
+.md-typeset table.scr-table tr.scr-row > td:nth-child(2) {
+  min-width: 12em;
+}
+.md-typeset table.scr-table code {
+  font-size: 0.95em;
+  padding: 0 0.2em;
+}
+tr.scr-row {
+  cursor: pointer;
+}
+tr.scr-row:hover,
+tr.scr-row:focus,
+tr.scr-open {
+  background: var(--md-default-fg-color--lightest);
+  outline: none;
+}
+.scr-dec {
+  display: block;
+  font-size: 0.85em;
+  color: var(--md-default-fg-color--light);
+}
+.scr-dim {
+  color: var(--md-default-fg-color--lighter);
+}
+.scr-badge {
+  display: inline-block;
+  margin-left: 0.3em;
+  padding: 0 0.3em;
+  font-size: 0.8em;
+  line-height: 1.4;
+  border-radius: 0.2rem;
+  border: 1px solid var(--md-accent-fg-color);
+  color: var(--md-accent-fg-color);
+}
+.scr-badge.scr-ours {
+  border-color: var(--md-default-fg-color--light);
+  color: var(--md-default-fg-color--light);
+}
+.scr-chip {
+  display: inline-block;
+  padding: 0 0.35em;
+  font-size: 0.85em;
+  line-height: 1.5;
+  border-radius: 0.2rem;
+  background: var(--md-default-fg-color--lightest);
+  white-space: nowrap;
+}
+.scr-chip.scr-via {
+  background: transparent;
+  border: 1px dashed var(--md-default-fg-color--lighter);
+}
+.scr-cmp2,
+.scr-cmp3 {
+  color: #d29922;
+}
+.scr-cmp0,
+.scr-cmp1 {
+  color: var(--md-default-fg-color--light);
+}
+tr.scr-detail > td {
+  background: var(--md-code-bg-color);
+}
+.md-typeset dl.scr-dl {
+  display: grid;
+  grid-template-columns: minmax(8em, max-content) 1fr;
+  gap: 0.3em 1em;
+  margin: 0.3em 0;
+}
+.md-typeset dl.scr-dl dt {
+  font-weight: 700;
+  color: var(--md-default-fg-color--light);
+}
+.md-typeset dl.scr-dl dd {
+  margin: 0;
+  word-break: break-word;
+}
+@media screen and (max-width: 30em) {
+  .md-typeset dl.scr-dl {
+    grid-template-columns: 1fr;
+  }
+}
+/* Keep an opened row's details in view while the table is scrolled sideways. */
+tr.scr-detail > td > dl.scr-dl {
+  position: sticky;
+  left: 0.6em;
+  max-width: min(46rem, calc(100vw - 3rem));
+}
+@media screen and (max-width: 30em) {
+  .md-typeset table.scr-table tr.scr-row > td:nth-child(2) {
+    min-width: 8em;
+  }
+}

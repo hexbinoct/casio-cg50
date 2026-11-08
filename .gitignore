@@ -48,6 +48,8 @@ tools/fxsdk-docker/build.log
 
 # fetched on demand by re/audit_keymap.py (third-party libfxcg header)
 re/libfxcg_keyboard.h
+# downloads cached by re/syscall_names.py (third-party sources; only the derived names are kept)
+re/_cache/
 
 # macOS Finder metadata
 .DS_Store
@@ -60,3 +62,6 @@ wiki/site/
 android/keystore.properties
 *.jks
 *.keystore
+
+# local probe for an OS 3.80.1 stand-in flash (kept for later checks, not published)
+emu_go/khicas380_probe_test.go
