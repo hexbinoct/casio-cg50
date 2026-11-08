@@ -23,13 +23,12 @@ open it. FlashDump shows your version too, before it copies anything.
 ## What you need
 
 - the calculator and its USB cable
-- **FlashDump**: a ready-made `FLASHDMP.g3a` is coming to the project's
-  [Releases page](https://github.com/hexbinoct/casio-cg50/releases) once it has been tested
-  on a calculator; until then, build it as shown in [For developers](#for-developers)
+- **FlashDump**: download `FLASHDMP.g3a` from the project's
+  [Releases page](https://github.com/hexbinoct/casio-cg50/releases) (or build it yourself, see
+  [For developers](#for-developers))
 - **fxlink** on the computer, the program that receives the dump. It comes with the
   [fxSDK](https://gitea.planet-casio.com/Lephenixnoir/fxsdk) and runs on **Linux** and
-  **macOS**; on Windows, use it inside WSL with the calculator passed through by
-  [usbipd-win](https://github.com/dorssel/usbipd-win) (we haven't tried that route ourselves).
+  **macOS**; on **Windows** it runs inside WSL, see [On Windows](#on-windows).
   The fxSDK's installer, GiteaPC:
 
   ```sh
@@ -50,10 +49,10 @@ open it. FlashDump shows your version too, before it copies anything.
 1. On the computer, open a terminal in the folder where you want the file, and run
 
    ```sh
-   fxlink -i
+   fxlink -i -w
    ```
 
-   It waits for the calculator.
+   It waits for the calculator (`-w`; without it, fxlink stops at once with "No device found").
 2. On the calculator, open **FlashDump**. It shows your OS version, then the choices:
 
    | Key | Dump | Size | |
@@ -63,9 +62,10 @@ open it. FlashDump shows your version too, before it copies anything.
    | F6 | flash and RAM | 32 MB + 8 MB + 64 KB | for people working on the emulator itself |
 
 3. Press **F1**, then connect the USB cable. The calculator shows the progress; the whole
-   32 MB takes about **3 minutes**. Keep the cable in until it says **Done**.
-4. fxlink saves the dump as `fxlink-flashdump-flash32-<date>.bin`. Check the size: exactly
-   **33,554,432 bytes** (32 MB), or 16,777,216 for the first half. Rename it if you like.
+   32 MB takes well under a minute. Keep the cable in until it says **Done**.
+4. fxlink saves the dump as `fxlink-flashdump-32mb-<date>.bin`. Check the size: exactly
+   **33,554,432 bytes** (32 MB), or 16,777,216 for the first half (`…-16mb-…`). Rename it if
+   you like.
 
 ## 3. Open it in the emulator
 
@@ -86,10 +86,55 @@ If you'd rather not have your own files in the emulator, reset them on the calcu
 (**System → F5 Reset**; back them up over USB before you do), then make the dump. Don't use
 the 16 MB dump for this: its first half still holds part of the storage memory.
 
+## On Windows
+
+fxlink needs Linux or macOS, so on Windows it runs in WSL (Windows Subsystem for Linux), and
+[usbipd-win](https://github.com/dorssel/usbipd-win) hands the calculator's USB connection to
+it. We made a full dump this way on Windows 11, with fxlink in the project's fxSDK Docker image
+(Docker Desktop runs on WSL); fxlink installed in an ordinary WSL Ubuntu with GiteaPC, as above,
+should work the same.
+
+1. Install usbipd-win once, in a terminal: `winget install usbipd`.
+2. Copy FlashDump to the calculator (USB Flash mode, step 1 above), eject, unplug.
+3. Open FlashDump, press F1, connect the cable. Windows lists it as *CASIO fx-CG family on
+   gint*. Find its bus ID:
+
+   ```
+   usbipd list
+   ```
+
+4. Share it, once, in a terminal **run as administrator** (`2-1` is the bus ID from step 3):
+
+   ```
+   usbipd bind --busid 2-1
+   ```
+
+5. Attach it to WSL, then start fxlink there:
+
+   ```
+   usbipd attach --wsl --busid 2-1
+   ```
+
+   ```sh
+   fxlink -i -w          # in WSL; or, with the Docker image (C:\dumps: where the file goes):
+   docker run --rm --privileged -v /dev/bus/usb:/dev/bus/usb -v "C:\dumps:/out" -w /out fxsdk:latest fxlink -i
+   ```
+
+   Start fxlink *after* attaching: inside Docker it doesn't notice a calculator that arrives
+   later, but it connects to one that is already there.
+
+6. When the file has arrived: `usbipd detach --busid 2-1`.
+
+Only attach the calculator while **FlashDump** is connected. In USB Flash mode it is a drive
+that Windows is using; pulling it into WSL then makes Windows report a problem with the drive.
+If that happens, choose *Continue without scanning*: don't let Windows repair the calculator's
+storage.
+
 ## Troubleshooting
 
-- **fxlink doesn't see the calculator.** Start fxlink first, then open FlashDump and press F1,
-  then connect the cable. On Linux, fxlink may need permission to use the USB device (run it
+- **fxlink doesn't see the calculator.** Start fxlink first (with `-w`), then open FlashDump and
+  press F1, then connect the cable. If fxlink was started without `-w`, it has already quit:
+  start it again; it connects to a calculator that is already waiting. On Linux, fxlink may need permission to use the USB device (run it
   with `sudo`, or add a udev rule for the calculator, Casio vendor ID `07cf`).
 - **The file is smaller than 32 MB.** The transfer was cut off (cable, sleep). Run it again.
 - **The app says the OS version isn't 3.60.** That's the warning from step 0: the dump still
@@ -107,12 +152,13 @@ docker run --rm -v "$PWD/tools/flash_dump:/work" fxsdk:latest fxsdk build-cg   #
 python tools/flash_dump/make_icons.py                       # redraws assets-cg/ (optional)
 ```
 
-What it sends:
+What it sends (the fxlink message type, which fxlink puts in the file name; fxlink keeps only
+16 characters of `flashdump-<type>`, so the types are short):
 
 | Name | Address | Size | |
 |---|---|---|---|
-| `flash32` | `0x80000000` | 32 MB | the whole flash: boot code, OS, system area and main memory, the storage memory (fls0, from physical `0x00C80000`) |
-| `flash16` | `0x80000000` | 16 MB | its first half |
+| `32mb` | `0x80000000` | 32 MB | the whole flash: boot code, OS, system area and main memory, the storage memory (fls0, from physical `0x00C80000`) |
+| `16mb` | `0x80000000` | 16 MB | its first half |
 | `dram` | `0x8C000000` | 8 MB | RAM, as it is while FlashDump runs (F6) |
 | `ilram` | `0xFD800000` | 64 KB | the on-chip IL memory (F6) |
 

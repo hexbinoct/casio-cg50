@@ -9,7 +9,27 @@
   pending, so the next session can continue without being reminded.
 ============================================================================= -->
 
-> ## ⏯ RESUME HERE (last session end: 2026-11-07, cont.21 = OS version check, FlashDump add-in, office)
+> ## ⏯ RESUME HERE (last session end: 2026-11-08, cont.22 = FlashDump tested on the real calculator, Windows laptop)
+>
+> **FlashDump works on the real fx-CG50**, received on **Windows** (usbipd-win → WSL → fxlink
+> in the `fxsdk:latest` Docker image): two 32 MB dumps, OS 03.60; boot + OS byte-identical to
+> the June 32 MB dump, the two dumps differ only in 9 fls0 blocks (the add-in copy between
+> them); the emulator boots it (the user's own Run-Matrix history). **32 MB in ~15 s**, not
+> 3 min. Fixed from the test: `fxlink -i` → **`fxlink -i -w`** (without -w it quits "No device
+> found" if started first); fxlink keeps only **16 chars of `<app>-<type>`** (`flashdump-flash3`)
+> → types now **`32mb` / `16mb`** / `dram` / `ilram`; guide has an "On Windows" section.
+> Windows pitfalls: the calc in gint mode is a *different* usbipd device ("CASIO fx-CG family
+> on gint") from USB Flash mode → bind it while FlashDump is connected; never attach while
+> in USB Flash mode (Windows then says the drive has a problem — don't let it "fix" it);
+> fxlink inside Docker misses hotplug → attach first, then start fxlink.
+> Scripts: `re/calc_fxlink.py` (bind / run / unbind), `re/calc_put.py` (copy an add-in to the
+> calc with backup), `re/compare_dumps.py`, `re/calc_usb.py`. Dumps: `os/flash_dump/fxlink_2026-11-08/`.
+> **Release v0.2.0** started: versions bumped, tag pushed → the workflow makes a DRAFT with the
+> CG50 Studio zips; `FLASHDMP.g3a` attached. **Still on the Mac:** the release-signed APK
+> (keystore only there), install it on the phone, publish, tell the Reddit OP.
+> cont.21's open items below still stand (storage reset, "leave my files out", Android OS dialog).
+>
+> ## ⏯ (prev) RESUME HERE (last session end: 2026-11-07, cont.21 = OS version check, FlashDump add-in, office)
 >
 > **Why:** a Reddit thread had people reading the Android welcome screen ("32 MB … 16 MB")
 > as a file to download and confusing it with Casio's ~70 MB 3.80 updater. So: say plainly

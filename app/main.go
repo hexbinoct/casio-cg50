@@ -36,7 +36,7 @@ const appName = "CG50 Studio"
 
 // version is the app's version (also wails.json's productVersion); release builds set it
 // with -ldflags "-X main.version=…".
-var version = "0.1.0"
+var version = "0.2.0"
 
 func main() {
 	front, err := fs.Sub(assets, "frontend")
