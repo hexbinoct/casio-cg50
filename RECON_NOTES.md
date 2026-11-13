@@ -9,7 +9,29 @@
   pending, so the next session can continue without being reminded.
 ============================================================================= -->
 
-> ## ⏯ RESUME HERE (last session end: 2026-11-08, cont.23 = v0.2.0 published, syscall reference, OS 3.80.1 check, Mac)
+> ## ⏯ RESUME HERE (last session end: 2026-11-13, cont.24 = issue #2: install any file, PRR, KhiCAS full, Mac)
+>
+> **Issue #2** (GitHub, d-dx-etothex, app 0.2.0 on OS 3.80): (1) add-ins with more files (KhiCAS
+> full = `khicas50.g3a` + `khicas50.ac2`, NES ROMs) could not be installed: the app appended
+> `.g3a` to every file. **Fixed:** Android "Install add-ins / files…" picks several files; a
+> .g3a goes through InstallAddin, anything else through the existing core `InstallFile`
+> (new C export `EmuInstallFile`, JNI `installFile`); CG50 Studio's dialog has "All files" and
+> other dropped files are copied too. (2) "some add-ins freeze": names asked for, no reply yet.
+> **Uncommitted**, no version bump; reply to the issue drafted, not posted.
+>
+> **Emulator fix: PVR/PRR.** 0xFF000030 (PVR) and 0xFF000044 (PRR) read 0. Now 0x10300B00 /
+> 0x00002C00 (what gint's mpu_detect accepts for the SH7305; revision bits **not measured**
+> on the real calculator yet: a tiny probe add-in would settle them), Go + Python oracle, test
+> `TestProcessorIDRegisters`; goldens unchanged (the OS boot never reads them). KhiCAS
+> (loader at 0x4133xx of the 2026-11-13 download) reads PRR: 0 = fx-CG Manager, it then
+> rewrites its RAM-part name and fails "unable to load ram part khicas50.882 err=2" even
+> with the .ac2 present. **cont.23's "KhiCAS on 3.80.1 calls 0x8C20AFFC = not an emulator
+> bug" was wrong:** that jump is into the RAM part that was never loaded (the dump's fls0 has
+> khicas50.g3a but no .ac2). Now (probe `khicas380_probe_test.go`, new env KHI_G3A / KHI_AC2 /
+> KHI_KEYS): with the .ac2, KhiCAS starts and computes 1+1 on **3.60 and 3.80.1**; without
+> it, Illegal Code Err PC 0 on both. The downloaded files are not kept in the repo.
+>
+> ## ⏯ (prev) RESUME HERE (last session end: 2026-11-08, cont.23 = v0.2.0 published, syscall reference, OS 3.80.1 check, Mac)
 >
 > **Release v0.2.0 is out** (full release, "Latest"): release-signed `cg50-emulator-0.2.0.apk`
 > (versionCode 2, CN=fxprgm) added to the workflow's draft, then published. On the phone the

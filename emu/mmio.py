@@ -78,6 +78,10 @@ class CCN(Region):
         off = (va - self.base) & 0xFFFF
         if off == 0x24:
             return self.regs.get(0x24, 0x0A02)
+        if off == 0x30:                     # PVR (read-only): SH7305, as gint checks it
+            return 0x10300B00
+        if off == 0x44:                     # PRR (read-only); KhiCAS needs it non-zero
+            return 0x00002C00
         return self.regs.get(va - self.base, 0)
 
     def write(self, va, size, val):

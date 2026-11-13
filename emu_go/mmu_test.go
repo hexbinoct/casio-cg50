@@ -67,3 +67,17 @@ func TestAddinRunsThroughMMU(t *testing.T) {
 		t.Fatal("main menu stopped responding to keys after the add-in exited")
 	}
 }
+
+// PVR and PRR identify the SH7305 the way gint's mpu_detect checks them, and they are read-only.
+// KhiCAS reads PRR: 0 (fx-CG Manager) makes it look for its RAM part under another name.
+func TestProcessorIDRegisters(t *testing.T) {
+	e := NewEmulator(make([]byte, 0x1000))
+	for _, r := range []struct {
+		addr, mask, want uint32
+	}{{0xFF000030, 0xFFFFFF00, 0x10300B00}, {0xFF000044, 0xFFFFFFF0, 0x00002C00}} {
+		e.mem.W32(r.addr, 0)
+		if got := e.mem.R32(r.addr); got&r.mask != r.want {
+			t.Errorf("%08x reads %08x, want %08x under mask %08x", r.addr, got, r.want, r.mask)
+		}
+	}
+}

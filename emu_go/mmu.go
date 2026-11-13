@@ -31,6 +31,15 @@ const (
 	ccnMMUCR  = 0x10
 	ccnEXPEVT = 0x24
 	ccnPTEA   = 0x34
+	ccnPVR    = 0x30 // processor version, read-only
+	ccnPRR    = 0x44 // product register, read-only
+
+	// SH7305 identification as gint's mpu_detect checks it (PVR&0xffffff00 == 0x10300b00,
+	// PRR&0xfffffff0 == 0x00002c00); the revision bits are not measured yet. KhiCAS reads PRR
+	// to tell a real calculator (non-zero) from fx-CG Manager (0): with 0 it looks for its RAM
+	// part under another name and fails "unable to load ram part khicas50.882".
+	sh7305PVR = 0x10300B00
+	sh7305PRR = 0x00002C00
 
 	utlbSize = 64
 )
@@ -84,6 +93,12 @@ func (c *ccn) read(va, size uint32) uint32 {
 			return v
 		}
 		return 0x0A02
+	}
+	switch off {
+	case ccnPVR:
+		return sh7305PVR
+	case ccnPRR:
+		return sh7305PRR
 	}
 	return c.regs[va-c.bs]
 }
