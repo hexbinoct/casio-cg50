@@ -20,9 +20,10 @@
 
     <string name="speed_original">Original hardware — as fast as a real fx-CG50</string>
     <string name="speed_fast">Fast — the SH7305\'s full 118 MHz clock, about 2×</string>
-    <string name="install_addin">Install add-in…</string>
+    <string name="install_addin">Install add-ins / files…</string>
     <string name="install_started">Installing %1$s…</string>
-    <string name="install_done">Installed %1$s: it is on the MAIN MENU</string>
+    <string name="install_done">Installed %1$s: the add-in is on the MAIN MENU</string>
+    <string name="install_file_done">Copied %1$s to the storage memory</string>
     <string name="install_failed">Install failed: %1$s</string>
     <string name="install_busy">An install is already running</string>
     <string name="install_unreadable">Cannot read %1$s</string>

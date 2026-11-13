@@ -524,14 +524,18 @@ func (a *App) openStateFile(p string) error {
 
 // ---- add-ins ------------------------------------------------------------------------
 
-// InstallAddin asks for .g3a files and installs them into the storage memory.
+// InstallAddin asks for .g3a files, or any files an add-in reads (KhiCAS's .ac2, ROMs), and
+// installs them into the storage memory.
 func (a *App) InstallAddin() error {
 	if a.current() == nil {
 		return errNoDump
 	}
 	ps, err := runtime.OpenMultipleFilesDialog(a.ctx, runtime.OpenDialogOptions{
-		Title:   "Install add-ins",
-		Filters: []runtime.FileFilter{{DisplayName: "Add-ins (*.g3a)", Pattern: "*.g3a"}},
+		Title: "Install add-ins and files",
+		Filters: []runtime.FileFilter{
+			{DisplayName: "Add-ins (*.g3a)", Pattern: "*.g3a"},
+			{DisplayName: "All files (add-in data, ROMs)", Pattern: "*.*"},
+		},
 	})
 	if err != nil {
 		return err
@@ -542,6 +546,8 @@ func (a *App) InstallAddin() error {
 	return nil
 }
 
+// installFile installs a .g3a as an add-in (the MAIN MENU is rebuilt) and copies any other
+// file to the storage memory root under its own name, as a USB copy would.
 func (a *App) installFile(p string) {
 	m := a.current()
 	if m == nil {
@@ -558,19 +564,28 @@ func (a *App) installFile(p string) {
 	a.mu.Unlock()
 	go func() {
 		name := filepath.Base(p)
-		err := m.emu.InstallAddin(name, b)
+		addin := strings.EqualFold(filepath.Ext(name), ".g3a")
+		var err error
+		if addin {
+			err = m.emu.InstallAddin(name, b)
+		} else {
+			err = m.emu.InstallFile(name, b)
+		}
 		a.mu.Lock()
 		a.installing = false
-		if err == nil {
+		if err == nil && addin {
 			a.installed = append(a.installed, name)
 			a.installedFiles = append(a.installedFiles, installedFile{name, b})
 		}
 		a.mu.Unlock()
-		if err != nil {
+		switch {
+		case err != nil:
 			a.toast("error", name+": "+err.Error())
-		} else {
+		case !addin:
+			a.toast("info", name+" copied to the storage memory")
+		default:
 			a.toast("info", name+" installed: it's in the MAIN MENU")
-			if strings.EqualFold(filepath.Ext(name), ".g3a") && len(b) > sh4.G3AHeaderLen {
+			if len(b) > sh4.G3AHeaderLen {
 				a.setAddin(name, b[sh4.G3AHeaderLen:], false, 0, b) // listed until one is launched
 			}
 		}
@@ -598,8 +613,8 @@ func (a *App) onDrop(x, y int, paths []string) {
 			if err := a.loadDump(p); err != nil {
 				a.toast("error", err.Error())
 			}
-		default:
-			a.toast("error", filepath.Base(p)+": drop a .g3a add-in, a flash dump (.bin) or a .cg50state file")
+		default: // an add-in's data file (KhiCAS's .ac2), a ROM: copied to the storage memory
+			a.installFile(p)
 		}
 	}
 }

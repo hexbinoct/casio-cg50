@@ -69,6 +69,13 @@ object NativeBridge {
      */
     external fun installAddin(name: String, data: ByteArray): String?
 
+    /**
+     * Write any other file (an add-in's data file such as KhiCAS's .ac2, a ROM) to the root of
+     * the storage memory under [name], as a USB copy to the calculator would. Same rules as
+     * [installAddin]: off the UI thread, with [busy] set. Returns null when written, else why.
+     */
+    external fun installFile(name: String, data: ByteArray): String?
+
     /** True while an install holds the machine: the UI thread must not call in meanwhile. */
     @Volatile
     var busy = false

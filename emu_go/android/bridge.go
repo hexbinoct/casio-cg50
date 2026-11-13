@@ -252,5 +252,20 @@ func EmuInstallAddin(name *C.char, data *C.uint8_t, n C.int) *C.char {
 	return nil
 }
 
+// EmuInstallFile writes any other file (an add-in's data file such as KhiCAS's .ac2, a ROM)
+// to the storage memory root under its own name through the OS, like a USB copy (install.go).
+// Returns NULL on success, else a malloc'd message freed with EmuFree. Off the UI thread.
+//
+//export EmuInstallFile
+func EmuInstallFile(name *C.char, data *C.uint8_t, n C.int) *C.char {
+	if gEmu == nil {
+		return C.CString("the emulator is not running")
+	}
+	if err := gEmu.InstallFile(C.GoString(name), C.GoBytes(unsafe.Pointer(data), n)); err != nil {
+		return C.CString(err.Error())
+	}
+	return nil
+}
+
 // main is required by -buildmode=c-shared and never runs.
 func main() {}

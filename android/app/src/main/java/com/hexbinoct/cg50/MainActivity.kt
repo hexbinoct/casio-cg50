@@ -36,8 +36,9 @@ import java.io.File
  * over as that dump's session on the next start; without one the app cold-boots.
  *
  * Add-ins (.g3a) are installed into the emulated storage memory by the OS itself
- * (NativeBridge.installAddin): from the settings dialog (long-press the screen), by opening or
- * sharing a .g3a file with the app, or over adb:
+ * (NativeBridge.installAddin), and any other file (an add-in's data file such as KhiCAS's .ac2,
+ * a ROM) is copied to its root (NativeBridge.installFile): from the settings dialog (long-press
+ * the screen; several files at once), by opening or sharing a file with the app, or over adb:
  *   adb push X.g3a /sdcard/Android/data/com.hexbinoct.cg50/files/
  *   adb shell am start -n com.hexbinoct.cg50/.MainActivity --es install X.g3a
  */
@@ -56,8 +57,9 @@ class MainActivity : AppCompatActivity() {
         private const val PREF_SPEED = "speed"
     }
 
-    private val pickAddin = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        uri?.let { installFrom(it) }
+    /** Several files at once: an add-in and its data files (KhiCAS's .g3a + .ac2), ROMs. */
+    private val pickAddin = registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        if (uris.isNotEmpty()) installFrom(uris)
     }
 
     private val pickDump = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -314,11 +316,11 @@ class MainActivity : AppCompatActivity() {
         else -> "$n bytes"
     }
 
-    /** A .g3a opened with / shared to the app, or `--es install NAME` (a file in our files dir). */
+    /** A file opened with / shared to the app, or `--es install NAME` (a file in our files dir). */
     private fun handleInstallIntent(intent: Intent) {
         intent.getStringExtra("install")?.let { name ->
             val f = File(store.dir, name)
-            if (f.exists()) install(f.name, f.readBytes()) else toast(getString(R.string.install_missing, f.path))
+            if (f.exists()) install(listOf(f.name to f.readBytes())) else toast(getString(R.string.install_missing, f.path))
             return
         }
         val uri: Uri? = when (intent.action) {
@@ -330,27 +332,44 @@ class MainActivity : AppCompatActivity() {
             }
             else -> null
         }
-        uri?.let { installFrom(it) }
+        uri?.let { installFrom(listOf(it)) }
     }
 
-    private fun installFrom(uri: Uri) {
-        var name = store.displayName(uri) ?: uri.lastPathSegment?.substringAfterLast('/') ?: "addin.g3a"
-        if (!name.endsWith(".g3a", ignoreCase = true)) name += ".g3a" // the core checks the header
-        val data = try {
-            contentResolver.openInputStream(uri)?.use { it.readBytes() }
-        } catch (e: Exception) {
-            Log.w(TAG, "read $uri: $e")
-            null
+    private fun installFrom(uris: List<Uri>) {
+        val files = mutableListOf<Pair<String, ByteArray>>()
+        for (uri in uris) {
+            var name = store.displayName(uri) ?: uri.lastPathSegment?.substringAfterLast('/') ?: "file"
+            val data = try {
+                contentResolver.openInputStream(uri)?.use { it.readBytes() }
+            } catch (e: Exception) {
+                Log.w(TAG, "read $uri: $e")
+                null
+            }
+            if (data == null) {
+                toast(getString(R.string.install_unreadable, name))
+                continue
+            }
+            // Chat apps and some providers drop the extension: an add-in is known by its header.
+            if (isG3a(data) && !name.endsWith(".g3a", ignoreCase = true)) name += ".g3a"
+            files += name to data
         }
-        if (data == null) toast(getString(R.string.install_unreadable, name)) else install(name, data)
+        if (files.isNotEmpty()) install(files)
+    }
+
+    /** A .g3a starts with "USBPower", every bit inverted. */
+    private fun isG3a(b: ByteArray): Boolean {
+        val magic = "USBPower".toByteArray()
+        return b.size >= magic.size && magic.indices.all { b[it] == magic[it].toInt().inv().toByte() }
     }
 
     /**
-     * The OS writes the file into the storage memory and the MAIN MENU is rebuilt with the new
-     * icon (a few seconds of emulated work, on a worker thread; the screen just pauses). The
-     * session is saved right after, so the add-in survives the app being killed.
+     * The OS writes the files into the storage memory (a few seconds of emulated work each, on a
+     * worker thread; the screen just pauses): a .g3a as an add-in, after which the MAIN MENU is
+     * rebuilt with its icon; any other file (an add-in's data file such as KhiCAS's .ac2, a ROM)
+     * under its own name in the root, as a USB copy would. The session is saved right after, so
+     * the files survive the app being killed.
      */
-    private fun install(name: String, data: ByteArray) {
+    private fun install(files: List<Pair<String, ByteArray>>) {
         if (!running) {
             toast(getString(R.string.install_no_emulator))
             return
@@ -359,19 +378,31 @@ class MainActivity : AppCompatActivity() {
             toast(getString(R.string.install_busy))
             return
         }
-        toast(getString(R.string.install_started, name))
+        toast(getString(R.string.install_started, files.joinToString(", ") { it.first }))
         NativeBridge.busy = true
         Thread {
-            val err = try {
-                NativeBridge.installAddin(name, data)
+            val done = mutableListOf<String>()
+            val errors = mutableListOf<String>()
+            try {
+                // Data files first, so an add-in finds them as soon as its icon appears.
+                for ((name, data) in files.sortedBy { it.first.endsWith(".g3a", ignoreCase = true) }) {
+                    val addin = name.endsWith(".g3a", ignoreCase = true)
+                    val err = if (addin) NativeBridge.installAddin(name, data) else NativeBridge.installFile(name, data)
+                    Log.i(TAG, "install $name (${data.size} bytes): ${err ?: "ok"}")
+                    if (err == null) done += name else errors += err
+                }
             } finally {
                 NativeBridge.busy = false
             }
             NativeBridge.releaseAllKeys() // keys touched meanwhile were not passed on
-            if (err == null) saveState()
-            Log.i(TAG, "install $name (${data.size} bytes): ${err ?: "ok"}")
+            if (done.isNotEmpty()) saveState()
             runOnUiThread {
-                toast(if (err == null) getString(R.string.install_done, name) else getString(R.string.install_failed, err))
+                for (err in errors) toast(getString(R.string.install_failed, err))
+                if (done.isNotEmpty()) {
+                    val anyAddin = done.any { it.endsWith(".g3a", ignoreCase = true) }
+                    toast(getString(if (anyAddin) R.string.install_done else R.string.install_file_done,
+                        done.joinToString(", ")))
+                }
             }
         }.start()
     }
