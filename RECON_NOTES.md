@@ -17,7 +17,10 @@
 > .g3a goes through InstallAddin, anything else through the existing core `InstallFile`
 > (new C export `EmuInstallFile`, JNI `installFile`); CG50 Studio's dialog has "All files" and
 > other dropped files are copied too. (2) "some add-ins freeze": names asked for, no reply yet.
-> **Uncommitted**, no version bump; reply to the issue drafted, not posted.
+> Committed and pushed (797f377, 58bfb9b); **not released yet**: still 0.2.0, no version bump.
+> Next: release v0.2.1 from the Mac, with the APK signed by the workflow (keystore as Actions
+> secrets), after checking KhiCAS on a 3.80.0 stand-in too. Steps are in two `noted` messages
+> ("cg50 v0.2.1 release plan", "…also check OS 3.80.0"). The issue reply is up to the user.
 >
 > **Emulator fix: PVR/PRR.** 0xFF000030 (PVR) and 0xFF000044 (PRR) read 0. Now 0x10300B00 /
 > 0x00002C00 (what gint's mpu_detect accepts for the SH7305; revision bits **not measured**
