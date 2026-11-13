@@ -1,11 +1,17 @@
-# Emulator release builds: the desktop app CG50 Studio (app/) for Linux, Windows and macOS.
+# Emulator release builds: the Android app (android/) and the desktop app CG50 Studio (app/) for
+# Linux, Windows and macOS.
 #
-# Push a tag vX.Y.Z (e.g. v0.1.0) to build all three and attach the zips to that tag's GitHub
-# release; if the release doesn't exist yet it is created as a DRAFT. The Android APK is built
-# and signed on the maintainer's machine (the signing key never leaves it) and added to the same
-# release with `gh release upload vX.Y.Z cg50-emulator-X.Y.Z.apk` before publishing it by hand.
-# Run it by hand (Actions -> Emulator release -> Run workflow) to only build: the zips are then
+# Push a tag vX.Y.Z (e.g. v0.1.0) to build all four and attach the APK and the zips to that tag's
+# GitHub release; if the release doesn't exist yet it is created as a DRAFT, published by hand.
+# The tag must match android/app/build.gradle.kts's versionName (bump versionCode with it).
+# Run it by hand (Actions -> Emulator release -> Run workflow) to only build: the files are then
 # workflow artifacts, unless a tag is given, in which case they go to that tag's release too.
+#
+# The APK is signed with the release key from four repository secrets (Settings -> Secrets and
+# variables -> Actions): ANDROID_KEYSTORE_BASE64 (the .jks, base64), ANDROID_KEYSTORE_PASSWORD,
+# ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD. The job fails without them, and fails if the APK's
+# certificate isn't the one every release so far was signed with (APK_CERT_SHA256): Android only
+# installs an update signed with the same key.
 #
 # The builds contain no Casio software: users open a flash dump of their own calculator.
 name: Emulator release
@@ -25,6 +31,9 @@ permissions:
 
 env:
   WAILS_VERSION: v2.16.0 # same as app/go.mod
+  NDK_VERSION: 28.2.13676358 # what the maintainer's builds use
+  # SHA-256 of the release certificate (CN=fxprgm), as `apksigner verify --print-certs` shows it
+  APK_CERT_SHA256: 62b52466f8f5f59a013eb2d5ceed72c87988be980e124bc964217c84a4ac092b
 
 jobs:
   build:
@@ -116,8 +125,96 @@ jobs:
           path: dist/*.zip
           if-no-files-found: error
 
+  android:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: emu_go/go.mod
+          cache-dependency-path: emu_go/go.mod
+
+      - uses: actions/setup-java@v6.1.0
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Version
+        id: version
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          ver="$(sed -n 's/^ *versionName = "\(.*\)"/\1/p' android/app/build.gradle.kts)"
+          tag="${INPUT_TAG:-}"
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then tag="$GITHUB_REF_NAME"; fi
+          if [[ -n "$tag" && "${tag#v}" != "$ver" ]]; then
+            echo "::error::tag $tag but android/app/build.gradle.kts has versionName $ver"
+            exit 1
+          fi
+          echo "version=$ver" >> "$GITHUB_OUTPUT"
+          echo "Building the Android app $ver"
+
+      - name: Android NDK and CMake
+        run: |
+          sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$sdkmanager" --licenses > /dev/null || true
+          "$sdkmanager" --install "ndk;${NDK_VERSION}" "cmake;3.22.1" > /dev/null
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/${NDK_VERSION}" >> "$GITHUB_ENV"
+
+      - name: Go core (libcg50core.so)
+        run: python3 android/build_go_lib.py
+
+      - name: Signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [[ -z "$KEYSTORE_BASE64" || -z "$STORE_PASSWORD" || -z "$KEY_ALIAS" || -z "$KEY_PASSWORD" ]]; then
+            echo "::error::the ANDROID_* signing secrets are not set"
+            exit 1
+          fi
+          jks="$RUNNER_TEMP/release.jks"
+          printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$jks"
+          # read by android/app/build.gradle.kts; git-ignored, and the runner is thrown away
+          {
+            echo "storeFile=$jks"
+            echo "storePassword=$STORE_PASSWORD"
+            echo "keyAlias=$KEY_ALIAS"
+            echo "keyPassword=$KEY_PASSWORD"
+          } > android/keystore.properties
+
+      - name: Build the APK
+        working-directory: android
+        run: sh ./gradlew --no-daemon :app:assembleRelease
+
+      - name: Check the signature
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          rm -f android/keystore.properties "$RUNNER_TEMP/release.jks"
+          apk=android/app/build/outputs/apk/release/app-release.apk
+          apksigner="$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)"
+          certs="$("$apksigner" verify --print-certs "$apk")"
+          echo "$certs"
+          if ! grep -q "certificate SHA-256 digest: ${APK_CERT_SHA256}" <<< "$certs"; then
+            echo "::error::the APK is not signed with the release certificate"
+            exit 1
+          fi
+          mkdir -p dist
+          cp "$apk" "dist/cg50-emulator-${VERSION}.apk"
+          ls -la dist
+
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: cg50-emulator-apk
+          path: dist/*.apk
+          if-no-files-found: error
+
   release:
-    needs: build
+    needs: [build, android]
     if: github.ref_type == 'tag' || inputs.tag != ''
     runs-on: ubuntu-latest
     permissions:
@@ -125,7 +222,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v8.0.2
         with:
-          pattern: cg50-studio-*
+          pattern: cg50-*
           path: dist
           merge-multiple: true
 
@@ -148,4 +245,4 @@ jobs:
           - macOS (Apple Silicon and Intel): unzip and move CG50 Studio.app to Applications. It is not notarized: the first time, right-click it and choose Open.
           - Linux (x86-64): unzip and run cg50studio. Needs GTK 3 and WebKitGTK 4.1 (libwebkit2gtk-4.1-0)."
           fi
-          gh release upload "$TAG" dist/*.zip --clobber
+          gh release upload "$TAG" dist/*.apk dist/*.zip --clobber
