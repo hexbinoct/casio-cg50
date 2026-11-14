@@ -9,7 +9,26 @@
   pending, so the next session can continue without being reminded.
 ============================================================================= -->
 
-> ## ⏯ RESUME HERE (last session end: 2026-11-13, cont.24 = issue #2: install any file, PRR, KhiCAS full, Mac)
+> ## ⏯ RESUME HERE (last session end: 2026-11-14, cont.25 = APK signed on GitHub, OS 3.80.0 check, v0.2.1, Mac)
+>
+> **The release workflow builds and signs the APK** (`.github/workflows/release.yml`, job
+> `android`): NDK 28.2.13676358, CMake 3.22.1, JDK 21, `android/build_go_lib.py` then
+> `assembleRelease`. The key is in four repository secrets (ANDROID_KEYSTORE_BASE64,
+> ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD); the job fails without
+> them, when the tag isn't `v` + build.gradle.kts's versionName, or when the certificate isn't
+> CN=fxprgm SHA-256 62b52466… (the v0.2.0 one). The release job uploads
+> `cg50-emulator-X.Y.Z.apk` with the Studio zips: no more `gh release upload` by hand. Tested
+> build-only (run 43477436108, all green). Release = bump versionCode/versionName,
+> `app/main.go`, `app/wails.json`, commit, push the tag, publish the draft by hand.
+>
+> **KhiCAS full on OS 3.80.0** (stand-in `os/flash_dump/standin_380_0_32mb.bin`, git-ignored:
+> the 32 MB dump with `os/os_image/cg50_os_3.80.plain.bin` = "03.80.0000" over the OS, boot
+> area kept; the user's `os/flash_dump/cg50_os_3.80.plain.zip` holds the same image): same as
+> 3.60 and 3.80.1, with the .ac2 it starts and computes 1+1 = 2, without it Illegal Code Err
+> PC 0. **v0.2.1** (Android versionCode 3, Studio 0.2.1) tagged for issue #2's two fixes.
+> Still open: the issue reply (up to the user), the "some add-ins freeze" names.
+>
+> ## ⏯ (prev) RESUME HERE (last session end: 2026-11-13, cont.24 = issue #2: install any file, PRR, KhiCAS full, Mac)
 >
 > **Issue #2** (GitHub, d-dx-etothex, app 0.2.0 on OS 3.80): (1) add-ins with more files (KhiCAS
 > full = `khicas50.g3a` + `khicas50.ac2`, NES ROMs) could not be installed: the app appended

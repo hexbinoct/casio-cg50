@@ -12,7 +12,7 @@
   },
   "info": {
     "productName": "CG50 Studio",
-    "productVersion": "0.2.0",
+    "productVersion": "0.2.1",
     "copyright": "Copyright (c) 2026 hexbinoct, MIT License",
     "comments": "An fx-CG50 emulator for experimenting and developing add-ins"
   }
