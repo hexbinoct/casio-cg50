@@ -9,7 +9,49 @@
   pending, so the next session can continue without being reminded.
 ============================================================================= -->
 
-> ## ⏯ RESUME HERE (last session end: 2026-11-14, cont.25 = APK signed on GitHub, OS 3.80.0 check, v0.2.1, Mac)
+> ## ⏯ RESUME HERE (last session end: 2026-11-19, cont.26 = FlashDump as a USB drive works (probe), Mac)
+>
+> **Next: FlashDump 0.3, a USB drive instead of fxlink.** Run FlashDump, plug the cable in, and
+> the computer (or a phone over OTG) shows a read-only drive **CG50 FLASH** with `FLASH.BIN` (the
+> whole 32 MB flash) and `INFO.TXT` (OS version, calculator ID, date). Nothing to install on any
+> computer. It works on the real calculator in probe form (**USBProbe**, a separate add-in, not in
+> this repo yet): **macOS** (Finder mounts it, 32 MB in 35 s ≈ 950 KB/s at full speed; boot + OS
+> byte-identical to the September 32 MB dump; repeated reads identical; this emulator boots the
+> copy; Finder's eject shows "you can unplug" on the calculator) and **Android over OTG** (the
+> Files app mounts it; same MD5 as the Mac's read in the same session; the Android app boots it).
+> Untested: Windows (office), Linux (planned: a Debian VM with USB passthrough).
+> - **Our own USB driver**, polled, no interrupts, not gint's: learned from Casio's OS 3.60 USB
+>   code and Renesas's public manuals for the same controller (SH7262/SH7264 hardware manual
+>   §26, R8A66597 datasheet; the SH7724 one is gone from renesas.com), checked by probe rounds.
+>   Power on (OS 0x80208198): PFC 0xA4050180 bits 7:6 = 0, 0xA4050182 bits 15:14 = 0; CPG
+>   0xA4150014 bit 8 = 0 (USB clock); ~0.1 s; MSTPCR2 0xA4150038 bit 20 = 0; **0xA40501D4 =
+>   0x0600** (VBUS sense: INTSTS0.VBSTS only reads 1 after it). Off (0x80208232): the reverse,
+>   SYSCFG = 0 first. Cable pin: PORT 0xA4050162 bit 1. Controller start (0x8073C382): +02 = 4,
+>   SYSCFG 0 → 0x400 (10 ms) → 0x401, then | 0x10 = D+ pull-up (attach). Full speed (HSE = 0).
+> - Control transfers like Casio's (0x8073D2FE): SET_ADDRESS and an empty SETUP after a bus
+>   reset show up as VALID too, ignore both; clear VALID and wait until it reads 0; for an
+>   answer: DCPCTR = NAK, CFIFOSEL = BIGEND|ISEL, **CFIFOCTR = BCLR** (a request the host gave
+>   up on leaves data in the buffer and FRDY never returns), write, BVAL if short, DCPCTR =
+>   BUF|CCPL. Bulk IN on D1FIFO (double-buffered, 32-bit), OUT on D0FIFO, as Casio's driver.
+>   Descriptors: 07CF:6102 (the PID of Casio's own USB Flash mode), class 08/06/50.
+> - The disk is generated sector by sector (MBR + FAT16, 4 KB clusters, FLASH.BIN contiguous,
+>   read through P1 0x80000000), checked on the Mac with fsck_msdos and a mount before the
+>   calculator ran it. SCSI: TUR, REQUEST SENSE, INQUIRY, MODE SENSE(6/10) write-protected,
+>   START STOP (eject), PREVENT/ALLOW, READ FORMAT CAPACITIES, READ CAPACITY(10), READ(10);
+>   WRITE → DATA PROTECT. Errors use the bulk-only spec's no-stall options (short packet + residue).
+> - **Every session's FLASH.BIN differs a little:** the calculator itself writes its flash (the OS
+>   saving its state, any add-in that saves a file) in whole erase blocks; boot + OS never change.
+>   So FlashDump 0.3 must write nothing at all (USBProbe saves a log; FlashDump must not).
+> - Tested 2026-11-22 on all four: macOS, Android (OTG), Windows, Linux (Debian VM).
+> - **FlashDump moved to its own repo, fxprgm/flashdump-cg** (2026-11-22): 0.2 (fxlink, tag
+>   v0.2.0) and 0.3 (the drive); `tools/flash_dump/` here is now a two-line pointer, and the
+>   apps' dump-help links go there. Its notes live outside this repo.
+>
+> **Also this session:** the release workflow signs the APK (cont.25), v0.2.1 released. The probe
+> tests no longer default to a local ROM folder: CE84_ROM / TI68K_ROM / TI68K_ROM92 are required
+> (the tests skip without them), and their comments name sibling projects without home paths.
+>
+> ## ⏯ (prev) RESUME HERE (last session end: 2026-11-14, cont.25 = APK signed on GitHub, OS 3.80.0 check, v0.2.1, Mac)
 >
 > **The release workflow builds and signs the APK** (`.github/workflows/release.yml`, job
 > `android`): NDK 28.2.13676358, CMake 3.22.1, JDK 21, `android/build_go_lib.py` then
@@ -284,7 +326,7 @@
 > ## ⏯ RESUME HERE (previous: 2026-10-11, cont.19c = add-in work on the Mac, emulator unchanged)
 >
 > **No emulator code changed.** This session used the emulator as the test device for four add-in
-> projects outside this repo (each has its own `notes/` under `~/main/casio/`): `wolf3d_cg50` (an
+> projects outside this repo (each has its own `notes/`): `wolf3d_cg50` (an
 > fx-9860 .g1a running through a shim; public repo hexbinoct/wolf3d-cg50), `graph_cg50`
 > (FastGraph), `codeview_cg50` (a PRGM program reader), and `flowce_cg50` (rebased onto upstream
 > v1.9).
@@ -320,7 +362,7 @@
 > `emu_go/cpu.go`. gcc's signed-division helper runs `div0u` right after a `cmp/hi` that sets T, so
 > quotients were 2^24 off: FlowCE's strokes drew as lines across the screen. New conformance
 > cases `div0u_clears_t`, `div1_full_quotient_100_7_t_set`. FlowCE probe tests in
-> `emu_go/flowce_probe_test.go` (`-tags probe`; the .g3a lives on the Mac, ~/main/casio/flowce_cg50).
+> `emu_go/flowce_probe_test.go` (`-tags probe`; the .g3a is built in the sibling flowce_cg50 project).
 > The OS boot itself hits it: the old golden diverged at instruction 24000 (r7 off by 2^24).
 >
 > **⚠ Golden is per-machine:** `emu/golden_boot.bin` is git-ignored, so after pulling any
