@@ -2,7 +2,7 @@
 
 package cg50emu
 
-// Probe (2026-10-16): ~/main/casio/ce_cg50/addin_test (CEtest.g3a: the TI-84 Plus CE fast eZ80
+// Probe (2026-10-16): ce_cg50/addin_test (CEtest.g3a: the TI-84 Plus CE fast eZ80
 // path checked against CEmu's decoder, one instruction at a time, ce_cg50/core/difftest_core.c,
 // the same test as the Mac's build/difftest). Installs the add-in on the 32 MB image, launches it,
 // writes the parameters into its control block (physical 0x0C1E0000, ce_cg50/addin_test/src/

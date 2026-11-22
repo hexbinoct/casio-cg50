@@ -2,7 +2,7 @@
 
 package cg50emu
 
-// Probe (2026-10-08): the fx-CG50 build of FlowCE (~/main/casio/flowce_cg50/cg50), installed on
+// Probe (2026-10-08): the fx-CG50 build of FlowCE (flowce_cg50/cg50), installed on
 // the 32 MB image and launched. Frames go to $TMPDIR.
 //   TestFlowCE      a fixed session (1/7, x^2 then F2 antiderivative), cg50_flowce_*.png
 //                   (FLOWCE_G3A overrides the .g3a path)

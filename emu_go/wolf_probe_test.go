@@ -2,7 +2,7 @@
 
 package cg50emu
 
-// Probe (2026-10-10): ~/main/casio/wolf3d_cg50 runs Kelli's fx-9860 Wolfenstein 3D (.g1a) on the
+// Probe (2026-10-10): wolf3d_cg50 runs Kelli's fx-9860 Wolfenstein 3D (.g1a) on the
 // CG50 through a shim (the game's code unchanged at 0x00300200, its syscalls and LCD routine
 // redirected). This installs build/Wolf3D.g3a on the 32 MB image, launches it, plays WOLF_KEYS
 // and reports what the shim saw. Run it through wolf3d_cg50/tools/emu_run.py, which passes the

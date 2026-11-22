@@ -2,7 +2,7 @@
 
 package cg50emu
 
-// Probe (2026-10-11) for ~/main/casio/codeview_cg50 (a source viewer for the PRGM app):
+// Probe (2026-10-11) for codeview_cg50 (a source viewer for the PRGM app):
 // what the OS's own detokenizer returns and what main memory holds.
 //   TestTokens   OpCodeToStr (syscall 0x128F) for every opcode: single bytes and the two-byte
 //                prefixes 7F F7 F9 E5 E6 E7. Written to $TMPDIR/cg50_opcodes.txt as

@@ -2,7 +2,7 @@
 
 package cg50emu
 
-// Probe (2026-10-11, ~/main/casio/basic_cg50): Casio BASIC speed on the 32 MB dump — the OS's
+// Probe (2026-10-11, basic_cg50): Casio BASIC speed on the 32 MB dump — the OS's
 // own PRGM app, and later C.Basic, running the same benchmark programs.
 //
 // The programs are tokenized by basic_cg50/tools/build_bench.py into bench/out/<NAME>.bin (MCS

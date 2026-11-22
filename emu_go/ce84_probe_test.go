@@ -2,14 +2,14 @@
 
 package cg50emu
 
-// Probe (2026-10-16): ~/main/casio/ce_cg50/ce84 (CE84.g3a, the TI-84 Plus CE emulator add-in).
+// Probe (2026-10-16): ce_cg50/ce84 (CE84.g3a, the TI-84 Plus CE emulator add-in).
 // Installs the ROM file and the add-in into the 32 MB image's storage memory, launches CE84,
 // lets TI-OS boot, types 2+2 ENTER, graphs Y1=sin(X), opens CE84's menu (SHIFT+MENU), quits
 // (state saved to \\fls0\CE84.sav), relaunches (state restored: the calculation must still be
 // on the TI-OS home screen) and quits again. Reads CE84's stats block at physical 0x0C1E0000
 // (ce84/src/main.c, ce84_stats_t) and saves a PNG of the whole panel at every step.
 //   CE84_G3A  the .g3a   (default ../../ce_cg50/ce84/CE84.g3a)
-//   CE84_ROM  the ROM    (default ../../ti/roms/ti-84ce.rom)
+//   CE84_ROM  the ROM file (required: the test skips without it)
 //   CE84_OUT  PNG folder (default ../../ce_cg50/out/ce84)
 //   CE84_SAV  if set, a copy of the state file saved at the first quit goes there
 //   go -C emu_go test -tags probe -run 'TestCE84$' -count=1 -timeout 60m -v .
@@ -232,7 +232,7 @@ func TestCE84(t *testing.T) {
 	}
 	romPath := os.Getenv("CE84_ROM")
 	if romPath == "" {
-		romPath = "../../ti/roms/ti-84ce.rom"
+		t.Skip("set CE84_ROM to a TI-84 Plus CE ROM file")
 	}
 	out := os.Getenv("CE84_OUT")
 	if out == "" {
@@ -517,7 +517,7 @@ func TestCE84Send(t *testing.T) {
 	}
 	romPath := os.Getenv("CE84_ROM")
 	if romPath == "" {
-		romPath = "../../ti/roms/ti-84ce.rom"
+		t.Skip("set CE84_ROM to a TI-84 Plus CE ROM file")
 	}
 	out := os.Getenv("CE84_OUT")
 	if out == "" {

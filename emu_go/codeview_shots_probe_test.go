@@ -2,7 +2,7 @@
 
 package cg50emu
 
-// Probe (2026-11-01) for ~/main/casio/codeview_cg50: screenshots of CodeView with chosen
+// Probe (2026-11-01) for codeview_cg50: screenshots of CodeView with chosen
 // sources. Installs the add-in, writes Casio BASIC programs into main memory and files into
 // the storage root, launches CodeView, plays CV_KEYS and saves the add-in's frames.
 //   CV_G3A    the .g3a (default ../../codeview_cg50/CodeView.g3a)

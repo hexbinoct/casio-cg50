@@ -2,7 +2,7 @@
 
 package cg50emu
 
-// Probe (2026-10-10): ~/main/casio/graph_cg50 (FastGraph.g3a, a gint function grapher).
+// Probe (2026-10-10): graph_cg50 (FastGraph.g3a, a gint function grapher).
 // Installs it on the 32 MB image, launches it, plays GRAPH_KEYS and saves the add-in's frames.
 //   GRAPH_G3A   the .g3a (default ../../graph_cg50/FastGraph.g3a)
 //   GRAPH_KEYS  comma list: "row-col" taps (re/KEYMAP.md inject coords), "wait:N" (N x 100 M

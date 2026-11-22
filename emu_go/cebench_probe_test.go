@@ -2,7 +2,7 @@
 
 package cg50emu
 
-// Probe (2026-10-15): ~/main/casio/ce_cg50/addin (CEbench.g3a: CEmu's TI-84 Plus CE core as a
+// Probe (2026-10-15): ce_cg50/addin (CEbench.g3a: CEmu's TI-84 Plus CE core as a
 // gint add-in). Installs it on the 32 MB image, launches it and runs CEBENCH_MS emulated CE
 // milliseconds, reading the add-in's stats block at physical 0x0C1E0000 (ce_cg50/addin/src/
 // main.c, cg50_stats_t) to get SH-4 instructions per eZ80 dispatch and per emulated ms, per

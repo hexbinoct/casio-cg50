@@ -2,7 +2,7 @@
 
 package cg50emu
 
-// Probe (2026-10-18): ~/main/casio/ppl_cg50 (PPL.g3a, the HP Prime PPL interpreter add-in,
+// Probe (2026-10-18): ppl_cg50 (PPL.g3a, the HP Prime PPL interpreter add-in,
 // built from its cg50/ folder). Installs test programs into the 32 MB image's storage memory
 // (\\fls0\PPL\*.ppl, a binary .hpprgm in the root, and spiro.ppl from the program corpus when
 // it is there), launches the add-in and drives it with keys: Home line 1/3*3, programs loaded

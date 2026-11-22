@@ -2,7 +2,7 @@
 
 package cg50emu
 
-// Probe (2026-10-18): ~/main/casio/dl_cg50, dynamic libraries for gint add-ins. Installs the
+// Probe (2026-10-18): dl_cg50, dynamic libraries for gint add-ins. Installs the
 // demo add-in DLDEMO.g3a and its libraries (LIBA, LIBB, LIBV, LIBBAD, LIBBIG .dl files) into the
 // 32 MB image's storage memory, launches DLDEMO and steps through its four screens with EXE:
 //   1. LIBA through dl_open/dl_sym (data, BSS, host malloc/qsort/gint calls, callbacks)

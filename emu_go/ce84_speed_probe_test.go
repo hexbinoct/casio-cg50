@@ -13,18 +13,28 @@ package cg50emu
 //   go -C emu_go test -tags probe -run 'TestCE84Speed$' -count=1 -timeout 60m -v .
 
 import (
+	"debug/elf"
+	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
+	"strings"
 	"testing"
 )
 
 const c8FlatOut, c8BusyMs, c8LastBusy, c8KeyDownMs, c8JobCount, c8JobUs, c8JobEmuMs, c8JobBusy = 42, 43, 44, 45, 46, 47, 48, 49
 
-// the reference: build/cespeed ../ti/roms/ti-84ce.rom (2026-11-04, CEmu 7c4aa0b, rev I)
-var c8SpeedRef = map[string]float64{"graph": 4997, "zoom6": 5028, "basloop": 4274, "gfx": 1270, "logic": 2919}
+// the JIT's counters (ce_cg50 core/jit.c jit_stat, 2026-11-08): words 50-57
+const c8Jit = 50
+
+// the reference: build/cespeed <CE ROM> (CEmu 7c4aa0b, rev I). 2026-11-08: the job
+// end ignores busy runs under 30 ms after 20 idle ms (the cursor blink; CE84 has the same rule),
+// before: basloop 4274, gfx 1270, logic 2919
+var c8SpeedRef = map[string]float64{"graph": 4997, "zoom6": 5028, "basloop": 3944, "gfx": 1265, "logic": 2253}
 
 func TestCE84Speed(t *testing.T) {
 	env := func(k, def string) string {
@@ -37,7 +47,10 @@ func TestCE84Speed(t *testing.T) {
 	if err != nil {
 		t.Skip("no CE84.g3a: ", err)
 	}
-	rom, err := os.ReadFile(env("CE84_ROM", "../../ti/roms/ti-84ce.rom"))
+	if os.Getenv("CE84_ROM") == "" {
+		t.Skip("set CE84_ROM to a TI-84 Plus CE ROM file")
+	}
+	rom, err := os.ReadFile(os.Getenv("CE84_ROM"))
 	if err != nil {
 		t.Skip("no ROM: ", err)
 	}
@@ -95,9 +108,20 @@ func TestCE84Speed(t *testing.T) {
 		cg50, ce float64
 	}
 	var results []res
+	only := os.Getenv("CE84_SPEED_JOBS") // e.g. "gfx,logic": only these jobs
 	job := func(name string, setup []string, goKey string) {
+		if only != "" && !strings.Contains(","+only+",", ","+name+",") {
+			return
+		}
 		s.tap(setup...)
 		s.secs(1)
+		// more idle time before the job's key (default 0.5 s: with the JIT, GFX ends so early in
+		// CG50 time that the LOGIC launch once met a still-held key and never ran; 2026-11-08)
+		gap := 0.5
+		if g, err := strconv.ParseFloat(os.Getenv("CE84_SPEED_GAP"), 64); err == nil {
+			gap = g
+		}
+		s.secs(gap)
 		c := c8Key[goKey]
 		n0 := c8Word(e, c8JobCount)
 		e.InjectKey(c[0], c[1])
@@ -118,7 +142,34 @@ func TestCE84Speed(t *testing.T) {
 				}
 			}()
 		}
+		trace := os.Getenv("CE84_SPEED_TRACE") != ""
+		traceDiv := uint64(20)
+		if v, err := strconv.Atoi(os.Getenv("CE84_SPEED_TRACE")); err == nil && v > 1 {
+			traceDiv = uint64(v)
+		}
+		var cpuSym uint32
+		if trace {
+			if f, err := elf.Open(env("CE84_ELF", "../../ce_cg50/ce84/build-cg/ce84")); err == nil {
+				syms, _ := f.Symbols()
+				for _, sy := range syms {
+					if sy.Name == "_cpu" {
+						cpuSym = uint32(sy.Value)
+					}
+				}
+				f.Close()
+			}
+		}
+		lastTrace := s.cycles()
 		for c8Word(e, c8JobCount) == n0 {
+			if trace && cpuSym != 0 && s.cycles()-lastTrace > c8IPS/traceDiv {
+				lastTrace = s.cycles()
+				// CEmu's cpu.registers at _cpu (add-in RAM 0x081xxxxx = physical 0x0C160000 + offset)
+				phys := cpuSym - 0x08100000 + 0x0C160000 - DramBase
+				pc := binary.BigEndian.Uint32(e.mem.dram[phys+48:]) & 0xFFFFFF
+				t.Logf("    %6.0f ms: CE PC %06X SP %06X emu %d ms busy %d jit blocks %d inval %d", float64(s.cycles()-t0)/c8IPS*1000,
+					pc, binary.BigEndian.Uint32(e.mem.dram[phys+44:])&0xFFFFFF, c8Word(e, c8EmuMs), c8Word(e, c8BusyMs),
+					c8Word(e, c8Jit), c8Word(e, c8Jit+3))
+			}
 			for k := 0; k < 50; k++ {
 				e.Step(20_000)
 				if syms != nil {
@@ -145,6 +196,12 @@ func TestCE84Speed(t *testing.T) {
 		t.Logf("%-8s CG50 %7.0f ms  CE ref %5.0f ms  speed %5.1f %%  (CE84 emulated %d ms, busy %d; probe %.0f ms incl. the idle tail)",
 			name, cg, ref, 100*ref/cg, c8Word(e, c8JobEmuMs), c8Word(e, c8JobBusy), float64(s.cycles()-t0)/c8IPS*1000)
 		results = append(results, res{name, cg, ref})
+		var js [8]uint32
+		for i := range js {
+			js[i] = c8Word(e, c8Jit+i)
+		}
+		t.Logf("  jit (totals): %d blocks, %d none, %d retries, %d invalidations, %d flushes, %d pages refused, %d code bytes, %d requests",
+			js[0], js[1], js[2], js[3], js[4], js[5], js[6], js[7])
 		if syms != nil {
 			type kv struct {
 				k string
@@ -164,6 +221,31 @@ func TestCE84Speed(t *testing.T) {
 			t.Logf("  profile:%s", line)
 		}
 		s.shot("speed_" + name)
+		if d := os.Getenv("CE84_SPEED_JITDUMP"); d != "" {
+			// the JIT's DRAM (CG50_JIT_ADDR 0x8C772000 .. 0x8C800000: code bits, then code)
+			os.WriteFile(fmt.Sprintf("%s.%s.bin", d, name), e.mem.dram[0x0C772000-DramBase:0x0C800000-DramBase], 0o644)
+		}
+		if d := os.Getenv("CE84_SPEED_DUMP"); d != "" {
+			// CE RAM (physical 0x0C600000, 0x65800 bytes) after the job
+			os.WriteFile(fmt.Sprintf("%s.%s.bin", d, name), e.mem.dram[0x0C600000-DramBase:][:0x65800], 0o644)
+		}
+		if name == "logic" {
+			// LOGIC copies its entity table to plotSScreen (D52C00) at the end: check it against
+			// make_8xp.py's model (CE RAM is at physical 0x0C600000)
+			out, err := exec.Command("python3", "-c", "import sys; sys.path.insert(0, '../../ce_cg50/bench'); "+
+				"from make_8xp import logic_model; print(logic_model(40000).hex())").Output()
+			if err != nil {
+				t.Errorf("logic_model: %v", err)
+			} else {
+				want := strings.TrimSpace(string(out))
+				got := hex.EncodeToString(e.mem.dram[0x0C600000+0x52C00-DramBase:][:len(want)/2])
+				if got != want {
+					t.Errorf("LOGIC's result differs from the model:\n got  %s\n want %s", got, want)
+				} else {
+					t.Logf("  LOGIC's result equals the model")
+				}
+			}
+		}
 	}
 	job("graph", []string{"F1", "EXIT", "sin", "XOT", ")"}, "F5")
 	job("zoom6", []string{"F3"}, "6")
