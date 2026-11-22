@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Receive a FlashDump dump on Windows: usbipd-win passes the calculator into WSL, fxlink runs
-in the fxSDK Docker image (the "Windows: WSL + usbipd" route of tools/flash_dump/README.md).
+in the fxSDK Docker image (the "On Windows" route of FlashDump 0.2's guide,
+github.com/fxprgm/flashdump-cg/tree/v0.2.0). FlashDump 0.3 needs none of this: it is a USB drive.
 
   python re/calc_fxlink.py bind      # once, admin (UAC): share the calculator's USB port
   python re/calc_fxlink.py run       # attach + fxlink -i; stops when a full dump has arrived

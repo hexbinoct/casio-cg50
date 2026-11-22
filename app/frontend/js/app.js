@@ -99,7 +99,7 @@ const canStep = () => status.loaded && status.paused && !status.fault;
 $("runBtn").onclick = togglePause;
 $("dumpChip").onclick = () => call("OpenDump");
 $("welcomeOpen").onclick = () => call("OpenDump");
-const DUMP_HELP = "https://github.com/hexbinoct/casio-cg50/tree/main/tools/flash_dump#readme";
+const DUMP_HELP = "https://github.com/fxprgm/flashdump-cg#readme";
 $("dumpHelp").onclick = (e) => { e.preventDefault(); window.runtime?.BrowserOpenURL(DUMP_HELP); };
 $("saveBtn").onclick = () => call("SaveSlot", 1);
 $("loadBtn").onclick = () => call("LoadSlot", 1);

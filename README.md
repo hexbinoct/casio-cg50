@@ -39,7 +39,7 @@ app isn't notarized, so the first time, right-click it and choose **Open**.
 | `android/` | **The Android app** (Kotlin + JNI over the Go core): the screen, a keypad drawn in the real fx-CG50 layout, save-state resume. See [`android/README.md`](android/README.md). |
 | `docs/ANDROID.md` | The host API (C ABI) the Go core exports, and how the app is wired. |
 | `re/` | Reverse-engineering scripts: SH-4 disassembler (`sh4dis.py` — `--image PATH` or `SH4DIS_IMAGE`; `disasm_static.py`), syscall resolvers (`syscall360.py` for OS 3.60), the keymap generator (`dump_keymap.py` → `KEYMAP.md`) and label audit (`audit_keymap.py`), and many single-purpose probes. |
-| `tools/` | On-calculator helpers: `flash_dump/` (a gint/fxlink flash **dumper**), `fxsdk-docker/` (fxSDK/gint toolchain in Docker), and probe add-ins (`keyprobe/`, `timerprobe/`, `tickprobe/`) used to measure the real hardware. |
+| `tools/` | On-calculator helpers: `fxsdk-docker/` (fxSDK/gint toolchain in Docker), and probe add-ins (`keyprobe/`, `timerprobe/`, `tickprobe/`) used to measure the real hardware. |
 | `RECON_NOTES.md` | The full reverse-engineering log. The **RESUME HERE** block at the top is the current state and next steps. |
 
 ### What the emulator models
@@ -99,9 +99,8 @@ app isn't notarized, so the first time, right-click it and choose **Open**.
 This repo intentionally ships **no** Casio code. Dump your own fx-CG50 (a copy of its flash
 chip, not Casio's OS update file):
 
-- **Step by step: [`tools/flash_dump/README.md`](tools/flash_dump/README.md)**, with
-  **FlashDump**, a small read-only add-in that sends the flash to the computer over USB
-  (`fxlink`). It shows the calculator's OS version before it starts.
+- With **[FlashDump](https://github.com/fxprgm/flashdump-cg)**, a small read-only add-in: the
+  calculator shows up as a USB drive with one file, FLASH.BIN.
 - The emulator is made and tested for **OS 3.60** (on the calculator: MENU → System → F4).
   Other versions are accepted, with a warning: a stand-in 3.80 flash boots, runs apps and
   add-ins and installs add-ins, but no real 3.80 dump has been tried. The shortcuts tied to

@@ -1,7 +1,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # Casio proprietary firmware — NEVER commit.
 # The fx-CG50 OS images / flash dumps are Casio's copyrighted property. You must
-# supply your own dump of your own calculator (see README and tools/flash_dump/).
+# supply your own dump of your own calculator (see README: FlashDump).
 # The whole os/ tree (physical flash dump, the 3.80 updater, and everything
 # extracted/decoded from them) is excluded — EXCEPT our own on-device probe
 # captures (os/devic_probes/): tiny register/CPU measurement dumps + the add-in

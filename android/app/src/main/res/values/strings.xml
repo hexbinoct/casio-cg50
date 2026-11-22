@@ -32,7 +32,7 @@
 
     <!-- flash dump: first start, choosing and changing it (DumpStore, MainActivity) -->
     <string name="welcome_title">Your own flash dump is needed</string>
-    <string name="welcome_body">This app emulates the fx-CG50 graphing calculator, but it does not include the calculator\'s operating system. That firmware belongs to Casio, so it is not part of the app and cannot be downloaded from it.\n\nTo use the emulator, make a flash dump of your own fx-CG50 with a dumper add-in (the add-in and a step-by-step guide: https://github.com/hexbinoct/casio-cg50/tree/main/tools/flash_dump), copy the file to this phone, then choose it below. A flash dump is a copy of your calculator\'s own memory chip, not the OS update file Casio publishes.</string>
+    <string name="welcome_body">This app emulates the fx-CG50 graphing calculator, but it does not include the calculator\'s operating system. That firmware belongs to Casio, so it is not part of the app and cannot be downloaded from it.\n\nTo use the emulator, make a flash dump of your own fx-CG50 with a dumper add-in (the add-in and a step-by-step guide: https://github.com/fxprgm/flashdump-cg), copy the file to this phone, then choose it below. A flash dump is a copy of your calculator\'s own memory chip, not the OS update file Casio publishes.</string>
     <string name="welcome_sizes">Accepted: the whole 32 MB flash (recommended: it holds the storage memory, so your files and installed add-ins come along) or a 16 MB dump of its first half.</string>
     <string name="welcome_os">Made and tested for OS 3.60 (on the calculator: MENU, System, F4 Version). Other versions start and run, but are not tested yet.</string>
     <string name="os_warning_title">OS version</string>

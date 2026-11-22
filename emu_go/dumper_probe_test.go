@@ -2,13 +2,14 @@
 
 package cg50emu
 
-// Probe (2026-11-07): the FlashDump add-in (tools/flash_dump) on the emulator, up to the point
-// where it waits for the computer (the emulator has no USB host). Installs FLASHDMP.g3a, opens
+// Probe (2026-11-07): the FlashDump add-in (github.com/fxprgm/flashdump-cg; $DUMPER_G3A = its
+// FLASHDMP.g3a) on the emulator, up to the point where it waits for the computer (the emulator
+// has no USB host). Installs FLASHDMP.g3a, opens
 // it from the MAIN MENU, saves the whole panel ($TMPDIR/cg50_dumper_<tag>_N.png) at its menu and
 // after F1. With $DUMPER_FLASH (e.g. ../os/flash_dump/synthetic_380.bin) it cold-boots that
 // image through first-boot setup instead of resuming the 3.60 save-state.
 //
-//   go -C emu_go test -tags probe -run 'TestDumperScreens$' -count=1 -v .
+//   DUMPER_G3A=<path>/FLASHDMP.g3a go -C emu_go test -tags probe -run 'TestDumperScreens$' -count=1 -v .
 //   python re/run_probe.py TestDumperScreens DUMPER_FLASH=../os/flash_dump/synthetic_380.bin
 
 import (
@@ -19,9 +20,12 @@ import (
 // savePanel (monitor_dasm_probe_test.go) saves the whole panel: gint draws on all of it.
 
 func TestDumperScreens(t *testing.T) {
-	g3a, err := os.ReadFile("../tools/flash_dump/FLASHDMP.g3a")
+	if os.Getenv("DUMPER_G3A") == "" {
+		t.Skip("set DUMPER_G3A to FlashDump's FLASHDMP.g3a")
+	}
+	g3a, err := os.ReadFile(os.Getenv("DUMPER_G3A"))
 	if err != nil {
-		t.Skip("build the add-in first: ", err)
+		t.Fatal(err)
 	}
 	tag, path := "360", os.Getenv("DUMPER_FLASH")
 	var e *Emulator
