@@ -9,7 +9,7 @@
   pending, so the next session can continue without being reminded.
 ============================================================================= -->
 
-> ## ⏯ RESUME HERE (last session end: 2026-11-19, cont.26 = FlashDump as a USB drive works (probe), Mac)
+> ## ⏯ RESUME HERE (last session end: 2026-11-22, cont.26 = FlashDump as a USB drive, released as fxprgm/flashdump-cg 0.3.0)
 >
 > **Next: FlashDump 0.3, a USB drive instead of fxlink.** Run FlashDump, plug the cable in, and
 > the computer (or a phone over OTG) shows a read-only drive **CG50 FLASH** with `FLASH.BIN` (the
