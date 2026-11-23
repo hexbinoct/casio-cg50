@@ -105,10 +105,44 @@ func TestC47(t *testing.T) {
 			if !ok {
 				t.Fatalf("unknown key %q", k)
 			}
-			// press, then let it run: C47 sleeps between 1 ms ticks, so waiting for a sleeping
-			// CPU (rcSession.tap) says little
-			e.InjectKey(rc[0], rc[1])
-			e.Step(150_000_000)
+			// hold it ~0.4 s, then let it run. gint reads the keyboard on its own 128 Hz timer,
+			// and a tap (InjectKey: a few of the OS's KEYSC scans) can fall between two reads.
+			e.KeyDown(rc[0], rc[1])
+			e.Step(30_000_000)
+			e.KeyUp(rc[0], rc[1])
+			e.Step(120_000_000)
+		}
+	}
+	// C47_PEEK=addr,addr...: 32-bit words (virtual addresses), now and after 50 M instructions
+	if pk := os.Getenv("C47_PEEK"); pk != "" {
+		for pass := 0; pass < 2; pass++ {
+			for _, a := range strings.Split(pk, ",") {
+				var v uint32
+				fmt.Sscanf(a, "%x", &v)
+				fmt.Printf("PEEK %d %08x = %08x\n", pass, v, e.mem.Read(v, 4))
+			}
+			e.Step(50_000_000)
+		}
+	}
+	// C47_STACK=N: N words from r15 (return addresses in 0x003xxxxx: symbolize them)
+	if n, _ := fmt.Sscanf(os.Getenv("C47_STACK"), "%d", new(int)); n == 1 {
+		var cnt int
+		fmt.Sscanf(os.Getenv("C47_STACK"), "%d", &cnt)
+		sp := e.cpu.r[15]
+		fmt.Printf("SP %08x\n", sp)
+		for i := 0; i < cnt; i++ {
+			if w := e.mem.Read(sp+uint32(4*i), 4); w>>20 == 0x003 {
+				fmt.Printf("STACK %08x\n", w)
+			}
+		}
+	}
+	// C47_PCS=N: sample the PC N times, 1 M instructions apart (symbolize with sh-elf-addr2line)
+	if n, _ := fmt.Sscanf(os.Getenv("C47_PCS"), "%d", new(int)); n == 1 {
+		var cnt int
+		fmt.Sscanf(os.Getenv("C47_PCS"), "%d", &cnt)
+		for i := 0; i < cnt; i++ {
+			e.Step(1_000_000)
+			fmt.Printf("PC %08x PR %08x\n", e.cpu.pc, e.cpu.pr)
 		}
 	}
 	if f := e.Fault(); f != "" {
