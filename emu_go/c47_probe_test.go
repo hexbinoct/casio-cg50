@@ -9,7 +9,8 @@ package cg50emu
 //   CG50_STATE  its save-state (default ../os/flash_dump/cg50_state_32mb.bin)
 //   C47_KEYS    comma list of CG50 key names (re/KEYMAP.md: 0-9 . EXE + - * / EXIT DEL SHIFT
 //               ALPHA F1..F6 UP DOWN LEFT RIGHT OPTN VARS x^2 ^ log ln sin cos tan X ab/c S<->D
-//               ( ) , -> (-) x10 MENU AC), "wait:N" (N x 100 M instructions), "shot"
+//               ( ) , -> (-) x10 MENU AC), "wait:N" (N x 100 M instructions), "shot",
+//               "relaunch" (at the MAIN MENU: through Run-Matrix, then start C47 afresh)
 //   frames: $TMPDIR/cg50_c47_NN.png, the LCD panel's contents (the add-in sends only the rows
 //           that changed, so the last DMA source is not a whole frame)
 //   go -C emu_go test -tags probe -run TestC47 -count=1 -v .
@@ -34,6 +35,19 @@ func c47Panel(t *testing.T, e *Emulator, name string) {
 	}
 	defer f.Close()
 	png.Encode(f, img)
+}
+
+// c47Launch starts the last MAIN MENU icon (C47) and lets it boot. rcSession.launchAddin also
+// taps UP afterwards (other add-ins swallow their first key), which C47 would act on.
+func c47Launch(s *rcSession) {
+	s.launch(-1)
+	for n := 0; s.e.cpu.pc != 0x00300000; n++ {
+		if n > 200_000_000 || s.e.Fault() != "" {
+			s.t.Fatalf("C47 never started (%s)", s.e.Fault())
+		}
+		s.e.Step(1)
+	}
+	s.e.Step(300_000_000)
 }
 
 var c47Keys = map[string][2]uint32{
@@ -77,7 +91,7 @@ func TestC47(t *testing.T) {
 		t.Fatal(err)
 	}
 	e.Step(20_000_000)
-	s.launchAddin(-1, "C47")
+	c47Launch(s)
 	shot := 0
 	save := func() {
 		e.Step(50_000_000)
@@ -95,6 +109,10 @@ func TestC47(t *testing.T) {
 		case k == "":
 		case k == "shot":
 			save()
+		case k == "relaunch":
+			// from the MAIN MENU: open Run-Matrix and come back (the OS ends the suspended
+			// add-in), then start C47 afresh, which reloads its saved state
+			c47Launch(s)
 		case strings.HasPrefix(k, "wait:"):
 			fmt.Sscanf(k, "wait:%d", &n)
 			for i := uint32(0); i < n; i++ {
