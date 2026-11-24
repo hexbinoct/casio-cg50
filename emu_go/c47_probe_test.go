@@ -7,6 +7,7 @@ package cg50emu
 //   C47_G3A     the .g3a (default ../../c47-cg/C47.g3a)
 //   CG50_FLASH  the 32 MB flash image (default ../os/flash_dump/flash_full_32mb.bin)
 //   CG50_STATE  its save-state (default ../os/flash_dump/cg50_state_32mb.bin)
+//   C47_CLOCK   the calendar as unix seconds (default: now)
 //   C47_KEYS    comma list of CG50 key names (re/KEYMAP.md: 0-9 . EXE + - * / EXIT DEL SHIFT
 //               ALPHA F1..F6 UP DOWN LEFT RIGHT OPTN VARS x^2 ^ log ln sin cos tan X ab/c S<->D
 //               ( ) , -> (-) x10 MENU AC), "wait:N" (N x 100 M instructions), "shot",
@@ -22,6 +23,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 )
 
 // c47Panel writes the LCD panel's contents (PanelWidth x PanelHeight).
@@ -85,6 +87,12 @@ func TestC47(t *testing.T) {
 	}
 	e.SetInstrPerSecond(70_000_000)
 	e.Step(20_000_000)
+	// the calendar: C47_CLOCK (unix seconds), else now (the state's own clock is in 2010)
+	clock := time.Now().Unix()
+	if v := os.Getenv("C47_CLOCK"); v != "" {
+		fmt.Sscanf(v, "%d", &clock)
+	}
+	e.SetClock(clock)
 
 	s := &rcSession{t, e}
 	if err := e.InstallAddin("C47.g3a", g3a); err != nil {
