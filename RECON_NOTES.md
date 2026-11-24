@@ -9,7 +9,39 @@
   pending, so the next session can continue without being reminded.
 ============================================================================= -->
 
-> ## ⏯ RESUME HERE (last session end: 2026-11-22, cont.26 = FlashDump as a USB drive, released as fxprgm/flashdump-cg 0.3.0)
+> ## ⏯ RESUME HERE (last session end: 2026-11-23, cont.27 = C47 (R47 firmware) as a gint add-in, fxprgm/c47-cg; runs in this emulator)
+>
+> **New project, its own repo: fxprgm/c47-cg** — the C47 RPN calculator firmware (GPL-3,
+> gitlab.com/rpncalculators/c43), built as for the R47, ported to the CG50 as a gint add-in
+> (`C47.g3a`, 1.38 MB, one file). Its README and docs/KEYS.md are the reference; in short: upstream
+> pinned + `patches/` (396x224 layout: stack lines 32 px; big-endian byte order of files and
+> program literals; the test suite's screen buffer), DECLITEND=0 + byte-swapped generated
+> constants (the SuperH is big-endian), our DMCP layer `src/dmcp_*.c`, mini-gmp, a script-driven
+> PC test build. Upstream's own test suite (91,019 tests) passes identically on big-endian
+> PowerPC under qemu (`tools/test_bigendian.py`); with the layout patch 1,871 fail on both CPUs,
+> all width-dependent (README). Toolchain: fxSDK 2.11 / gint 2.11 / GCC 14.1 via GiteaPC.
+>
+> **This repo: `emu_go/c47_probe_test.go`** (probe tag) installs C47.g3a, launches it, plays
+> `C47_KEYS` and saves the LCD panel (`FramebufferRGBA`); `C47_PCS` / `C47_PEEK` / `C47_STACK`
+> sample the PC, read words, dump return addresses (symbolize with `sh-elf-addr2line -e
+> build-cg/c47`). First run on the real 3.60 OS: start screen, EXIT, 2 EXE 3 + = 5, 7 / =
+> 0.714…, 123 EXE 456 x = 56 088, MENU → MAIN MENU with the C47 icon (14 s).
+> - **A flash image from os.bin alone works:** the first 12 MB of the flash (boot code
+>   included) padded to 32 MB with 0xFF; `provision` with presses at 500 M, 60 M apart
+>   (`… 1500000000 30000 provision "1-9,1-9,1-9,1-9,6-9,6-9,1-9,1-9,2-1" 500000000 60000000`, with
+>   CG50_FLASH/CG50_STATE) gets through the first-boot setup (the OS formats the empty fls0 —
+>   slower than with a real fls0, hence the later presses) and saves a state to install into.
+> - **gint traps found (both the add-in's bugs; the emulator matched the hardware):** a partial
+>   `r61524_display(vram, y, h, R61524_DMA*)` must start and end on a multiple of 4 rows (32-byte
+>   DMA units, 792-byte rows; otherwise DMAOR.AE, no TE, and `dma_transfer_wait` /
+>   `dma_transfer_atomic` hang). gint reads KEYSC on its own 128 Hz timer: the probe holds keys
+>   with KeyDown/KeyUp for ~0.4 s rather than InjectKey taps.
+>
+> **Next (c47-cg):** more screens in the emulator (f/g, menus, state across MENU and back, OFF),
+> DMCP's file browser (manual save/load cancels for now) and its small text dialogs, then the
+> real calculator. A real fls0 in the emulator needs the 32 MB dump.
+>
+> ## ⏯ (prev) RESUME HERE (last session end: 2026-11-22, cont.26 = FlashDump as a USB drive, released as fxprgm/flashdump-cg 0.3.0)
 >
 > **Next: FlashDump 0.3, a USB drive instead of fxlink.** Run FlashDump, plug the cable in, and
 > the computer (or a phone over OTG) shows a read-only drive **CG50 FLASH** with `FLASH.BIN` (the
